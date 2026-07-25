@@ -205,6 +205,50 @@ COMMENT ON VIEW app.measurements_hourly IS
     'itself an early degradation signal.';
 
 
+CREATE TABLE IF NOT EXISTS app.asset_edges (
+    from_asset    TEXT     NOT NULL
+                           REFERENCES app.assets(asset_id)
+                           ON DELETE CASCADE,
+    to_asset      TEXT     NOT NULL
+                           REFERENCES app.assets(asset_id)
+                           ON DELETE CASCADE,
+    relation      TEXT     NOT NULL
+                           CHECK (relation IN ('feeds', 'hasPart')),
+    hop_distance  SMALLINT NOT NULL
+                           CHECK (hop_distance > 0),
+    PRIMARY KEY (from_asset, to_asset, relation),
+    CHECK (from_asset <> to_asset)
+);
+
+COMMENT ON TABLE app.asset_edges IS
+    'The semantic graph flattened to asset-level reachability, so SQL can answer '
+    '"what is upstream of this" without loading the RDF graph. Rebuilt from '
+    'scratch by model.graph on every load — it is a derived cache, never edited '
+    'by hand, and nothing should write to it except that regeneration. It exists '
+    'because the diagnosis layer joins fault and health data against topology in '
+    'the same query, and a SPARQL round trip per row would make that unusable.';
+
+COMMENT ON COLUMN app.asset_edges.relation IS
+    'feeds = what flows, so what a fault propagates along. hasPart = containment, '
+    'so which machine a symptom rolls up to. Both directions are stored '
+    'explicitly rather than inferred, because reading a row should not require '
+    'knowing which way round the predicate was defined.';
+
+COMMENT ON COLUMN app.asset_edges.hop_distance IS
+    'Shortest number of graph edges between the two assets, counting equipment '
+    'the database does not model as an asset — the two water loops in '
+    'building_extensions.ttl are each one hop. This is a transitive closure, not '
+    'an adjacency list: a cooling tower reaches the air handler at four hops '
+    'through a chiller, and that row is present. Root cause search uses the '
+    'distance to prefer near causes over far ones.';
+
+-- Self-edges are excluded by the CHECK above. They would otherwise be the most
+-- common row in the table and carry no information: the database models one air
+-- handler as a single asset while the graph models its coil, fans, dampers and
+-- five zones separately, so every internal AHU relation collapses to
+-- ahu-1 -> ahu-1.
+
+
 -- =====================================================================
 -- GROUNDTRUTH — the answer key
 -- =====================================================================

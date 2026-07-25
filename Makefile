@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load api web
+.PHONY: install db-up db-down load graph api web
 
 # Resolve and install the Python environment into .venv
 install:
@@ -29,9 +29,17 @@ db-up:
 db-down:
 	docker compose down
 
-# Load the LBNL datasets into the database
+# Load the LBNL datasets, then rebuild the asset-level edge cache from the
+# semantic model. The edge rebuild has to run second: it resolves graph nodes to
+# database assets through app.points, so those rows must exist first.
 load:
 	uv run python -m ingestion.lbnl_loader
+	$(MAKE) graph
+
+# Rebuild app.asset_edges from the Brick model. Safe to run on its own after any
+# change to model/*.ttl, and much faster than a reload.
+graph:
+	uv run python -m model.graph
 
 # Serve the API on :8000
 api:

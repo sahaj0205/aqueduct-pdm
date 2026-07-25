@@ -1,0 +1,36 @@
+#
+# Assets upstream of this one that currently have an unresolved fault.
+#
+# PARAMETERS: ?asset -- bound by the caller to the equipment showing a symptom.
+#
+# This is the query cross-asset diagnosis is built on, and it is the whole reason
+# the chilled water loop edge in building_extensions.ttl had to exist. The air
+# handler's coil failing to hit its supply air temperature is a symptom. If a
+# chiller upstream of that coil is already known to be faulted, the coil is
+# probably a consequence rather than a fault of its own, and writing it up as an
+# air handler problem sends someone to the wrong machine.
+#
+# HOW THE FAULT STATE GETS HERE. The graph is loaded from files and holds no
+# fault state of its own. The caller in model/graph.py asserts mvn:hasOpenFault
+# on the affected assets into a throwaway copy of the graph, runs this, and
+# discards the copy -- so no fault ever becomes part of the persisted model and
+# there is no stale state to invalidate.
+#
+# Where the caller gets its list is deliberately not this file's business, and
+# right now the answer is that nothing produces one yet: the rule engine that
+# writes detected faults is Task 3. Note what it must NOT be. The labelled fault
+# events in the groundtruth schema are unreadable from here by design -- the role
+# this code connects as has every grant on that schema revoked, so a SELECT
+# against it fails outright. Faults reaching this query have to have been detected,
+# not looked up.
+#
+
+PREFIX brick: <https://brickschema.org/schema/Brick#>
+PREFIX mvn:   <https://aqueduct-pdm.local/mvn#>
+
+SELECT DISTINCT ?upstream ?upstream_class ?fault
+WHERE {
+    ?asset (^brick:feeds)+ ?upstream .
+    ?upstream mvn:hasOpenFault ?fault .
+    OPTIONAL { ?upstream a ?upstream_class }
+}

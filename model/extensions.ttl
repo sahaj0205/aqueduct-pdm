@@ -70,6 +70,22 @@ whatever the equipment happened to be doing. Every value asserted in this
 project is derived from the source data and each one records how.""" ;
     rdfs:range xsd:decimal .
 
+mvn:hasOpenFault a owl:DatatypeProperty ;
+    rdfs:label "has open fault" ;
+    rdfs:comment """Marks an asset as currently carrying an unresolved fault, so
+that a traversal can ask not just what is upstream but what upstream is already
+broken. That distinction is what separates a real root cause from a list of
+neighbours.
+
+Never asserted in any file on disk. Fault state changes by the minute and the
+model is loaded from static Turtle, so persisting it here would guarantee it goes
+stale. The traversal in model/graph.py asserts it into a throwaway copy of the
+graph for the duration of one query and discards it.
+
+The value is the fault identifier, not a boolean, because one asset can carry
+several open faults at once and the caller needs to know which.""" ;
+    rdfs:range xsd:string .
+
 mvn:Constraint a owl:Class ;
     rdfs:label "physical constraint" ;
     rdfs:comment """A conservation relation that must hold among a group of

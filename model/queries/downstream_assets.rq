@@ -1,0 +1,20 @@
+#
+# Transitive feeds: everything this asset eventually delivers to.
+#
+# PARAMETER: ?asset -- bound by the caller to an equipment node.
+#
+# This is the consequence direction, and it answers a different question from the
+# upstream query. Upstream asks what could have caused this. Downstream asks who
+# is about to suffer, which is what turns a fault into a priority: a chiller
+# losing capacity matters in proportion to what is drawing on it. It is also how
+# a repair gets scheduled honestly -- taking this asset out of service affects
+# exactly the assets listed here.
+#
+
+PREFIX brick: <https://brickschema.org/schema/Brick#>
+
+SELECT DISTINCT ?downstream ?downstream_class
+WHERE {
+    ?asset brick:feeds+ ?downstream .
+    OPTIONAL { ?downstream a ?downstream_class }
+}

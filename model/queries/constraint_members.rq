@@ -1,0 +1,29 @@
+#
+# The readings a physical constraint is computed from, with the expression that
+# computes its residual.
+#
+# PARAMETER: ?constraint -- optional. Bound, this returns one constraint's
+# members; left unbound, it returns every constraint in the model, which is how
+# the rule engine discovers what there is to evaluate without holding a hardcoded
+# list.
+#
+# Read in the other direction it answers the question that makes sensor faults
+# separable from equipment faults: given a reading that looks wrong, which
+# relations does it take part in, and therefore which other readings could be the
+# actual culprit. A mixed air temperature that fails its balance is either a bad
+# mixed air sensor or a stuck damper, and the difference is whether the damper
+# also shows up in a constraint that is failing elsewhere.
+#
+
+PREFIX brick: <https://brickschema.org/schema/Brick#>
+PREFIX mvn:   <https://aqueduct-pdm.local/mvn#>
+PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?constraint ?label ?expression ?point ?point_class
+WHERE {
+    ?constraint a mvn:Constraint ;
+                mvn:residualExpression ?expression ;
+                mvn:constrainedBy ?point .
+    OPTIONAL { ?constraint rdfs:label ?label }
+    OPTIONAL { ?point a ?point_class }
+}

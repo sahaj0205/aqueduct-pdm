@@ -1550,3 +1550,245 @@ START HERE: `model/building_extensions.ttl` — section 1 is the twenty-two
 authored statements that turn two disconnected files into a graph you can trace
 a fault across, and everything else in this checkpoint either supports them or
 measures them.
+
+---
+
+## Checkpoint 2.3 — Traversal queries and the materialised edge table
+
+### WHAT WE DID
+
+The graph can now be asked questions, by name, from ordinary Python. Before this
+the connections existed but every use of them meant writing a query by hand
+inside whatever code needed it, which would have meant the same traversal
+written five slightly different ways across five layers. There are now five named
+questions the rest of the system asks: what readings does this machine have,
+what could have caused a problem here, who suffers if this machine fails, which
+readings does this physical law relate, and — the one cross-asset diagnosis is
+built on — which machines upstream of here are already known to be broken.
+
+Each answer also now carries a distance, meaning how many links away the other
+machine is. That matters because a diagnosis that lists a cooling tower and a
+chiller as equally likely causes of a coil problem is not much use; the chiller
+is two links away and the tower is four, and the near cause should be preferred.
+
+Finally, the connections are copied into an ordinary database table. The layers
+above all need to combine topology with measurements, health scores and faults in
+a single database query, and reaching back into the graph for every row would
+make that unworkably slow. The table is rebuilt from the graph on every load, so
+it can never drift from the model it came from.
+
+### HOW IT WORKS
+
+Ordered by data flow: query files, then the wrapper that runs them, then the
+node-to-asset resolution, then the flattening, then the write.
+
+`model/queries/points_of_asset.rq`
+- WHY IT EXISTS: Anything that evaluates a rule or fits a baseline for a machine
+  first has to know which readings that machine has. This is the only place that
+  answers it.
+- WHAT IT DOES: Walks from the named machine down through its parts to any depth,
+  collects every reading attached anywhere along the way, and returns each one
+  with its class, the part that holds it, and its design value if it has one.
+- CHOICES: The part-walk is zero-or-more, not one-or-more, so the machine's own
+  directly attached readings come back as well as its children's. For the air
+  handler this is the difference between 11 readings and 25 — without it the
+  coil's valve position, both fan speeds and powers, both damper positions and
+  the five zone temperatures are all missing, and a rule about the air handler
+  needs every one of them. It should not have to know that the published model
+  hangs the valve off the coil rather than off the unit.
+
+`model/queries/upstream_assets.rq` and `downstream_assets.rq`
+- WHY IT EXISTS: These are the two halves of causal reasoning. Upstream asks what
+  could have caused a symptom seen here; anything not in that answer is not a
+  candidate, which is what stops a diagnosis blaming an unrelated machine that
+  happens to be degrading at the same time. Downstream asks who is about to
+  suffer, which is how a fault becomes a priority and how a repair gets scheduled
+  honestly.
+- WHAT IT DOES: Each follows flow statements to any number of hops, one in each
+  direction, and returns what it reaches with each thing's class.
+- CHOICES: Upstream is written as an inverse property path rather than by naming
+  the reverse relation. Brick does formally declare the two as inverses — checked
+  by reading the published ontology — but we do not load that ontology and the
+  query engine performs no logical inference, so naming the reverse relation
+  returns nothing at all. Written as a path it is the same statement and needs no
+  reasoner.
+- CHOICES: Neither returns a hop count, because property paths report only
+  whether something is reachable, not how far. The distance is added by the
+  wrapper.
+
+`model/queries/constraint_members.rq`
+- WHY IT EXISTS: Read one way it tells the rule engine what there is to evaluate,
+  so the list of physical checks lives in the model rather than hardcoded in
+  Python. Read the other way it is what makes a bad sensor separable from a bad
+  machine: given a reading that looks wrong, which relations does it take part in,
+  and therefore which other readings could be the real culprit.
+- WHAT IT DOES: Returns each constraint with its label, its residual expression
+  and one row per participating reading.
+- CHOICES: The constraint parameter is optional. Bound, it returns one
+  constraint; left unbound the same file returns all five, which is how the rule
+  engine discovers them. One file, two uses, no duplication.
+
+`model/queries/open_faults_upstream.rq`
+- WHY IT EXISTS: The query cross-asset diagnosis is built on, and the reason the
+  chilled water loop edge had to be authored in the first place. A coil failing to
+  reach its target air temperature is a symptom; if a chiller upstream of it is
+  already known to be faulted, the coil is probably a consequence, and writing it
+  up as an air handler problem sends an engineer to the wrong machine.
+- WHAT IT DOES: Walks upstream exactly as the upstream query does, then keeps only
+  those assets carrying an open-fault mark, returning the fault identifier with
+  each.
+- CHOICES: Fault state is never written to any file. It changes by the minute and
+  the model is loaded from static Turtle, so storing it there would guarantee it
+  goes stale with nothing to invalidate it. The caller asserts the marks into a
+  throwaway copy of the graph for the duration of one query.
+- CHOICES: The file records what the fault list must not be. The labelled fault
+  events in the ground-truth schema are unreadable from this code by design — the
+  database role it connects as has every grant on that schema revoked, so a
+  select against it fails outright. Faults reaching this query have to have been
+  detected, not looked up. Verified: `permission denied for schema groundtruth`.
+
+`model/graph.py` :: `load_query(name)`
+- WHY IT EXISTS: One place that reads the query files, so no caller builds a path
+  and no query text is duplicated in Python.
+- WHAT IT DOES: Reads the named file from the queries directory and caches it.
+  Raises if it is missing rather than returning empty text, which would otherwise
+  surface much later as a query that mysteriously matches everything.
+- CHOICES: Cached because the rule engine will call these inside loops over
+  assets and timestamps, and re-reading a file per iteration is pointless work.
+
+`model/graph.py` :: `_hops_from(graph, start, predicate, reverse)`
+- WHY IT EXISTS: Supplies the distance the queries cannot. Without it every
+  upstream result is a flat list, and root cause search has no way to prefer a
+  near cause over a far one.
+- WHAT IT DOES: Walks outward from the starting node one link at a time, in
+  waves, recording each node the first time it is seen — which by construction is
+  by its shortest path. Can walk either with the flow or against it.
+- CHOICES: Breadth-first rather than following each path to its end, because
+  that is what makes the first sighting of a node also the shortest one, with no
+  second pass needed to find minimum distances.
+- CHOICES: A node already recorded is never queued again, so a cycle terminates
+  on its own. This matters because the current model deliberately breaks both
+  water loops open to stay acyclic, and if a later change closes one, this stays
+  correct rather than hanging.
+
+`model/graph.py` :: `_traverse(...)`, `upstream_assets`, `downstream_assets`
+- WHY IT EXISTS: Turns each reachability query into typed rows carrying a
+  distance, so callers deal in assets and integers rather than query results.
+- WHAT IT DOES: Runs the query file for membership, walks the same links for
+  distance, joins the two, and returns rows sorted nearest first.
+- CHOICES: The query result is treated as the authority on membership and the
+  walk only supplies numbers. They are two independent implementations of the
+  same traversal, so if they disagree one of them is wrong — and the function
+  raises rather than returning a row with an invented distance. All three
+  traversals checked in the report agree exactly.
+
+`model/graph.py` :: `constraint_members` and `open_faults_upstream`
+- WHAT IT DOES: The first groups the query's one-row-per-reading output into one
+  record per constraint holding its readings as a tuple. The second copies the
+  graph, adds a fault mark for each asset the caller names, runs the query
+  against the copy, annotates distances, and lets the copy go.
+- CHOICES: The fault marks go on a copy rather than the shared graph, so a
+  diagnosis run cannot leave fault state behind for the next one to pick up. With
+  an empty fault list the query returns nothing, which is the check that the
+  marks and not the traversal are what select the rows.
+
+`model/graph.py` :: `node_to_asset_id(graph)`
+- WHY IT EXISTS: The graph and the database name the same equipment differently
+  and nothing states the correspondence. The graph calls it `sdahu:AHU`, the
+  database calls it `ahu-1`, and no rule derives one from the other. Without this
+  the edge table cannot be written at all.
+- WHAT IT DOES: Recovers the mapping through the readings. Each reading in the
+  graph is named after a source CSV column; the ingestion manifests map that
+  column to a database point; each point records which asset it belongs to. So a
+  machine's asset is whichever asset its own readings belong to. Where a
+  machine's readings do not all agree, the majority wins and the disagreement is
+  reported.
+- CHOICES: Derived rather than asserted by hand in the model. A hand-written
+  mapping is another list to keep in step with the manifests, and it would be
+  wrong silently. This one is wrong loudly, because a mismatch shows up as a
+  machine with no asset.
+- CHOICES: The majority rule is not hypothetical: each cooling tower has 8
+  readings, 7 of which belong to that tower and one of which — the shared tower
+  temperature setpoint — belongs to the plant. All three towers resolve 7 to 1
+  and the report prints each one, so a future tie would be visible rather than
+  arbitrary.
+- CHOICES: 29 machines resolve to 8 assets; 109 graph entities have no readings
+  and so no asset, which is expected — most of them are the readings themselves,
+  and the rest are the two water loops, which are equipment in the model but not
+  assets in the database.
+
+`model/graph.py` :: `asset_edges(graph, mapping)`
+- WHY IT EXISTS: Flattens the graph into something SQL can join against.
+- WHAT IT DOES: Walks from every machine that has an asset, and for every other
+  such machine it reaches, records the shortest number of links between the two
+  assets. Does this twice, once along flow and once along containment.
+- CHOICES: Paths run through machines the database does not model as assets, and
+  those links still count. Each water loop is one link, which is why a cooling
+  tower reaches the air handler at four rather than appearing not to reach it at
+  all.
+- CHOICES: This is a transitive closure with distances, not a list of direct
+  neighbours. A cooling tower's effect on the air handler is real and is stored,
+  and the distance is what distinguishes it from the chiller's more immediate
+  one.
+- CHOICES: Edges from an asset to itself are dropped. The database models one air
+  handler as a single asset while the graph models its coil, fans, dampers and
+  five zones separately, so every internal relation would otherwise collapse to
+  `ahu-1 -> ahu-1` and those rows would be both the most numerous and the least
+  informative in the table.
+- ⚠ JUDGEMENT CALL: Containment edges are materialised alongside flow edges.
+  You specified a relation column but named only transitive flow in the queries.
+  I stored both because the column exists to distinguish them and containment is
+  what lets a symptom roll up to the machine that owns it — the plant contains
+  three chillers and three towers, which is 6 of the 25 rows. Removable by
+  dropping one entry from one tuple.
+
+`scripts/schema.sql` :: `app.asset_edges`
+- WHY IT EXISTS: The cache the table-level layers read instead of the graph.
+- WHAT IT DOES: Stores one row per ordered pair of assets per relation, with the
+  hop distance. Both asset columns are foreign keys, the relation is constrained
+  to the two known values, distance must be positive, and an asset cannot relate
+  to itself.
+- CHOICES: Placed before the grant statements in the file, because those grant on
+  all tables in the schema as it stands at that moment; a table added after them
+  would be unreadable by the application role.
+- CHOICES: The primary key is the asset pair plus the relation, not including
+  distance, so the same pair cannot be stored twice at two distances. Only the
+  shortest survives.
+
+`model/graph.py` :: `write_asset_edges(conn, edges)`
+- WHAT IT DOES: Deletes every row and inserts the freshly derived set, both
+  inside one transaction.
+- CHOICES: Replaced wholesale rather than merged. The table is a cache of the
+  graph, and a stale row is worse than a missing one — a diagnosis that follows
+  an edge the model no longer contains is wrong in a way nothing downstream would
+  flag. Sharing one transaction means no reader ever sees the table empty.
+
+`Makefile` :: `load` and the new `graph` target
+- CHANGED FROM BEFORE: `load` ran the ingestion loader and stopped. It now runs
+  the edge rebuild afterwards, which is what makes the table regenerate on load
+  as specified. The rebuild must run second, because resolving graph nodes to
+  assets reads the points table.
+- CHOICES: The rebuild is also its own target, so a change to the model can be
+  reflected in seconds without the 40-minute reload.
+
+### MEASURED RESULT
+
+- Five query files, five typed functions, 25 rows in `app.asset_edges` — 19 flow
+  edges at distances 2 to 4, and 6 containment edges at distance 1.
+- Flow edges found: each chiller and the plant reach the air handler at 2; the
+  plant and all three towers reach all three chillers at 2; all three towers
+  reach the air handler at 4.
+- SPARQL reachability and the breadth-first walk agree exactly on all three
+  traversals checked — 17, 6 and 8 nodes respectively.
+- Running the rebuild twice produces a byte-identical table: checksum
+  `c9b39280a9edb49c93c1bf26ea70f8de` both times.
+- 29 graph machines resolve to 8 database assets. Three resolutions are 7-to-1
+  majorities and all three are reported by name.
+- `open_faults_upstream` returns 2 rows with two faults asserted and 0 with none.
+  The ground-truth schema remains unreadable from the application role:
+  `permission denied for schema groundtruth`.
+
+START HERE: `model/graph.py` — read `asset_edges` and `node_to_asset_id`
+together; recovering which database asset a graph node belongs to, and then
+counting hops through equipment the database does not model, is the whole of what
+turns the semantic model into a table SQL can use.

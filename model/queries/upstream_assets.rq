@@ -1,0 +1,30 @@
+#
+# Transitive isFedBy: everything whose output eventually reaches this asset.
+#
+# PARAMETER: ?asset -- bound by the caller to an equipment node.
+#
+# This is the root cause direction. Given a symptom observed here, these are the
+# only assets that could physically have caused it by way of what they deliver.
+# Anything not in this result is not a candidate, which is what stops the
+# diagnosis layer from blaming an unrelated machine that happens to be degrading
+# at the same time.
+#
+# ^brick:feeds is brick:isFedBy. Brick declares the two as formal inverses --
+# confirmed by reading the published ontology, which states
+# brick:isFedBy owl:inverseOf brick:feeds -- but we do not load the Brick
+# ontology and rdflib performs no OWL reasoning, so asking for brick:isFedBy by
+# name returns nothing at all. Writing the inverse as a property path is the same
+# statement semantically and needs no reasoner. The + makes it transitive.
+#
+# No hop count: SPARQL property paths report reachability, not path length.
+# model/graph.py annotates each row by walking the same edges breadth-first, and
+# cross-checks that the two agree on which nodes are reachable.
+#
+
+PREFIX brick: <https://brickschema.org/schema/Brick#>
+
+SELECT DISTINCT ?upstream ?upstream_class
+WHERE {
+    ?asset (^brick:feeds)+ ?upstream .
+    OPTIONAL { ?upstream a ?upstream_class }
+}

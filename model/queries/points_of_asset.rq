@@ -1,0 +1,27 @@
+#
+# Every reading belonging to a piece of equipment, including the readings of its
+# sub-parts.
+#
+# PARAMETER: ?asset -- bound by the caller to an equipment node.
+#
+# The hasPart* step is what makes this useful rather than pedantic. Asking the
+# air handler for its points without it returns eleven readings; with it, the
+# coil's valve position, both fan speeds and powers, both damper positions and
+# the five zone temperatures come too. A rule about the air handler needs all of
+# them, and should not have to know that LBNL happened to hang the valve off the
+# coil rather than off the unit.
+#
+# The zero-or-more form matters: the asset's own directly attached points are
+# included, not just its children's.
+#
+
+PREFIX brick: <https://brickschema.org/schema/Brick#>
+PREFIX mvn:   <https://aqueduct-pdm.local/mvn#>
+
+SELECT DISTINCT ?point ?point_class ?holder ?design_value
+WHERE {
+    ?asset brick:hasPart* ?holder .
+    ?holder brick:hasPoint ?point .
+    OPTIONAL { ?point a ?point_class }
+    OPTIONAL { ?point mvn:designValue ?design_value }
+}
