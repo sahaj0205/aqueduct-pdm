@@ -9,7 +9,7 @@ db-up:
 	docker compose up -d
 	@echo "waiting for timescaledb..."
 	@until docker compose exec -T db pg_isready -q; do sleep 1; done
-	@echo "timescaledb ready on port 5432"
+	@echo "timescaledb ready on $$(docker compose port db 5432)"
 
 # Stop the container. The named volume is left intact.
 db-down:
