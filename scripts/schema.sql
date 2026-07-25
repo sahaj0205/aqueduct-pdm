@@ -250,6 +250,68 @@ COMMENT ON COLUMN app.asset_edges.hop_distance IS
 
 
 -- =====================================================================
+-- APP — sensor advisories
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS app.sensor_advisories (
+    advisory_id   BIGINT       GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    point_id      TEXT         NOT NULL
+                               REFERENCES app.points(point_id)
+                               ON DELETE CASCADE,
+    kind          TEXT         NOT NULL
+                               CHECK (kind IN ('flatline', 'out_of_range',
+                                               'stale', 'dropout')),
+    t_from        TIMESTAMPTZ  NOT NULL,
+    t_to          TIMESTAMPTZ  NOT NULL,
+    worst_score   SMALLINT     NOT NULL
+                               CHECK (worst_score BETWEEN 0 AND 100),
+    sample_count  INTEGER      NOT NULL CHECK (sample_count > 0),
+    detail        JSONB,
+    UNIQUE (point_id, kind, t_from),
+    CHECK (t_from <= t_to)
+);
+
+CREATE INDEX IF NOT EXISTS sensor_advisories_point_time_idx
+    ON app.sensor_advisories (point_id, t_from DESC);
+CREATE INDEX IF NOT EXISTS sensor_advisories_kind_idx
+    ON app.sensor_advisories (kind);
+
+COMMENT ON TABLE app.sensor_advisories IS
+    'Findings about INSTRUMENTS, not about equipment. A dead thermistor and a '
+    'failing chiller both make the numbers look wrong, and conflating them is '
+    'the classic way a fault detection system loses its users: it reports a '
+    'chiller fault, someone opens the machine, and the actual problem was a '
+    '20 dollar sensor. Everything in this table is a statement about whether a '
+    'reading can be believed. Nothing in it is a statement about whether the '
+    'machine is healthy. The rule engine reads the quality score these rows '
+    'accompany and declines to fire when its inputs are untrustworthy, so a '
+    'sensor failure surfaces here instead of being reported as an equipment '
+    'fault.';
+
+COMMENT ON COLUMN app.sensor_advisories.kind IS
+    'flatline = the reading stopped moving entirely while its equipment was '
+    'running and it was not parked at the end of its scale. stale = it is still '
+    'moving but by far less than that kind of sensor should. out_of_range = it '
+    'left the physically possible envelope in app.points. dropout = samples '
+    'stopped arriving at the expected cadence.';
+
+COMMENT ON COLUMN app.sensor_advisories.t_from IS
+    'Start of one continuous episode. Rows are episodes, not samples: a sensor '
+    'dead for a month is one row, not 8,640. Without that collapse this table '
+    'would be larger than the measurements it describes.';
+
+COMMENT ON COLUMN app.sensor_advisories.worst_score IS
+    'The lowest score the offending dimension reached during the episode, so '
+    'two advisories of the same kind can be ranked against each other.';
+
+COMMENT ON COLUMN app.sensor_advisories.detail IS
+    'Evidence for the finding, as JSON: which dimension triggered, and the '
+    'actual values involved -- the bound that was crossed and by how much, or '
+    'the value the reading was stuck at. An advisory a technician cannot act on '
+    'without re-querying the raw data has failed at its job.';
+
+
+-- =====================================================================
 -- GROUNDTRUTH — the answer key
 -- =====================================================================
 

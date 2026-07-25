@@ -1,0 +1,439 @@
+# Physical bounds for the quality scorer, keyed on Brick class.
+#
+# app.points.expected_min, expected_max and max_roc_per_min are filled from this
+# file. A bound is a property of WHAT KIND of sensor a point is, not of which
+# individual sensor it is, so the defaults below are keyed on brick_class and
+# cover all 107 points with 39 entries. Where a class genuinely spans different
+# physical scales -- Electric_Power_Sensor covers both a 1.6 kW fan and a 229 kW
+# chiller -- the point appears under `overrides`.
+#
+# HOW THE NUMBERS WERE CHOSEN
+# An envelope here is the range the INSTRUMENT can physically report, not the
+# range the equipment occupies when it is healthy. Those two are easy to confuse
+# and the difference matters enormously, because the rule engine refuses to fire
+# on readings this file marks untrustworthy. Set the bounds to the healthy band
+# and the quality gate blinds the fault detector at exactly the moment equipment
+# goes wrong -- which is the one moment it exists for.
+#
+# The first version of this file made that mistake. Condenser water was capped at
+# 50 degC, chosen by rounding up from the 30 degC seen across the fault-free
+# year. A leaking bypass valve drives that loop to 72.4 degC in the LBNL source
+# data, so 81 days of a correctly-working sensor observing a genuinely cooking
+# condenser were written off as a bad reading. The water temperatures now run
+# 0 to 100 degC: water in a loop cannot be colder than freezing or hotter than
+# boiling, and anything outside that is the sensor, not the plant.
+#
+# max_roc_per_min is set at roughly two to three times the largest per-sample
+# rate observed on the fault-free year. Both kinds of bound are deliberately
+# loose: they catch an instrument that has failed, not one that is drifting.
+# Detecting drift is the job of the constraint residuals, not of range checking.
+#
+# UNITS are always the point's unit_si, never unit_native. Each Brick class in
+# this dataset maps to exactly one unit_si; the loader raises if that ever stops
+# being true, because a single class carrying two units would make these numbers
+# ambiguous.
+
+# --------------------------------------------------------------------------
+# Which point says whether an asset is running.
+#
+# Staleness asks whether a reading has stopped moving. Equipment that is switched
+# off produces perfectly constant readings and that is correct behaviour, not a
+# dead sensor -- measured over the fault-free year, 71% of 24-hour windows on
+# chiller-2.power are perfectly flat purely because chiller 2 is off outside
+# summer. Scoring staleness against those windows would bury every real finding.
+# So staleness is only scored while the owning asset's run point is non-zero.
+#
+# CAVEAT, and it is a real one: chiller-1.status, ct-1.status and
+# sec_pump_1_status are all pinned at 1.0 for the entire year in this dataset.
+# For those three assets the gate below is inert and never suppresses anything.
+# --------------------------------------------------------------------------
+run_state:
+  ahu-1: ahu-1.sf_status
+  chw-plant-1: chw-plant-1.sec_pump_1_status
+  chiller-1: chiller-1.status
+  chiller-2: chiller-2.status
+  chiller-3: chiller-3.status
+  ct-1: ct-1.status
+  ct-2: ct-2.status
+  ct-3: ct-3.status
+
+# --------------------------------------------------------------------------
+# Class defaults.
+#
+#   expected_min / expected_max  physically possible envelope, in unit_si
+#   max_roc_per_min              largest believable change per minute, in
+#                                unit_si per minute; null means no bound applies
+#   flatline_epsilon             the smallest peak-to-peak movement a live
+#                                sensor of this class should show across the
+#                                staleness window; below this it is not moving
+#   staleness                    score | skip. skip means constancy is normal
+#                                for this kind of point and says nothing about
+#                                sensor health; skip_reason records why.
+# --------------------------------------------------------------------------
+defaults:
+
+  # ---- air-side temperatures (degC) ----
+  brick:Supply_Air_Temperature_Sensor:
+    expected_min: -10.0
+    expected_max: 60.0
+    max_roc_per_min: 6.0
+    flatline_epsilon: 0.05
+    staleness: score
+  brick:Mixed_Air_Temperature_Sensor:
+    # Lower bound is well below the observed 10.8: a damper stuck open in winter
+    # puts outdoor air straight into the mixing box, and the coldest outdoor
+    # reading in the source year is -22.8.
+    expected_min: -30.0
+    expected_max: 60.0
+    max_roc_per_min: 6.0
+    flatline_epsilon: 0.05
+    staleness: score
+  brick:Return_Air_Temperature_Sensor:
+    expected_min: 5.0
+    expected_max: 50.0
+    max_roc_per_min: 3.0
+    flatline_epsilon: 0.05
+    staleness: score
+  brick:Zone_Air_Temperature_Sensor:
+    expected_min: 5.0
+    expected_max: 50.0
+    max_roc_per_min: 3.0
+    flatline_epsilon: 0.05
+    staleness: score
+  brick:Outside_Air_Temperature_Sensor:
+    expected_min: -50.0
+    expected_max: 60.0
+    max_roc_per_min: 1.0
+    flatline_epsilon: 0.05
+    staleness: score
+  brick:Outside_Air_Wet_Bulb_Temperature_Sensor:
+    # Wet bulb (the temperature air reaches if you evaporate water into it until
+    # it is saturated) can never exceed dry bulb, so its ceiling is lower.
+    expected_min: -50.0
+    expected_max: 45.0
+    max_roc_per_min: 1.0
+    flatline_epsilon: 0.05
+    staleness: score
+  brick:Supply_Air_Temperature_Setpoint:
+    expected_min: 4.0
+    expected_max: 30.0
+    max_roc_per_min: 2.0
+    flatline_epsilon: 0.05
+    staleness: skip
+    skip_reason: a setpoint that never moves is a fixed control target, not a dead sensor
+
+  # ---- water-side temperatures (degC) ----
+  brick:Chilled_Water_Supply_Temperature_Sensor:
+    expected_min: 0.0
+    expected_max: 100.0
+    max_roc_per_min: 2.0
+    flatline_epsilon: 0.05
+    staleness: score
+  brick:Chilled_Water_Return_Temperature_Sensor:
+    expected_min: 0.0
+    expected_max: 100.0
+    max_roc_per_min: 3.0
+    flatline_epsilon: 0.05
+    staleness: score
+  brick:Entering_Condenser_Water_Temperature_Sensor:
+    expected_min: 0.0
+    expected_max: 100.0
+    max_roc_per_min: 2.0
+    flatline_epsilon: 0.05
+    staleness: score
+  brick:Leaving_Condenser_Water_Temperature_Sensor:
+    expected_min: 0.0
+    expected_max: 100.0
+    max_roc_per_min: 2.0
+    flatline_epsilon: 0.05
+    staleness: score
+  brick:Supply_Condenser_Water_Temperature_Sensor:
+    expected_min: 0.0
+    expected_max: 100.0
+    max_roc_per_min: 2.0
+    flatline_epsilon: 0.05
+    staleness: score
+  brick:Return_Condenser_Water_Temperature_Sensor:
+    expected_min: 0.0
+    expected_max: 100.0
+    max_roc_per_min: 3.0
+    flatline_epsilon: 0.05
+    staleness: score
+  brick:Supply_Chilled_Water_Temperature_Setpoint:
+    expected_min: 3.0
+    expected_max: 20.0
+    max_roc_per_min: 3.0
+    flatline_epsilon: 0.05
+    staleness: skip
+    skip_reason: a setpoint that never moves is a fixed control target, not a dead sensor
+  brick:Supply_Condenser_Water_Temperature_Setpoint:
+    expected_min: 5.0
+    expected_max: 40.0
+    max_roc_per_min: 3.0
+    flatline_epsilon: 0.05
+    staleness: skip
+    skip_reason: a setpoint that never moves is a fixed control target, not a dead sensor
+
+  # ---- flows (meter**3/second) ----
+  brick:Supply_Air_Flow_Sensor:
+    expected_min: 0.0
+    expected_max: 25.0
+    max_roc_per_min: 4.0
+    flatline_epsilon: 0.01
+    staleness: score
+  brick:Return_Air_Flow_Sensor:
+    expected_min: 0.0
+    expected_max: 25.0
+    max_roc_per_min: 4.0
+    flatline_epsilon: 0.01
+    staleness: score
+  brick:Outside_Air_Flow_Sensor:
+    # Deliberately scored despite ahu-1.oa_flow being a known constant. The
+    # manifest already records that point as not a real measurement; letting the
+    # flatline check rediscover that independently is the point.
+    expected_min: 0.0
+    expected_max: 25.0
+    max_roc_per_min: 4.0
+    flatline_epsilon: 0.01
+    staleness: score
+  brick:Chilled_Water_Flow_Sensor:
+    expected_min: 0.0
+    expected_max: 0.2
+    max_roc_per_min: 0.03
+    flatline_epsilon: 0.0002
+    staleness: score
+  brick:Condenser_Water_Flow_Sensor:
+    expected_min: 0.0
+    expected_max: 0.2
+    max_roc_per_min: 0.03
+    flatline_epsilon: 0.0002
+    staleness: score
+  brick:Supply_Condenser_Water_Flow_Sensor:
+    expected_min: 0.0
+    expected_max: 0.2
+    max_roc_per_min: 0.03
+    flatline_epsilon: 0.0002
+    staleness: score
+
+  # ---- pressures (pascal) ----
+  brick:Supply_Air_Static_Pressure_Sensor:
+    expected_min: 0.0
+    expected_max: 1500.0
+    max_roc_per_min: 50.0
+    flatline_epsilon: 0.5
+    staleness: score
+  brick:Supply_Air_Static_Pressure_Setpoint:
+    expected_min: 0.0
+    expected_max: 1500.0
+    max_roc_per_min: 50.0
+    flatline_epsilon: 0.5
+    staleness: skip
+    skip_reason: a setpoint that never moves is a fixed control target, not a dead sensor
+  brick:Chilled_Water_Differential_Pressure_Sensor:
+    expected_min: 0.0
+    expected_max: 500000.0
+    max_roc_per_min: 60000.0
+    flatline_epsilon: 100.0
+    staleness: score
+  brick:Chilled_Water_Differential_Pressure_Setpoint:
+    expected_min: 0.0
+    expected_max: 500000.0
+    max_roc_per_min: 60000.0
+    flatline_epsilon: 100.0
+    staleness: skip
+    skip_reason: a setpoint that never moves is a fixed control target, not a dead sensor
+
+  # ---- power and load (watt) ----
+  brick:Electric_Power_Sensor:
+    # This class default is a backstop only. All 16 power points in this project
+    # carry an override below, because the class spans a 512 W return fan and a
+    # 229 kW chiller and a single ceiling would be useless for both.
+    expected_min: 0.0
+    expected_max: 500000.0
+    max_roc_per_min: 100000.0
+    flatline_epsilon: 1.0
+    staleness: score
+  brick:Cooling_Demand_Sensor:
+    expected_min: -2000000.0
+    expected_max: 2000000.0
+    max_roc_per_min: 400000.0
+    flatline_epsilon: 100.0
+    staleness: score
+
+  # ---- modulating positions and speeds (dimensionless, 0..1) ----
+  brick:Damper_Position_Sensor:
+    expected_min: 0.0
+    expected_max: 1.0
+    max_roc_per_min: 0.5
+    flatline_epsilon: 0.005
+    staleness: score
+  brick:Valve_Position_Sensor:
+    expected_min: 0.0
+    expected_max: 1.0
+    max_roc_per_min: 0.5
+    flatline_epsilon: 0.005
+    staleness: score
+  brick:Speed_Status:
+    # Scored, unlike the on/off statuses below, because this is a modulating
+    # feedback reading and a stuck one is a real sensor failure. This is what
+    # catches ahu-1.sf_speed, pinned at 0.9 for the whole year.
+    expected_min: 0.0
+    expected_max: 1.0
+    max_roc_per_min: 0.5
+    flatline_epsilon: 0.005
+    staleness: score
+
+  # ---- commands and setpoints on the control side (dimensionless, 0..1) ----
+  # Range and rate checks still apply, but staleness does not: a command is
+  # something the control system writes, not something a sensor reports, so a
+  # constant command is a control finding and this layer only issues sensor
+  # advisories.
+  brick:Command:
+    expected_min: 0.0
+    expected_max: 1.0
+    max_roc_per_min: 0.5
+    flatline_epsilon: 0.005
+    staleness: skip
+    skip_reason: a command is written by the controller, so constancy is not a sensor fault
+  brick:Damper_Position_Command:
+    expected_min: 0.0
+    expected_max: 1.0
+    max_roc_per_min: 0.5
+    flatline_epsilon: 0.005
+    staleness: skip
+    skip_reason: a command is written by the controller, so constancy is not a sensor fault
+  brick:Valve_Command:
+    expected_min: 0.0
+    expected_max: 1.0
+    max_roc_per_min: 0.5
+    flatline_epsilon: 0.005
+    staleness: skip
+    skip_reason: a command is written by the controller, so constancy is not a sensor fault
+  brick:Valve_Position_Command:
+    expected_min: 0.0
+    expected_max: 1.0
+    max_roc_per_min: 0.5
+    flatline_epsilon: 0.005
+    staleness: skip
+    skip_reason: a command is written by the controller, so constancy is not a sensor fault
+  brick:Speed_Setpoint:
+    expected_min: 0.0
+    expected_max: 1.0
+    max_roc_per_min: 0.5
+    flatline_epsilon: 0.005
+    staleness: skip
+    skip_reason: a command is written by the controller, so constancy is not a sensor fault
+
+  # ---- discrete on/off states (dimensionless, 0 or 1) ----
+  # max_roc_per_min is null: a status may legitimately step the full 0-to-1
+  # range between two consecutive samples, so no rate bound is meaningful.
+  # Staleness is skipped because equipment that stays off all winter reports a
+  # constant 0 and that is correct.
+  brick:Fan_On_Off_Status:
+    expected_min: 0.0
+    expected_max: 1.0
+    max_roc_per_min: null
+    flatline_epsilon: null
+    staleness: skip
+    skip_reason: a discrete state is legitimately constant for long periods
+  brick:On_Off_Status:
+    expected_min: 0.0
+    expected_max: 1.0
+    max_roc_per_min: null
+    flatline_epsilon: null
+    staleness: skip
+    skip_reason: a discrete state is legitimately constant for long periods
+  brick:Pump_On_Off_Status:
+    expected_min: 0.0
+    expected_max: 1.0
+    max_roc_per_min: null
+    flatline_epsilon: null
+    staleness: skip
+    skip_reason: a discrete state is legitimately constant for long periods
+  brick:Occupancy_Status:
+    expected_min: 0.0
+    expected_max: 1.0
+    max_roc_per_min: null
+    flatline_epsilon: null
+    staleness: skip
+    skip_reason: a discrete state is legitimately constant for long periods
+
+# --------------------------------------------------------------------------
+# Per-point overrides. Merged over the class default, field by field.
+#
+# Every entry here is an Electric_Power_Sensor. The class covers four orders of
+# magnitude in this building, so the ceiling that would catch a failed reading on
+# the return fan (512 W peak) is three hundred times smaller than the one for a
+# chiller (229 kW peak). Ceilings are set at roughly twice the observed peak.
+# --------------------------------------------------------------------------
+overrides:
+
+  ahu-1.sf_power:
+    expected_max: 5000.0
+    max_roc_per_min: 1000.0
+    flatline_epsilon: 1.0
+  ahu-1.rf_power:
+    expected_max: 2000.0
+    max_roc_per_min: 500.0
+    flatline_epsilon: 1.0
+
+  chiller-1.power:
+    expected_max: 400000.0
+    max_roc_per_min: 100000.0
+    flatline_epsilon: 50.0
+  chiller-2.power:
+    expected_max: 400000.0
+    max_roc_per_min: 100000.0
+    flatline_epsilon: 50.0
+  chiller-3.power:
+    expected_max: 400000.0
+    max_roc_per_min: 100000.0
+    flatline_epsilon: 50.0
+
+  chw-plant-1.cdw_pump_1_power:
+    expected_max: 100000.0
+    max_roc_per_min: 30000.0
+    flatline_epsilon: 20.0
+  chw-plant-1.cdw_pump_2_power:
+    expected_max: 100000.0
+    max_roc_per_min: 30000.0
+    flatline_epsilon: 20.0
+  chw-plant-1.cdw_pump_3_power:
+    expected_max: 100000.0
+    max_roc_per_min: 30000.0
+    flatline_epsilon: 20.0
+
+  chw-plant-1.pri_pump_1_power:
+    expected_max: 40000.0
+    max_roc_per_min: 10000.0
+    flatline_epsilon: 10.0
+  chw-plant-1.pri_pump_2_power:
+    expected_max: 40000.0
+    max_roc_per_min: 10000.0
+    flatline_epsilon: 10.0
+  chw-plant-1.pri_pump_3_power:
+    expected_max: 40000.0
+    max_roc_per_min: 10000.0
+    flatline_epsilon: 10.0
+
+  chw-plant-1.sec_pump_1_power:
+    expected_max: 80000.0
+    max_roc_per_min: 30000.0
+    flatline_epsilon: 20.0
+  chw-plant-1.sec_pump_2_power:
+    expected_max: 80000.0
+    max_roc_per_min: 30000.0
+    flatline_epsilon: 20.0
+
+  ct-1.fan_power:
+    expected_max: 15000.0
+    max_roc_per_min: 5000.0
+    flatline_epsilon: 5.0
+  ct-2.fan_power:
+    expected_max: 15000.0
+    max_roc_per_min: 5000.0
+    flatline_epsilon: 5.0
+  ct-3.fan_power:
+    expected_max: 15000.0
+    max_roc_per_min: 5000.0
+    flatline_epsilon: 5.0

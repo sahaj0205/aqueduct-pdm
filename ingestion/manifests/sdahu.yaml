@@ -108,8 +108,14 @@ points:
   unit_native: pascal
   unit_si: pascal
   resample: mean
-  note: 'DEFECT: PDF says inches H2O but values are Pascals (mean 402.8 Pa vs 1.607 inH2O setpoint = 400.4
-    Pa)'
+  note: >-
+    DO NOT USE. The source dataset is not self-consistent about this column's unit. The fault-free file
+    AHU_annual.csv reports it in Pascals (401.8 to 410.6); all 20 fault files report it in inches of
+    water (-1.6 to 7.1). unit_native below is therefore correct for 1 file in 21, and every stitched
+    trajectory splices the two conventions together. The synthesised scenarios are worse: they blend the
+    two continuously, so no per-row conversion can recover the intended value. Found by the quality
+    scorer in checkpoint 3.1; see docs/IMPLEMENTATION_NOTES.md 3.1. Nothing computes anything from this
+    point and nothing should until the loader can carry a per-file unit and the data is reloaded.
 - column: SA_SPSPT
   point_id: ahu-1.sa_static_p_spt
   asset_id: ahu-1
@@ -118,7 +124,13 @@ points:
   unit_native: inch_H2O
   unit_si: pascal
   resample: mean
-  note: genuinely inches H2O; converted to Pa so it is comparable with sa_static_p
+  note: >-
+    DO NOT USE. Same defect as sa_static_p above, in the opposite direction. The fault-free file reports
+    this setpoint as 1.60746 inches of water; all 20 fault files report it as -400.25253, which is that
+    same value converted to Pascals and then negated. Loaded as inches of water, so the fault files land
+    at -99,698 Pa -- a physically impossible negative duct pressure. The real setpoint never changes: it
+    is 400.4 Pa in every file, just written three different ways. Nothing computes anything from this
+    point and nothing should.
 - column: SF_CS
   point_id: ahu-1.sf_speed_cmd
   asset_id: ahu-1

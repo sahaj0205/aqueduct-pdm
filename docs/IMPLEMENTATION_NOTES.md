@@ -2242,3 +2242,250 @@ records decisions going well is not an audit trail.
 START HERE: `AI_LOG.md` — the "cost actually paid" section of D-04 is the part
 worth reading; it is the only place in the project that quantifies how wrong an
 adoption estimate was and why.
+
+## Checkpoint 3.1 — Quality scoring
+
+### WHAT WE DID
+
+The platform can now say how far each individual reading can be trusted, and it
+records broken instruments separately from broken machines. Before this, every
+number in the database was taken at face value: a thermistor that had died and
+was repeating its last value looked exactly like a stable temperature, and
+nothing downstream could tell the difference. Every reading in the two scored
+periods now carries a 0-to-100 trust score and, where that score is less than
+perfect, a note saying which specific check it failed.
+
+Sensor findings go to their own table and are phrased as statements about
+instruments, never about equipment. That separation is what stops the system
+reporting a chiller fault when the real problem is a twenty-dollar sensor, and
+it is the mechanism the rule engine will use in the next checkpoint to decline
+to fire on inputs it cannot believe.
+
+Running it over 26 million readings immediately found things nobody had asked
+it to look for. It independently rediscovered the two dead air-handler points
+the ingestion manifest already documents as defects, and it found a unit
+inconsistency in the published source data that had gone unnoticed through two
+whole tasks.
+
+### HOW IT WORKS
+
+`ingestion/manifests/point_bounds.yaml`
+  WHY IT EXISTS: The three columns the range and plausibility checks need --
+    lowest believable value, highest believable value, fastest believable change
+    -- were empty for all 107 points, because the loader never had anything to
+    put in them. Without them two of the five dimensions cannot be computed.
+  WHAT IT DOES: Holds one entry per Brick class, 39 of them, covering all 107
+    points; each gives the envelope, the rate limit, the smallest movement a live
+    sensor of that kind should show, and whether constancy means anything for
+    that kind of point at all. A per-point override section sits underneath and
+    is merged over the class default field by field.
+  CHOICES: Keyed on class rather than on point because a bound describes what
+    kind of instrument something is, not which one it is -- 38 temperature
+    sensors share one entry instead of repeating one number 38 times. The
+    override section exists for exactly one reason: Electric_Power_Sensor spans
+    a 512 W return fan and a 229 kW chiller, so all 16 power points override the
+    ceiling. Rate limits are set at two to three times the fastest change seen
+    across the fault-free year.
+  ⚠ JUDGEMENT CALL: The envelopes describe what the INSTRUMENT can report, not
+    what the equipment does when healthy. My first version confused the two and
+    capped condenser water at 50 degC, rounded up from the 30 degC seen on clean
+    data. A leaking bypass valve drives that loop to 72.4 degC in the LBNL source
+    itself, so 81 days of a correctly-working sensor watching a genuinely
+    overheating condenser were written off as bad readings. Since the rule engine
+    refuses to fire on readings marked untrustworthy, that would have blinded
+    fault detection at the exact moment it was needed. Water temperatures now run
+    0 to 100 degC -- a loop cannot freeze or boil -- and the narrow "what is
+    normal here" question belongs to the baseline layer in Task 5, not here.
+
+`analytics/quality/scoring.py :: resolve_bounds`
+  WHY IT EXISTS: The bounds file and the point catalogue are maintained by hand
+    and can drift apart. A silently missing bound means a dimension quietly
+    scores 100 forever and a whole class of sensor failure goes unreported.
+  WHAT IT DOES: Merges each point's class default with any per-point override,
+    then refuses to continue on four kinds of disagreement: a class with no
+    entry, an override naming a point that does not exist, a run-state entry
+    naming one that does not exist, and any Brick class used with two different
+    SI units. The last check matters because every number in the file is written
+    in one unit, so a class carrying both degC and degF would make a ceiling of
+    60 mean two different temperatures.
+
+`analytics/quality/scoring.py :: apply_bounds`
+  WHY IT EXISTS: The bounds have to be readable by layers that will never parse
+    a YAML file. The point catalogue is the interface everything else already
+    reads.
+  WHAT IT DOES: Writes the resolved lowest value, highest value and rate limit
+    onto all 107 rows of the point catalogue.
+
+`analytics/quality/scoring.py :: load_asset_frame`
+  WHY IT EXISTS: Staleness needs to know whether the machine was switched on at
+    the moment of each reading, which is a different point on the same asset.
+  WHAT IT DOES: Pulls every reading for one asset over one period and pivots it
+    into a table with one column per point, so the on/off status is already lined
+    up against every other reading on the same timestamps.
+
+`analytics/quality/scoring.py :: split_runs`
+  WHY IT EXISTS: The database holds separate eras of simulated time with months
+    of emptiness between them. That emptiness is how the data is laid out, not a
+    sensor that stopped reporting, and treating it as the latter buries the real
+    findings.
+  WHAT IT DOES: Cuts an asset's timeline wherever the data stops for more than a
+    day, and scores each resulting stretch independently. Gaps shorter than a day
+    stay inside a stretch, which is what leaves them detectable as dropouts.
+  CHANGED FROM BEFORE: The first version compared raw integer timestamps against
+    a hardcoded billion, assuming nanosecond resolution. The database driver
+    returns microseconds, so a 217-day gap was read as 18,749 seconds, no gap
+    ever crossed the threshold, and all four years of scenarios were treated as
+    one continuous run -- which manufactured 321 dropout advisories out of the
+    empty months between them. It now divides by a unit-carrying interval, so the
+    resolution cannot be assumed wrongly.
+
+`analytics/quality/scoring.py :: score_point_run`
+  WHY IT EXISTS: This is the actual scoring. Everything else feeds it or stores
+    what it produces.
+  WHAT IT DOES: Computes five numbers for every reading over a trailing window.
+    Timeliness is the share of expected slots in the window that carried a row.
+    Completeness is the share of arrived rows that held a number. Range is the
+    share of readings inside the envelope. Plausibility is the share whose step
+    from the previous sample, divided by the minutes between them, stays under
+    the rate limit. Staleness is handled separately below. The composite is the
+    MINIMUM of the five.
+  CHOICES: Minimum rather than mean. A reading that is timely, complete, smooth
+    and moving but physically impossible would average 80 out of 100 and sail
+    through the rule engine's quality gate, which is precisely the failure this
+    layer exists to prevent. Windows are trailing, so the score at a given moment
+    uses only data up to that moment -- a rule that fires on evidence from the
+    future cannot be run in production. Three hours for the first four
+    dimensions; they are per-sample properties, so the window only controls how
+    long one bad sample keeps depressing the score.
+
+`analytics/quality/scoring.py :: _staleness`
+  WHY IT EXISTS: A sensor that has died often keeps reporting its last value, so
+    "has not moved" is one of the most useful failure signals there is. It is
+    also the hardest to use without drowning in false alarms.
+  WHAT IT DOES: Measures peak-to-peak movement across a day-long window, but
+    only over the samples taken while the owning asset was actually running --
+    the rest are masked out before the movement is measured. Scores the result
+    against the smallest movement that class of sensor should show. Three gates
+    suppress it entirely: the point's class says constancy is normal, fewer than
+    a quarter of the window was spent running, or the reading is parked at the
+    end of its scale.
+  CHOICES: A day-long window, not three hours. Measured on the fault-free year,
+    half of all three-hour windows on the secondary chilled water supply
+    temperature are perfectly flat during entirely normal operation, against 28%
+    of day-long ones -- a three-hour flatline test on this building would be
+    almost all false alarms. Peak-to-peak rather than variance because it answers
+    the question directly and can be compared against the sensor's resolution
+    without any statistics.
+  ⚠ JUDGEMENT CALL: The running-time requirement is a quarter of the window, not
+    all of it. Requiring the whole window is more obviously correct and is what I
+    wrote first, but the air handler shuts down every night, so no 24-hour window
+    ever qualified, staleness was never scored for a single AHU point across a
+    whole year, and both dead points went unreported. Six running hours out of
+    twenty-four is enough evidence to judge and low enough to survive a nightly
+    shutdown.
+
+`analytics/quality/scoring.py :: _episodes` and `extract_advisories`
+  WHY IT EXISTS: A sensor dead for a month is one thing a technician acts on
+    once. Recorded per reading it would be 8,640 identical rows, and the advisory
+    table would be larger than the measurements it describes.
+  WHAT IT DOES: Collapses each per-reading failure into contiguous stretches,
+    discards any stretch shorter than thirty minutes, and writes one row per
+    stretch with its start, end, worst score, length and the evidence -- the
+    bound that was crossed and by how much, or the value the reading was stuck
+    at. Four kinds: dropout, out_of_range, flatline and stale.
+  CHOICES: Episodes are cut from the per-reading condition rather than from the
+    rolling score, so an episode covers when the sensor actually misbehaved
+    rather than trailing three hours past it.
+  ⚠ JUDGEMENT CALL: The checkpoint named flatline and stale as separate kinds
+    without defining the difference. I made flatline the acute case -- no
+    movement whatsoever -- and stale the chronic one, still moving but by less
+    than 40% of what its class expects. Both come from the same dimension and
+    differ only in degree.
+
+`analytics/quality/scoring.py :: write_scores`
+  WHY IT EXISTS: 26 million rows have to get their score back into the
+    measurements table.
+  WHAT IT DOES: Streams the scores into a temporary staging table in binary, then
+    applies them with a single statement that joins staging against measurements
+    on point and timestamp AND on an explicit time range.
+  CHOICES: The failing dimensions are stored as JSON only where the composite is
+    below 100. A row with nothing wrong needs no explanation, and writing an
+    all-perfect object onto every clean reading would add about a gigabyte of
+    JSON that says nothing.
+  ⚠ JUDGEMENT CALL: Repeating the time range in the update looks redundant next
+    to the timestamp join, and it is the single most important line in the
+    function. The measurements table is split into 5,077 one-day chunks; joining
+    on timestamp alone gives the query planner nothing to exclude chunks by, so
+    it plans an update across all 130 million rows to change 268,000 of them.
+    Measured: 296 seconds of execution on top of 37 seconds of planning. With the
+    range restated, the same update takes 7.8 seconds -- 38 times faster.
+
+`analytics/quality/scoring.py :: span_summary`
+  WHY IT EXISTS: The verification number has to come from somewhere that cannot
+    agree with itself when something has gone wrong.
+  WHAT IT DOES: After each period is written, queries the database for the
+    distribution of what was actually stored and prints that.
+  ⚠ JUDGEMENT CALL: An earlier version computed this from the scores still in
+    memory and reported a mean of 36.1 while the stored data was at 93.4 -- the
+    in-memory set included grid slots that hold no row and are never written, so
+    it was measuring something that does not exist. Reading back from storage
+    costs one extra query per period and makes the check independent of the thing
+    it checks.
+
+`scripts/schema.sql :: app.sensor_advisories`
+  WHY IT EXISTS: A dead thermistor and a failing chiller both make the numbers
+    look wrong. Conflating them is how a fault detection system loses its users:
+    it reports a chiller fault, someone opens the machine, and the actual problem
+    was a cheap sensor.
+  WHAT IT DOES: One row per episode, naming the point, the kind of failure, the
+    period, the worst score reached, how many readings were involved, and the
+    evidence as JSON. Everything in it is a statement about whether a reading can
+    be believed; nothing in it is a statement about whether a machine is healthy.
+  CHOICES: Placed before the grant section of the file, because those grants
+    apply to all tables in the schema as of that point -- a table added after
+    them would be unreadable by the role every analytics layer connects as.
+
+`analytics/__init__.py` and `PROJECT_CONTEXT.md`
+  WHY IT EXISTS: PROJECT_CONTEXT.md called this package `platform/`, and that
+    name cannot be used.
+  WHAT IT DOES: `platform` is a Python standard library module. A top-level
+    package of the same name shadows it, and pandas calls
+    platform.python_implementation() while being imported, so `import pandas`
+    fails outright with the interpreter itself suggesting a rename. Omitting the
+    package marker does not help either: the standard library then wins the name
+    and importing anything beneath it fails. The package is `analytics/`, and the
+    directory listing in PROJECT_CONTEXT.md records that task prompts saying
+    `platform/...` mean this.
+
+### MEASURED RESULT
+
+- 26,038,236 readings scored in 17.3 minutes across two periods, 0 left unscored.
+- LBNL fault-free year: mean composite 89.90, median 100, 88.69% of readings at
+  a perfect 100, 8.12% at 0.
+- Scenario era: mean 94.34, median 100, 94.27% at 100.
+- 2,942 advisory episodes: 1,769 flatline, 1,142 stale, 31 out_of_range, 0
+  dropout. Dropout is zero because the ingested grid has no holes in it.
+- The two lowest-scoring points on the fault-free year are ahu-1.oa_flow and
+  ahu-1.sf_speed at 16.8 -- the two the ingestion manifest already documents as
+  defective, found independently here by a check that knew nothing about them.
+
+### FINDING THE CHECKPOINT DID NOT ASK FOR
+
+The out_of_range check named only two points, both static pressure, and tracing
+them found a defect in the LBNL source data itself. The fault-free file publishes
+the supply duct static pressure setpoint as 1.60746 inches of water. All 20 fault
+files publish the same setpoint as -400.25253, which is that value converted to
+Pascals and negated. The sensor beside it is inconsistent in the opposite
+direction: Pascals in the fault-free file, inches of water in the fault files.
+20 of the 21 AHU source files disagree with the fault-free file about the units
+of both columns.
+
+This means ahu-1.sa_static_p and ahu-1.sa_static_p_spt are unusable in every
+stitched trajectory and every synthesised scenario, and that the units recorded
+for them in ingestion/manifests/sdahu.yaml -- which were read off the fault-free
+file -- are right for one file in twenty-one. No other point shows the problem.
+Fixing it means a manifest change and a reload, so it is left for direction.
+
+START HERE: `analytics/quality/scoring.py` — `score_point_run` and `_staleness`
+are the whole checkpoint; everything above them feeds those two and everything
+below stores what they produce.

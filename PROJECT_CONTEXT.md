@@ -69,7 +69,7 @@ above it.
 ```
 model/                  semantic model — Brick graph and asset definitions
 ingestion/              dataset loaders and their manifests
-platform/               the analytics layers, in the order listed above
+analytics/              the analytics layers, in the order listed above
   quality/              measurement quality scoring
   rules/                physics-derived fault rules
   baselines/            condition-normalised expected behaviour
@@ -83,3 +83,9 @@ data/                   datasets (data/raw/ is gitignored)
 scripts/                database schema and operational scripts
 docs/                   implementation notes and architecture
 ```
+
+`analytics/` was called `platform/` until checkpoint 3.1. It had to be renamed:
+`platform` is a Python standard library module, so a top-level package of that
+name shadows it, and importing pandas — which calls
+`platform.python_implementation()` at import time — fails outright. Anything
+that refers to `platform/...` means `analytics/...`.

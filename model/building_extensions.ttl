@@ -199,10 +199,15 @@ the design value exactly and not an approximation of one.""" .
 
 sdahu:SA_SP
     mvn:designValue 400.4 ;
-    rdfs:comment """Pa. Duct static pressure setpoint, also constant across the
-whole fault-free year (1.607 inches of water). The measured pressure tracks it,
-which is how we know the fan control loop works and that the sensor is scaled
-consistently with the setpoint.""" .
+    rdfs:comment """Pa. Duct static pressure setpoint, constant across the whole
+fault-free year (1.607 inches of water). The design value itself is sound.
+
+The claim that used to sit here -- that the measured pressure tracks the setpoint,
+so the fan control loop works and the sensor is scaled consistently with it -- was
+read off the fault-free file alone and is false for the other twenty. Those report
+the setpoint as -400.25253 and the sensor in inches of water rather than Pascals,
+so the two neither track nor share a scale. Both points are marked DO NOT USE in
+ingestion/manifests/sdahu.yaml; nothing computes anything from them.""" .
 
 chiller:CWL_PRI_SW_TEMP
     mvn:designValue 6.67 ;

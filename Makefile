@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots api web
+.PHONY: install db-up db-down load graph scenarios plots quality api web
 
 # Resolve and install the Python environment into .venv
 install:
@@ -52,6 +52,13 @@ scenarios:
 # severity ladder and per-decile progression used to verify them.
 plots:
 	uv run python scripts/plot_scenario.py
+
+# Score every reading for trustworthiness and raise sensor advisories. Covers
+# the LBNL fault-free year and the whole synthesised scenario era; pass
+# --from/--to to score any other window. Uses APP_RW_DATABASE_URL, like every
+# other part of the detection path.
+quality:
+	uv run python -m analytics.quality.scoring
 
 # Serve the API on :8000
 api:
