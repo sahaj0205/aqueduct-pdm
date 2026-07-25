@@ -849,3 +849,265 @@ Manifest :: the `trajectories` list
 START HERE: `ingestion/lbnl_loader.py` — read `load_trajectory` first; it is
 the stitching, the idempotency and the time-partitioning scheme in one
 function, and everything else is a helper it calls.
+
+---
+
+## Checkpoint 1.6 — Decision log
+
+### WHAT WE DID
+
+The project now carries a written record of the decisions that shaped it, kept
+separate from the code that resulted from them. Before this, the reasoning
+existed only in conversation and would have been unrecoverable by anyone reading
+the repository — they would see the choice made but not the alternatives
+rejected or why. Three decisions are recorded so far: what stores the sensor
+readings, where labelled fault data comes from, and how a gradual decline was
+obtained from source data that contains none. Each one states the question that
+forced a decision, every option weighed with the reason it was rejected, which
+parts were a human judgement versus delegated execution, and how confident that
+judgement is. This matters because the project will be assessed partly on
+whether its author can defend its architecture, and a decision nobody can
+reconstruct is indistinguishable from one taken by accident.
+
+### HOW IT WORKS
+
+`AI_LOG.md` :: header
+- WHY IT EXISTS: States up front what the document is for and that AI wrote most
+  of the implementation. Declaring that plainly is what makes the rest of the
+  log credible; a reader who suspects it is being hidden discounts everything
+  else in the file.
+- WHAT IT DOES: Four sentences saying the log records architectural decisions,
+  the alternatives weighed, and the division of labour between human judgement
+  and AI execution — and committing to record both overrides of the model and
+  reversals of the author's own earlier positions.
+
+`AI_LOG.md` :: the six-subsection entry shape
+- WHY IT EXISTS: A fixed shape stops entries degenerating into a narrative of
+  what was built. Each subsection forces something a reader needs and an author
+  would otherwise skip.
+- WHAT IT DOES: Every entry carries the same six headings. *Forcing question*
+  states the problem before naming any solution. *Options* lists what was
+  considered with an explicit chosen/rejected verdict on each. *Rationale* is the
+  argument. *Mine vs delegated* splits the decision from its implementation.
+  *Confidence* records how sure the author is, including caveats. *Outcome* is
+  left blank on purpose — it gets filled in later once the decision has been
+  lived with, so the log can record decisions that turned out badly.
+
+`AI_LOG.md` :: D-01 — TimescaleDB over standard PostgreSQL
+- WHY IT EXISTS: The sensor-reading table is the only thing in the project that
+  gets large, and every layer reads it. What stores it is the decision the rest
+  of the storage design hangs off.
+- WHAT IT DOES: Rejects plain PostgreSQL, on the grounds that at this volume
+  partitioning stops being optional and simply becomes work the author writes and
+  maintains — partition creation, rollup refresh, index maintenance — none of
+  which the project is judged on. Rejects a dedicated time-series store running
+  alongside PostgreSQL, because assets, points, equipment classes and fault
+  labels are all relational and get joined against the readings constantly, and
+  because splitting engines would put the ground-truth privilege wall outside the
+  database holding the readings. Chooses TimescaleDB, and records the measured
+  result: 116,039,232 rows, 4,381 chunks, 18 GB, with the hourly rollup
+  maintained by the database rather than by code.
+- CHOICES: Confidence recorded as high but with a caveat rather than bare — the
+  one-day chunk interval produced 4,381 chunks, which is workable but at the high
+  end since query planning cost grows with chunk count. Seven-day chunks would
+  give roughly 626.
+
+`AI_LOG.md` :: D-02 — LBNL labelled data over a self-built simulator
+- WHY IT EXISTS: The project has to report fault-detection accuracy and
+  remaining-life error. Those figures mean nothing unless something independent
+  says what the right answer was.
+- WHAT IT DOES: Rejects building a physics simulator, and the stated reason is
+  not the twelve hours it would cost but circularity — validating a detector
+  against ground truth the author generated proves only that the detector agrees
+  with the simulator, and both could be wrong in the same direction while every
+  accuracy number still looked excellent. Chooses the LBNL datasets, so accuracy
+  is computed against third-party labels. Records the second half of the
+  decision: the labels live in their own database schema with all access revoked
+  from the role every detection component connects as, which turns "I did not
+  tune against the labels" from a promise into a property of the system.
+
+`AI_LOG.md` :: D-03 — synthesising degradation by stitching severity levels
+- WHY IT EXISTS: Reconnaissance found that no LBNL run degrades — each faulted
+  file holds one fixed fault severity for a whole year. The health and
+  remaining-life layers both need equipment that starts healthy and slides toward
+  failure, so this is the decision that makes those layers possible at all.
+- WHAT IT DOES: Rejects dropping remaining-life estimation, since calibrated
+  remaining-life intervals are the centrepiece of the brief. Rejects generating
+  the degradation curve from a fitted model, for exactly the circularity reason
+  that decided D-02. Chooses to stitch real severity files together over
+  simulated time, so every stored value remains a third-party measurement and the
+  only authored contribution is the ordering, which is declared in the manifests.
+- CHOICES: Includes a caveat section written to be found rather than discovered:
+  the steps are discrete so the curve is a staircase not a slide; the onset time
+  marks where a step was placed, not a physical event; and failure time has no
+  meaning in the source data at all, so any failure threshold the remaining-life
+  layer uses is authored and has to be justified physically.
+
+START HERE: `AI_LOG.md` — D-02 is the entry the rest of the project's
+credibility rests on; the other two are consequences of it.
+
+---
+
+## Checkpoint 2.1 — Loading and merging the Brick models
+
+### WHAT WE DID
+
+The system can now read the two equipment descriptions that LBNL ships alongside
+its data — one for the air handler, one for the chiller plant — and hold them
+together as a single description of the building. Before this those descriptions
+were two inert text files that nothing in the project could interpret. This
+matters because every question the platform will later ask about *why* something
+is wrong is a question about relationships: which readings belong to which
+machine, which machine feeds which other machine, and therefore which machine is
+a plausible cause of a symptom seen somewhere else. Those relationships exist
+only in these files.
+
+Loading them also surfaced three defects in the published data. The two files
+each describe their contents using the same internal shorthand, so combining
+them carelessly would have merged the air handler's outdoor-temperature sensor
+with the chiller plant's into a single reading — which matters especially because
+Task 1 found the chiller plant's version of that column actually holds a
+different quantity. Two pieces of equipment carry a misspelt equipment type,
+which would have made them invisible to any later search by type. And the two
+files share no connection whatsoever, which is the gap checkpoint 2.2 exists to
+close.
+
+### HOW IT WORKS
+
+Ordered by data flow: file on disk, parsed, relocated, merged, repaired,
+reported. Four trivial helpers skipped.
+
+`model/loader.py` :: `SOURCES`
+- WHY IT EXISTS: The one place recording which files make up the building model
+  and what namespace each is given. Adding a third system is a row here rather
+  than an edit to parsing logic.
+- WHAT IT DOES: Two frozen records, each pairing a filename under
+  `data/raw/ttl/` with the URI namespace its entities will live in — `sdahu#`
+  for the air handler, `chiller#` for the chiller plant — plus a plain-English
+  description used in error messages.
+- CHOICES: The namespace root is `https://aqueduct-pdm.local/`, a hostname that
+  deliberately does not resolve. RDF identifiers are names, not addresses, and
+  nothing ever fetches them; a real domain would imply we publish these
+  definitions.
+
+`model/loader.py` :: `_parse_source(source)`
+- WHY IT EXISTS: The gate the checkpoint asked for. If a Brick file is absent,
+  empty, or not valid Turtle, this is where the project stops rather than
+  continuing with a partial graph.
+- WHAT IT DOES: Checks the file exists and is non-empty, hands it to rdflib's
+  Turtle parser, then checks the result is not zero triples — a file can parse
+  successfully and contain nothing. Any failure raises with a message naming the
+  file, saying which system it describes, and stating that hand-authoring a
+  substitute is not the fix.
+- CHOICES: Each file is parsed against a different base URI. Both LBNL files
+  declare their namespace as the bare relative fragment `bldg-59#` with no base,
+  so a parser must resolve it against something; per-file bases mean the two can
+  never accidentally resolve to the same namespace even before the explicit
+  relocation step.
+
+`model/loader.py` :: `_relocate_namespace(graph, source)`
+- WHY IT EXISTS: Both files name their contents identically, so this is what
+  stops the merge fusing unrelated equipment. Without it the merged graph is
+  quietly wrong in a way nothing downstream would flag.
+- WHAT IT DOES: Looks up the namespace the parser actually bound to the shorthand
+  `bldg`, then walks every statement and rebuilds it with any identifier under
+  that namespace re-pointed into this system's namespace. Statement structure is
+  untouched; only names change. Equipment types such as `brick:Chiller` sit
+  outside that namespace and pass through unaltered.
+- CHOICES: Reads the bound namespace out of the parsed graph rather than
+  hardcoding `bldg-59#`, so a re-published file using a different internal
+  shorthand still relocates instead of silently relocating nothing.
+- ⚠ JUDGEMENT CALL: Not specified. Each system was given its own namespace
+  rather than merging into one. The rejected alternative — a single shared
+  namespace — collapses `OA_TEMP` into one node belonging to both machines, 271
+  triples instead of 272. Rejected because Task 1 found the chiller plant's
+  `OA_TEMP` column carries wet-bulb temperature (what a wet thermometer reads,
+  always at or below air temperature, and the quantity a cooling tower's
+  performance is judged against) while the air handler's carries true air
+  temperature. They are not the same sensor. The cost is that
+  `building_extensions.ttl` has to declare two prefixes rather than one.
+
+`model/loader.py` :: `load_merged_graph()`
+- WHY IT EXISTS: The single entry point every layer above calls. Rules,
+  baselines, diagnosis and the API all need the same graph and none of them
+  should know it came from two files.
+- WHAT IT DOES: Creates an empty graph, registers readable short prefixes on it,
+  parses and relocates each source, copies every statement in, then runs the
+  spelling repair. Returns the graph together with the list of repairs applied.
+- CHOICES: Returns the repair list alongside the graph rather than logging it
+  internally, so silent modification of third-party data is not possible — the
+  caller holds the record.
+
+`model/loader.py` :: `CLASS_SPELLING_REPAIRS` and `_repair_class_spellings(graph)`
+- WHY IT EXISTS: Two entities in the published files carry a misspelt equipment
+  type. Types are URIs, compared exactly, so a later query asking for all
+  fan-speed readings would return a short answer with no indication it had.
+- WHAT IT DOES: A two-entry map from wrong spelling to right spelling. The repair
+  walks every type statement and where the type matches an entry, removes that
+  statement and adds the corrected one. Both spellings of each pair already
+  appear in the corpus for the same concept, which is how the correct one is
+  known: the chiller plant writes fan speed as `Speed_Status` while the air
+  handler writes `Speed_status`, and cooling towers 2 and 3 write
+  `Water_Temperature_Sensor` while tower 1 writes `Water_temperature_Sensor`.
+  Three entities were corrected — supply and return fan speed, and cooling tower
+  1's supply water temperature.
+- CHOICES: A fixed two-entry map, not case-insensitive matching. Case-folding
+  would silently absorb any future miscasing, whereas an explicit map makes a new
+  defect appear as a query returning nothing, which is investigable. The repair
+  removes one statement and adds one, so the 272 triple count stays a real check
+  on the load.
+- ⚠ JUDGEMENT CALL: Not asked for, and it edits third-party data. The
+  alternative was to leave the files faithful and match class names
+  case-insensitively in every query. Rejected because that workaround would have
+  to be repeated in every query written from here to the end of the project, and
+  forgetting it once produces a silently short answer. Reverted by emptying the
+  map.
+
+`model/loader.py` :: `cross_system_triples(graph)`
+- WHY IT EXISTS: Checkpoint 2.2's hard gate is that traversal from the air
+  handler's cooling coil reaches the chiller. This measures whether any such path
+  exists, so the gate is tested against a number rather than an assumption.
+- WHAT IT DOES: Scans the merged graph for statements whose subject belongs to
+  one system and object to the other. Reports zero. The merged graph is therefore
+  two islands with nothing between them.
+
+`model/loader.py` :: `_collision_count()`
+- WHY IT EXISTS: Quantifies the namespace decision above so the judgement call is
+  auditable rather than asserted.
+- WHAT IT DOES: Loads both files a second time into one deliberately shared
+  namespace and reports the resulting triple count and which local names appear
+  in both systems. Nothing downstream uses this graph.
+- CHOICES: Kept as a reporting function rather than deleted after the decision,
+  because it will catch a future third system introducing a new collision.
+
+`model/loader.py` :: `main()`
+- WHY IT EXISTS: Produces the checkpoint's verification output, and doubles as
+  the way to eyeball the graph after any change to the model.
+- WHAT IT DOES: Loads everything, then prints per-file triple counts and
+  namespaces, merged totals, repairs applied, the full class census with
+  per-system instance counts, the cross-system connectivity count, and the
+  collision diagnostic. On a source-file failure it prints `STOP:` with the
+  reason and exits 1.
+
+### MEASURED RESULT
+
+- 272 triples merged: 81 from the air handler file, 191 from the chiller plant
+  file, nothing lost and nothing deduplicated.
+- 136 typed entities, 52 distinct `brick:` classes. Only two classes appear in
+  both systems — `Electrical_Power_Sensor` and
+  `Outside_Air_Temperature_Sensor`.
+- 3 class-spelling repairs applied: `RF_SPD` and `SF_SPD` from `Speed_status` to
+  `Speed_Status`, `CT_SW_TEMP_1` from `Water_temperature_Sensor` to
+  `Water_Temperature_Sensor`.
+- 0 statements link the two systems. Each file is a single-rooted tree —
+  everything is reachable from `sdahu:AHU` or
+  `chiller:Simulated_Chiller_Plant`, and nothing is referenced without being
+  typed.
+- The chiller plant file contains **no `feeds` statements at all**, only
+  part-of and has-point. The air handler has five, all to zones. So the water
+  flow path inside the plant does not exist either, and 2.2 has to author it as
+  well as the loop edge.
+
+START HERE: `model/loader.py` — read `load_merged_graph` first; the two
+functions it calls are the whole of what makes two conflicting files into one
+usable graph.
