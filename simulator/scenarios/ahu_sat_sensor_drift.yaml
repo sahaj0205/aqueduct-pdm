@@ -1,0 +1,43 @@
+# Scenario: ahu_sat_sensor_drift
+#
+# A summer window, because a supply air sensor fault only bites while the coil
+# is actively controlling to setpoint. The ramp is slow -- 90 days --
+# because sensor drift is gradual, which is what makes it hard to catch and
+# worth detecting. The indicator is the VALVE, not the temperature: the
+# whole point is that the reported temperature looks fine.
+#
+# TIME PLACEMENT. source_start names the window of the 2018 source year this
+# scenario reads, chosen for weather that makes the fault observable. onset is
+# in scenario time, twenty whole years later, so day-of-year and time-of-day are
+# preserved and the occupancy schedule lands at the right hour. Each scenario
+# occupies its own era so that two scenarios on the same equipment never write
+# the same point at the same instant.
+#
+# SEVERITY LADDER. waypoints are ordered MILDEST FIRST. Degrees Fahrenheit of bias, so larger is worse. These are the coi_bias
+# files, identified in checkpoint 2.4 by their closed-loop signature:
+# reported supply air stays pinned at 55F while the valve swings from 0.61
+# to 0.98 open and the zones overcool by nearly a degree.
+
+scenario_id: ahu_sat_sensor_drift
+system: sdahu
+target_asset: ahu-1
+fault_mode: supply_air_temperature_sensor_drift
+description: >-
+  The supply air temperature sensor drifts high. Nothing is wrong with the
+  equipment, but the controller believes the air is warmer than it is and opens
+  the coil valve to compensate, so the building is overcooled while the reported
+  supply temperature sits obediently at setpoint. This is the scenario that
+  separates a sensor fault from an equipment fault.
+profile: progressive
+source_start: '2018-06-01'
+onset: '2038-06-17 00:00:00'
+pre_onset_days: 21
+span_days: 120
+duration_to_failure_days: 90
+severity_ceiling: 1.0
+seed: 24060101
+degradation_indicator: ahu-1.chw_valve
+baseline_file: AHU_annual.csv
+waypoints:
+- {level: 1, file: coi_bias_2_annual.csv, label: +2F sensor bias}
+- {level: 2, file: coi_bias_4_annual.csv, label: +4F sensor bias}

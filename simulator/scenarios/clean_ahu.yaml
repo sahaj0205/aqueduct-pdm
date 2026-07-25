@@ -1,0 +1,35 @@
+# Scenario: clean_ahu
+#
+# The false-positive control. It shares its source window with
+# ahu_sat_sensor_drift so the two are directly comparable: same weather,
+# same occupancy, same controls, one with a fault and one without. onset is
+# recorded for bookkeeping only and no fault event is written for it.
+#
+# TIME PLACEMENT. source_start names the window of the 2018 source year this
+# scenario reads, chosen for weather that makes the fault observable. onset is
+# in scenario time, twenty-one whole years later, so day-of-year and time-of-day are
+# preserved and the occupancy schedule lands at the right hour. Each scenario
+# occupies its own era so that two scenarios on the same equipment never write
+# the same point at the same instant.
+#
+# SEVERITY LADDER. waypoints are ordered MILDEST FIRST. No ladder -- there is no fault.
+
+scenario_id: clean_ahu
+system: sdahu
+target_asset: ahu-1
+fault_mode: none
+description: >-
+  Fault-free control run for the air handler, same length and same source window
+  as the faulted scenarios. Nothing is injected. Any rule that fires here is a
+  false positive, and there is no other way to measure that.
+profile: none
+source_start: '2018-06-01'
+onset: '2039-06-17 00:00:00'
+pre_onset_days: 21
+span_days: 120
+duration_to_failure_days: 0
+severity_ceiling: 1.0
+seed: 27060101
+degradation_indicator: ahu-1.chw_valve
+baseline_file: AHU_annual.csv
+waypoints: []

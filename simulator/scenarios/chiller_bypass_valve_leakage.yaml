@@ -1,0 +1,40 @@
+# Scenario: chiller_bypass_valve_leakage
+#
+# Substituted for the chiller_refrigerant_leak scenario named in the task,
+# which has no source data: LBNL's chiller plant set contains no refrigerant
+# leak run. This is a real, progressive, measured fault of comparable speed,
+# so the scenario keeps its purpose without anything being invented. Thirty
+# days to failure makes it the fastest of the progressive faults.
+#
+# TIME PLACEMENT. source_start names the window of the 2018 source year this
+# scenario reads, chosen for weather that makes the fault observable. onset is
+# in scenario time, nineteen whole years later, so day-of-year and time-of-day are
+# preserved and the occupancy schedule lands at the right hour. Each scenario
+# occupies its own era so that two scenarios on the same equipment never write
+# the same point at the same instant.
+#
+# SEVERITY LADDER. waypoints are ordered MILDEST FIRST. Percent leakage, so larger is worse and the numeric order is correct.
+
+scenario_id: chiller_bypass_valve_leakage
+system: chiller
+target_asset: chw-plant-1
+fault_mode: bypass_valve_leakage
+description: >-
+  The plant bypass valve leaks, letting chilled water short-circuit from the
+  supply back into the return without passing through any load. The plant burns
+  pumping energy moving water that does no cooling, and the water reaching the
+  building arrives warmer than it should.
+profile: progressive
+source_start: '2018-05-15'
+onset: '2037-05-31 00:00:00'
+pre_onset_days: 21
+span_days: 120
+duration_to_failure_days: 30
+severity_ceiling: 1.0
+seed: 25051501
+degradation_indicator: chw-plant-1.sec_supply_temp
+baseline_file: ChillerPlant.csv
+waypoints:
+- {level: 1, file: ChillerPlant_bypass_leakage_025.csv, label: 25% bypass leakage}
+- {level: 2, file: ChillerPlant_bypass_leakage_050.csv, label: 50% bypass leakage}
+- {level: 3, file: ChillerPlant_bypass_leakage_075.csv, label: 75% bypass leakage}

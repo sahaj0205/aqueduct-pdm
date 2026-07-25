@@ -1954,3 +1954,204 @@ anywhere.
 START HERE: `ingestion/manifests/sdahu.yaml` — the note on `ahu-1.sa_flow`
 records the one place in this project where the LBNL documentation was
 deliberately overruled, and the physical argument for doing it.
+
+---
+
+## Checkpoint 2.4 — Trajectory synthesiser and scenarios
+
+### WHAT WE DID
+
+The system now has equipment that gets worse over time. Everything loaded until
+now was a snapshot: each source file holds one fixed fault severity for a whole
+year, so a machine in that data is either healthy or broken and never becomes
+broken. Predicting how long something has left is impossible against data like
+that, because nothing ever changes. There are now eight runs in which a machine
+starts healthy, a fault begins on a known date, and it worsens continuously until
+it reaches the worst state the source data measured.
+
+The important part is how the worsening was produced. Nothing is modelled or
+invented. At any instant the faulted run and the clean run of the same equipment,
+under the same weather and the same controls, differ by some amount — and that
+difference is entirely the fault, because everything else cancels. Each scenario
+takes the real clean signal and adds a growing share of that real difference. The
+result varies with weather and occupancy exactly as the real building does, and
+the only thing that was interpolated is how far along the fault is.
+
+Alongside the measurements, the system now records an answer key: which machine
+was faulted, with what, starting when, reaching failure when. That is written by
+a single privileged connection into a schema every other part of the platform is
+forbidden to read, so the accuracy numbers reported later cannot have been tuned
+against it.
+
+Building this also uncovered that two groups of LBNL's published severity levels
+are the same file published repeatedly under different names.
+
+### HOW IT WORKS
+
+Ordered by data flow: manifest, progress, blend, write, answer key, plot.
+
+`simulator/scenarios/*.yaml` :: the eight scenario manifests
+- WHY IT EXISTS: A scenario is a claim about what happened and when, and the
+  accuracy of everything downstream is measured against that claim. It belongs in
+  a file a reviewer can read, not in code.
+- WHAT IT DOES: Each names the target machine, the fault, the window of the 2018
+  source year it reads, the moment the fault starts, how long it takes to reach
+  failure, how far up the severity ladder to go, a random seed, and the ordered
+  list of source files that form the ladder.
+- CHOICES: Each scenario occupies its own era of simulated time, so two scenarios
+  on the same equipment can never write the same reading at the same instant.
+  Eras are whole numbers of 365-day years from the source window, which preserves
+  day-of-year and time-of-day and therefore keeps weather and the occupancy
+  schedule aligned.
+- CHOICES: Source windows are picked for weather that makes each fault visible.
+  The damper fault reads a late-winter window because the economizer only
+  modulates between 33.8F and 60F outdoor and the fault is nearly invisible in
+  summer; the fouling faults read summer windows because fouling only shows on a
+  loaded machine.
+- CHOICES: Every scenario has 21 days of healthy operation before onset. The
+  baseline layer has to learn what normal looks like from somewhere, and learning
+  it from already-degraded data would define the fault as normal.
+- ⚠ JUDGEMENT CALL: There are eight manifests, not the seven the checkpoint
+  asked for. Two of them are clean controls, one per system, where the task
+  specified one. The two systems are independent simulations with separate rule
+  sets, so a false-positive control covering only one leaves the other's false
+  positive rate unmeasured. `clean_chiller.yaml` is the extra file and deleting
+  it restores the specified set exactly.
+
+`simulator/trajectory.py` :: `load_scenario` and its validation
+- WHY IT EXISTS: A scenario that is quietly wrong about when its fault started
+  would corrupt every accuracy figure computed against it, and nothing downstream
+  could detect that.
+- WHAT IT DOES: Reads a manifest into a frozen record and refuses several
+  specific ways of being wrong: an unknown profile, a severity ceiling outside
+  its range, no healthy period before onset, a fault that reaches failure after
+  the run ends, and a time shift that is not a whole number of days.
+- CHOICES: The whole-day check exists because a shift of any other size moves the
+  occupancy schedule to the wrong hour, which would look like the building
+  suddenly working nights.
+
+`simulator/trajectory.py` :: `progress_curve`
+- WHY IT EXISTS: Decides how far along the fault is at each moment. This is the
+  one genuinely synthetic quantity in the whole scenario, and it is deliberately
+  the only one.
+- WHAT IT DOES: Zero before onset, one at failure and after. In between it draws
+  24 positive rate multipliers from the scenario's seed, stretches them across the
+  window, and accumulates them. Because every multiplier is positive the curve can
+  flatten but never falls, which is the never-improving behaviour the
+  remaining-life maths assumes. A step fault skips all of it and jumps to one.
+- CHOICES: Rate multipliers rather than a straight line, so degradation speeds up
+  and slows down the way real fouling does. Twenty-four control points and a
+  spread of 0.35 give roughly a factor of two between the slowest and fastest
+  stretches — visible on the plot, but smooth rather than noisy.
+- CHOICES: Seeded from the manifest, so a scenario is reproducible exactly.
+  Verified: re-running one produced a byte-identical result.
+
+`simulator/trajectory.py` :: `blend_contributions`
+- WHY IT EXISTS: The heart of the checkpoint. Turns "the fault is 40% of the way
+  along" into actual readings.
+- WHAT IT DOES: For each reading it builds a ladder whose bottom rung is the
+  clean run and whose upper rungs are each faulted run minus the clean run at the
+  same instant. The progress value picks a position on that ladder; the two
+  nearest rungs are mixed in proportion; the result is added back onto the clean
+  signal.
+- CHOICES: Contributions are differences at the same instant, so weather,
+  occupancy and control response cancel out of them and only the fault remains.
+  This is what "interpolate the fault contribution, not the whole signal" buys:
+  the output keeps the genuine minute-to-minute variation of a real building
+  instead of the smoothness of a curve.
+- CHOICES: The shape of the resulting degradation is dictated by the measured
+  rungs, not chosen. Condenser fouling climbs slowly then sharply because the
+  mild rung is only 11% of the severe one in the source data — that curve is a
+  property of LBNL's measurements, not of anything written here.
+
+`simulator/trajectory.py` :: the duplicate-waypoint guard
+- WHY IT EXISTS: Written in response to a defect found during this checkpoint,
+  and it is the reason that defect cannot recur silently.
+- WHAT IT DOES: After reading the waypoints, compares each consecutive pair and
+  refuses to continue if two hold identical data, naming both files and saying
+  what to do about it.
+- CHOICES: An error, not a warning. A ladder with duplicate rungs produces a
+  trajectory that looks like it walks four severity levels while actually
+  interpolating between a value and itself — it jumps to full severity and
+  nothing in the output reveals it.
+
+`simulator/trajectory.py` :: `to_utc` and `source_tz`
+- WHY IT EXISTS: Fixed a real bug rather than preventing a hypothetical one. The
+  first version of the plot showed a non-zero fault contribution before onset,
+  which is impossible; the cause was treating naive source-local timestamps as
+  UTC, so two series six hours apart were being subtracted.
+- WHAT IT DOES: Reads a naive manifest timestamp as local time at the site and
+  converts it to UTC, using a fixed offset rather than a named zone for the same
+  reason the loader does — simulation output has no daylight saving step.
+
+`simulator/trajectory.py` :: `record_groundtruth`
+- WHY IT EXISTS: The answer key. Without it there is nothing to measure accuracy
+  against; with it in the wrong place, the accuracy claim collapses.
+- WHAT IT DOES: Writes one row describing the scenario and, unless it is a clean
+  run, one row naming the faulted asset, the fault, the worst severity reached,
+  the onset and the failure time, plus the profile, ceiling, seed and the full
+  waypoint list as structured data.
+- CHOICES: It runs on its own connection, opened from `ADMIN_DATABASE_URL`, and
+  it is the only function in the project that uses that credential. Everything
+  that detects, scores, baselines, predicts or diagnoses connects as a role with
+  every grant on this schema revoked. Keeping the privileged path in a separately
+  named variable means a breach of that separation shows up in a diff as a changed
+  identifier rather than as an ordinary connection.
+- CHOICES: The measurements and the answer key are written on different
+  connections in separate transactions, so the restricted role never touches the
+  ground-truth schema even inside the generator.
+
+`scripts/plot_scenario.py` :: `severity_ratio` and `ladder_table`
+- WHY IT EXISTS: The raw difference between a scenario and its clean counterpart
+  is not a measure of severity, because how much a fault shows depends on the
+  weather — a leaking cooling valve barely matters on a day with a real cooling
+  load. Plotting the raw difference makes a correct trajectory look erratic.
+- WHAT IT DOES: Divides the achieved contribution by the contribution at full
+  severity over the same hours. That ratio climbs from zero to one regardless of
+  the weather, and it is the actual evidence that the trajectory walks the
+  ladder. The ladder table separately reports each rung's average effect.
+- CHOICES: Summed over each bucket rather than averaged pointwise, so hours in
+  which the fault cannot express itself contribute nothing to either side instead
+  of contributing a wild ratio.
+- CHOICES: The ladder table exists to catch a specific trap: the fouling files
+  are numbered by percent heat transfer RETAINED, so 095 is mildest and 065 worst,
+  and anything that sorts them numerically runs the trajectory from broken to
+  healthy. A misordered ladder shows up here as a column that falls.
+
+### MEASURED RESULT
+
+- 8 scenarios, 14,791,680 rows, about 10 minutes. Answer key: 8 scenario rows and
+  6 fault events, the two clean runs correctly carrying none.
+- Every scenario starts at exactly 0.0000 severity while healthy and reaches
+  1.0000 by the end of its span. Both clean runs deviate from the fault-free
+  signal by 0.000e+00 everywhere.
+- Every severity ladder increases with level. Cooling tower fouling: 0.0542,
+  0.3001, 0.7803. Bypass leakage: 7.16, 11.66, 14.73. Condenser fouling: 4,484
+  then 40,735 watts. Damper stuck: 0.2502, 0.3033, 0.5243.
+- Determinism confirmed: re-running cooling_tower_fouling with seed 26051501
+  replaced 2,661,120 rows and reproduced md5 52140067985fc6114d95b5b689d99c43,
+  identical row count and identical value sum.
+
+### A DEFECT IN THE SOURCE DATA, FOUND HERE
+
+Two groups of LBNL's AHU files are byte-identical duplicates published under
+different severity names:
+
+- `coi_leakage_010`, `_025`, `_040` and `_050` all have md5 `a9fdfc50...`. There
+  is one measured coil leakage severity, not four.
+- `oa_bias_2`, `_-2`, `_4` and `_-4` all have md5 `89b13704...`. There is one
+  measured outdoor air sensor bias, and the sign distinction does not exist in
+  the data either.
+
+`coi_bias`, `coi_stuck`, `damper_stuck` and every chiller file are genuinely
+distinct. Two consequences follow. The cooling valve leakage scenario now
+declares one rung rather than four, which is what the data supports. And two
+trajectories built back in checkpoint 1.5 are degenerate: `sdahu-coil-valve-leaking`
+stitched four identical files, and the two `sdahu-oa-temp-sensor-drift`
+trajectories are the same data as each other — so the decision recorded in
+AI_LOG.md D-03 about splitting signed sensor faults into separate high and low
+trajectories was, unknowingly, splitting one file from itself.
+
+START HERE: `simulator/trajectory.py` — read `blend_contributions` first. Nine
+lines of arithmetic are the whole difference between a synthesised trajectory
+that a reviewer can trust and one that quietly invents its own physics.

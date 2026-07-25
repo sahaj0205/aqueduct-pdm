@@ -30,8 +30,10 @@ pnpm-debug.log*
 !.env.example
 
 # --- Data ---
-# Source datasets are downloaded, not committed. See PROJECT_CONTEXT.md.
 data/raw/
+
+# --- Generated output ---
+docs/plots/*.png
 
 # --- Working notes ---
 SCRATCH.md

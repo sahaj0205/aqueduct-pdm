@@ -1,0 +1,35 @@
+# Scenario: clean_chiller
+#
+# The second false-positive control. The task asked for one clean run; this is
+# the extra one, and the reason is that the two systems are independent
+# simulations with separate rule sets, so a control covering only one of
+# them leaves the other's false positive rate unmeasured. Delete this file
+# if you want exactly the seven the task specified.
+#
+# TIME PLACEMENT. source_start names the window of the 2018 source year this
+# scenario reads, chosen for weather that makes the fault observable. onset is
+# in scenario time, twenty-one whole years later, so day-of-year and time-of-day are
+# preserved and the occupancy schedule lands at the right hour. Each scenario
+# occupies its own era so that two scenarios on the same equipment never write
+# the same point at the same instant.
+#
+# SEVERITY LADDER. waypoints are ordered MILDEST FIRST. No ladder -- there is no fault.
+
+scenario_id: clean_chiller
+system: chiller
+target_asset: chw-plant-1
+fault_mode: none
+description: >-
+  Fault-free control run for the chiller plant, same length and same source
+  window as the faulted scenarios. Nothing is injected.
+profile: none
+source_start: '2018-05-15'
+onset: '2039-05-31 00:00:00'
+pre_onset_days: 21
+span_days: 120
+duration_to_failure_days: 0
+severity_ceiling: 1.0
+seed: 27051501
+degradation_indicator: chiller-1.power
+baseline_file: ChillerPlant.csv
+waypoints: []

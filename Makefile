@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph api web
+.PHONY: install db-up db-down load graph scenarios plots api web
 
 # Resolve and install the Python environment into .venv
 install:
@@ -40,6 +40,18 @@ load:
 # change to model/*.ttl, and much faster than a reload.
 graph:
 	uv run python -m model.graph
+
+# Synthesise the degradation scenarios and write their answer key. Deliberately
+# NOT part of `load`: it needs ADMIN_DATABASE_URL, which is the only credential
+# allowed to write schema groundtruth, and keeping it a separate target means the
+# privileged path is never invoked by a routine data refresh.
+scenarios:
+	uv run python -m simulator.trajectory
+
+# Plot every scenario against the clean signal it was built from, and print the
+# severity ladder and per-decile progression used to verify them.
+plots:
+	uv run python scripts/plot_scenario.py
 
 # Serve the API on :8000
 api:

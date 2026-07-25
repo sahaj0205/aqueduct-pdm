@@ -1,0 +1,45 @@
+# Scenario: cooling_tower_fouling
+#
+# Substituted for the chiller_noncondensable_gas scenario named in the task,
+# which has no source data. Tower fouling is the better held-out choice
+# anyway: it is a genuinely different fault from condenser fouling, it lives
+# on a different asset, and diagnosing it requires the tower-to-chiller-to-
+# coil path authored in checkpoint 2.2 -- so it tests the graph as well as
+# the detector.
+#
+# TIME PLACEMENT. source_start names the window of the 2018 source year this
+# scenario reads, chosen for weather that makes the fault observable. onset is
+# in scenario time, twenty whole years later, so day-of-year and time-of-day are
+# preserved and the occupancy schedule lands at the right hour. Each scenario
+# occupies its own era so that two scenarios on the same equipment never write
+# the same point at the same instant.
+#
+# SEVERITY LADDER. waypoints are ordered MILDEST FIRST. Percent heat transfer RETAINED again, so 095 is mildest and 065 is worst.
+# Three rungs here, unlike the chiller's two.
+
+scenario_id: cooling_tower_fouling
+system: chiller
+target_asset: ct-1
+fault_mode: cooling_tower_fouling
+description: >-
+  HELD OUT. The tower fill fouls, so it can no longer cool the condenser water
+  close to the wet bulb temperature. The chillers then face warmer condenser
+  water and lose efficiency and capacity, which is a fault that shows up on one
+  machine and is caused by another.
+  NO RULE IS WRITTEN FOR THIS FAULT. It exists to test whether the system
+  generalises to a degradation it has never been taught, rather than only
+  recognising the ones it was tuned on.
+profile: progressive
+source_start: '2018-05-15'
+onset: '2038-05-31 00:00:00'
+pre_onset_days: 21
+span_days: 120
+duration_to_failure_days: 60
+severity_ceiling: 1.0
+seed: 26051501
+degradation_indicator: ct-1.supply_temp
+baseline_file: ChillerPlant.csv
+waypoints:
+- {level: 1, file: ChillerPlant_coolingtower_fouling_095.csv, label: 95% heat transfer retained}
+- {level: 2, file: ChillerPlant_coolingtower_fouling_080.csv, label: 80% heat transfer retained}
+- {level: 3, file: ChillerPlant_coolingtower_fouling_065.csv, label: 65% heat transfer retained}

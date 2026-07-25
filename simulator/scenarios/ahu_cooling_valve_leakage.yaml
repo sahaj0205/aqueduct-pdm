@@ -1,0 +1,48 @@
+# Scenario: ahu_cooling_valve_leakage
+#
+# A spring window, because a leaking cooling valve is most visible when the
+# building is not calling for cooling: the coil chills air that should have
+# been left alone, and supply air falls below its 55F setpoint.
+#
+# TIME PLACEMENT. source_start names the window of the 2018 source year this
+# scenario reads, chosen for weather that makes the fault observable. onset is
+# in scenario time, eighteen whole years later, so day-of-year and time-of-day are
+# preserved and the occupancy schedule lands at the right hour. Each scenario
+# occupies its own era so that two scenarios on the same equipment never write
+# the same point at the same instant.
+#
+# SEVERITY LADDER. waypoints are ordered MILDEST FIRST. Here the numbers are percent leakage, so larger is worse and the order is
+# the natural numeric one.
+
+scenario_id: ahu_cooling_valve_leakage
+system: sdahu
+target_asset: ahu-1
+fault_mode: cooling_coil_valve_leakage
+description: >-
+  Chilled water leaks past the cooling coil valve even when it is commanded
+  shut, so the coil keeps cooling air that does not need cooling. Shows up as
+  supply air drifting below setpoint in mild weather, and as wasted energy the
+  building then has to reheat.
+profile: progressive
+source_start: '2018-03-01'
+onset: '2036-03-17 00:00:00'
+pre_onset_days: 21
+span_days: 120
+duration_to_failure_days: 45
+severity_ceiling: 1.0
+seed: 24010301
+degradation_indicator: ahu-1.sa_temp
+baseline_file: AHU_annual.csv
+# ONE RUNG, NOT FOUR. LBNL ships coi_leakage_010, _025, _040 and _050 as four
+# separate severity levels, and all four are the same file -- md5 a9fdfc50 for
+# every one of them. There is exactly one measured leakage severity in this
+# dataset, so declaring four would mean interpolating between a value and itself
+# three times over and calling the result a ladder. The trajectory below still
+# walks smoothly from healthy to the measured faulted state; it just does so in
+# one span rather than four, because that is what the data supports.
+#
+# If a richer ladder matters more than matching the fault this checkpoint named,
+# coi_stuck ships four genuinely distinct files (md5 e15bd020, 1b0c8ab2,
+# c306fbac, 46eb34e9) -- but a stuck valve is a different fault from a leaking one.
+waypoints:
+- {level: 1, file: coi_leakage_010_annual.csv, label: leaking (single measured severity)}

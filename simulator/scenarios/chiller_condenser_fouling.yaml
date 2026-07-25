@@ -1,0 +1,41 @@
+# Scenario: chiller_condenser_fouling
+#
+# A summer window, because fouling only shows when the machine is loaded.
+# Seventy days to failure: fouling is the slowest of the mechanical faults
+# here, which is why it is the one worth predicting rather than just
+# detecting.
+#
+# TIME PLACEMENT. source_start names the window of the 2018 source year this
+# scenario reads, chosen for weather that makes the fault observable. onset is
+# in scenario time, twenty whole years later, so day-of-year and time-of-day are
+# preserved and the occupancy schedule lands at the right hour. Each scenario
+# occupies its own era so that two scenarios on the same equipment never write
+# the same point at the same instant.
+#
+# SEVERITY LADDER. waypoints are ordered MILDEST FIRST. CRITICAL and counter-intuitive: these numbers are percent heat transfer
+# RETAINED, so 095 is the MILD case and 065 is the severe one. Sorting them
+# numerically would run the trajectory backwards, from broken to healthy.
+# Only two levels exist in the source, so the ladder has two rungs, not
+# four.
+
+scenario_id: chiller_condenser_fouling
+system: chiller
+target_asset: chiller-1
+fault_mode: condenser_fouling
+description: >-
+  Scale and biofilm build up on the condenser tubes, so the chiller cannot
+  reject heat as well. It has to compress against a higher condensing
+  temperature to shed the same load, which costs power and eventually capacity.
+profile: progressive
+source_start: '2018-05-15'
+onset: '2036-05-31 00:00:00'
+pre_onset_days: 21
+span_days: 120
+duration_to_failure_days: 70
+severity_ceiling: 1.0
+seed: 24051501
+degradation_indicator: chiller-1.power
+baseline_file: ChillerPlant.csv
+waypoints:
+- {level: 1, file: ChillerPlant_chiller_fouling_095.csv, label: 95% heat transfer retained}
+- {level: 2, file: ChillerPlant_chiller_fouling_065.csv, label: 65% heat transfer retained}

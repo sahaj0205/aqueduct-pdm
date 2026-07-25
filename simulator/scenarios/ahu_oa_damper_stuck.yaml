@@ -1,0 +1,42 @@
+# Scenario: ahu_oa_damper_stuck
+#
+# A late-winter window covering the economizer season, when outdoor air is
+# between 33.8F and 60F and the damper is actually being modulated. A damper
+# fault in high summer is nearly invisible because the damper sits at its
+# 10% minimum either way. This is a STEP fault: something jams, and it jams
+# at once rather than degrading, so duration_to_failure_days is zero and the
+# trajectory goes straight to the ceiling at onset.
+#
+# TIME PLACEMENT. source_start names the window of the 2018 source year this
+# scenario reads, chosen for weather that makes the fault observable. onset is
+# in scenario time, nineteen whole years later, so day-of-year and time-of-day are
+# preserved and the occupancy schedule lands at the right hour. Each scenario
+# occupies its own era so that two scenarios on the same equipment never write
+# the same point at the same instant.
+#
+# SEVERITY LADDER. waypoints are ordered MILDEST FIRST. Percent open, and the worst case is the largest departure from correct
+# control rather than the largest number. damper_stuck_100 is excluded
+# because it covers only April to November and cannot fill this window.
+
+scenario_id: ahu_oa_damper_stuck
+system: sdahu
+target_asset: ahu-1
+fault_mode: outdoor_air_damper_stuck
+description: >-
+  The outdoor air damper jams and stops responding to the economizer. The unit
+  can no longer trade free outdoor cooling against mechanical cooling, so it
+  either drags in unconditioned air or refuses free cooling it should be taking.
+profile: step
+source_start: '2018-02-01'
+onset: '2037-02-17 00:00:00'
+pre_onset_days: 21
+span_days: 120
+duration_to_failure_days: 0
+severity_ceiling: 1.0
+seed: 24020101
+degradation_indicator: ahu-1.oa_damper
+baseline_file: AHU_annual.csv
+waypoints:
+- {level: 1, file: damper_stuck_010_annual.csv, label: stuck at 10% open}
+- {level: 2, file: damper_stuck_025_annual.csv, label: stuck at 25% open}
+- {level: 3, file: damper_stuck_075_annual.csv, label: stuck at 75% open}

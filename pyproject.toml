@@ -28,6 +28,11 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ruff>=0.7",
+    # Diagnostic plotting only, for scripts/plot_scenario.py. Deliberately in the
+    # dev group rather than the runtime dependencies: nothing the API or the
+    # platform layers serve depends on it, and the charts users actually see are
+    # drawn by Recharts in the frontend.
+    "matplotlib>=3.9",
 ]
 
 [tool.uv]
