@@ -1,0 +1,43 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.uv/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# --- Node ---
+node_modules/
+web/dist/
+web/.vite/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+
+# --- Environment ---
+.env
+.env.*
+!.env.example
+
+# --- Data ---
+# Source datasets are downloaded, not committed. See PROJECT_CONTEXT.md.
+data/raw/
+
+# --- Working notes ---
+SCRATCH.md
+CLAUDE.md
+
+# --- Editor / OS ---
+.DS_Store
+.idea/
+.vscode/

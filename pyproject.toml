@@ -1,0 +1,38 @@
+[project]
+name = "aqueduct-pdm"
+version = "0.1.0"
+description = "Predictive maintenance platform for building HVAC equipment"
+requires-python = ">=3.11"
+dependencies = [
+    # API
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    # database — SQLAlchemy Core, not ORM
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    # semantic model
+    "rdflib>=7.1",
+    # analytics
+    "numpy>=2.1",
+    "scipy>=1.14",
+    "pandas>=2.2",
+    "statsmodels>=0.14",
+    # ingestion
+    "pint>=0.24",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.7",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
