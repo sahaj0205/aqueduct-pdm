@@ -33,34 +33,40 @@ def resolve_dsn() -> str:
 
 def load_asset_readings(
     conn: psycopg.Connection, asset_id: str, t_from: datetime, t_to: datetime
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Values and quality scores for one asset over one window.
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Values, quality scores and quality flags for one asset over one window.
 
-    Returns two frames on the same index and columns -- one of readings, one of
-    the scores that go with them -- so a caller can line a value up against its
-    trustworthiness by position without a join.
+    Returns three frames on the same index and columns -- the readings, the
+    scores that go with them, and the breakdown of which dimensions each score
+    failed -- so a caller can line all three up by position without a join.
     """
     rows = conn.execute(
-        "SELECT m.time, m.point_id, m.value_si, m.quality_score "
+        "SELECT m.time, m.point_id, m.value_si, m.quality_score, m.quality_flags "
         "  FROM app.measurements m JOIN app.points p USING (point_id) "
         " WHERE p.asset_id = %s AND m.time >= %s AND m.time < %s",
         (asset_id, t_from, t_to),
     ).fetchall()
     if not rows:
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
-    frame = pd.DataFrame(rows, columns=["time", "point_id", "value_si", "quality_score"])
+    frame = pd.DataFrame(
+        rows, columns=["time", "point_id", "value_si", "quality_score", "quality_flags"]
+    )
     values = frame.pivot_table(
         index="time", columns="point_id", values="value_si", dropna=False
     ).sort_index()
     quality = frame.pivot_table(
         index="time", columns="point_id", values="quality_score", dropna=False
     ).sort_index()
-    return values, quality
+    # pivot_table aggregates, and a dict is not aggregatable, so the flags are
+    # reshaped with pivot instead. They are needed because a rule that treats a
+    # motionless reading as evidence has to know WHICH dimension scored badly.
+    flags = frame.pivot(index="time", columns="point_id", values="quality_flags").sort_index()
+    return values, quality, flags
 
 
 def readings_at(
-    values: pd.DataFrame, quality: pd.DataFrame, at: datetime
+    values: pd.DataFrame, quality: pd.DataFrame, flags: pd.DataFrame, at: datetime
 ) -> dict[str, Reading]:
     """The value-and-quality pair for every point at one instant.
 
@@ -69,26 +75,59 @@ def readings_at(
     """
     value_row = values.loc[at]
     quality_row = quality.loc[at] if at in quality.index else None
+    flag_row = flags.loc[at] if at in flags.index else None
     out: dict[str, Reading] = {}
     for point_id in values.columns:
         raw_value = value_row.get(point_id)
         raw_quality = None if quality_row is None else quality_row.get(point_id)
+        raw_flags = None if flag_row is None else flag_row.get(point_id)
         out[point_id] = Reading(
             value=None if pd.isna(raw_value) else float(raw_value),
             quality=None if raw_quality is None or pd.isna(raw_quality) else int(raw_quality),
+            flags=raw_flags if isinstance(raw_flags, dict) else None,
         )
     return out
 
 
 def signal_frames(
-    values: pd.DataFrame, quality: pd.DataFrame, signals: dict[str, str]
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+    values: pd.DataFrame,
+    quality: pd.DataFrame,
+    flags: pd.DataFrame,
+    signals: dict[str, str],
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Rename point columns to the roles the mode classifier asks for."""
     wanted = {role: point for role, point in signals.items() if point in values.columns}
-    named_values = values[list(wanted.values())].rename(
-        columns={point: role for role, point in wanted.items()}
+    columns = list(wanted.values())
+    rename = {point: role for role, point in wanted.items()}
+    return (
+        values[columns].rename(columns=rename),
+        quality[columns].rename(columns=rename),
+        flags[columns].rename(columns=rename),
     )
-    named_quality = quality[list(wanted.values())].rename(
-        columns={point: role for role, point in wanted.items()}
-    )
-    return named_values, named_quality
+
+
+def effective_quality_frame(quality: pd.DataFrame, flags: pd.DataFrame) -> pd.DataFrame:
+    """Recompute every score ignoring the staleness dimension.
+
+    Staleness says a reading stopped changing, not that it is wrong, so a value
+    marked down only for sitting still is still a correct statement of where the
+    sensor or actuator is. Judging operating mode on the raw composite throws
+    that away: the outdoor air damper resting on its minimum position for hours
+    is scored badly for not moving, and the mode then becomes unknown for a
+    fifth of the time the quality layer flags it -- which suppresses every rule,
+    including the one looking for a damper that has seized.
+    """
+    out = quality.copy()
+    for column in quality.columns:
+        if column not in flags.columns:
+            continue
+        column_flags = flags[column]
+        flagged = column_flags.map(lambda entry: isinstance(entry, dict))
+        if not flagged.any():
+            continue
+        out.loc[flagged, column] = column_flags[flagged].map(
+            lambda entry: min(
+                [score for name, score in entry.items() if name != "staleness"], default=100
+            )
+        )
+    return out

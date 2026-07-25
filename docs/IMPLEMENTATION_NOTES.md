@@ -2727,3 +2727,222 @@ all, or whether a stuck reading is its evidence rather than its obstacle.
 
 START HERE: `analytics/rules/registry.py` — `class_closure` and `RuleContext` are
 the two ideas in this checkpoint; everything else is scaffolding around them.
+
+## Checkpoint 3.3 — APAR rules
+
+### WHAT WE DID
+
+The system can now say, in physical terms, that an air handler is misbehaving —
+and it says so without crying wolf. Six published expert rules were implemented,
+each a statement about conservation of mass or energy across the machine, each
+only evaluated in the operating states where that balance is supposed to hold.
+
+The hard part was not the rules but the silence around them. Air handlers are
+only in balance when they have settled, and they are unsettled every morning at
+startup and for a while after each time the controls change strategy. Rules run
+during those moments do not find faults; they find the changeover, and a system
+that alarms at every changeover gets switched off by the people answering the
+alarms. Four separate mechanisms now hold the rules quiet until the machine has
+settled, and the result is zero false alarms across 485 days of fault-free
+operation while still keeping 83 to 87 percent of occupied time available for
+detection.
+
+Run against the injected faults, the rules caught one of the three air-side
+faults outright and missed two. Both misses are understood and neither is a bug;
+they are recorded below because they define what the later layers have to do.
+
+### HOW IT WORKS
+
+`analytics/rules/registry.py :: effective_quality` and `STALENESS`
+  WHY IT EXISTS: The quality layer refuses to let a rule read a reading it has
+    marked down. For one rule that refusal blocks exactly the evidence the rule
+    exists to find.
+  WHAT IT DOES: A reading can be marked down for five reasons. Four of them —
+    it never arrived, it arrived empty, it is physically impossible, it moved
+    faster than physics allows — mean the NUMBER is wrong. The fifth, staleness,
+    means only that the number stopped changing, and a seized actuator still
+    reports its position perfectly accurately. So a rule may declare specific
+    points whose staleness it treats as evidence, and for those the trust score
+    is recomputed across the other four dimensions alone.
+  CHOICES: Declared per rule and per point, never globally, so the exemption sits
+    at the top of the rule claiming it. It never waives the other four: a valve
+    reading outside 0 to 1, or jumping impossibly fast, is still refused.
+  ⚠ JUDGEMENT CALL: Only rule 20 claims it, for the cooling coil valve. The rule
+    tests whether the valve has run fully open and stayed there, which IS a
+    flatline by definition, so without the exemption the quality layer would
+    suppress the rule at precisely the moment its condition became true.
+
+`analytics/rules/readings.py :: effective_quality_frame`
+  WHY IT EXISTS: The same problem, one layer earlier. The operating mode is read
+    from the outdoor air damper among other signals, and a damper resting on its
+    minimum position for hours is marked stale.
+  WHAT IT DOES: Recomputes every trust score across the non-staleness dimensions
+    before the mode classifier sees it.
+  CHANGED FROM BEFORE: Without this the mode was unknown for 2.19% of the year
+    and no rule ran at all during those periods. With it, the year contains no
+    unknown modes whatsoever.
+
+`analytics/rules/apar.py` — module docstring
+  WHY IT EXISTS: The checkpoint asks which six rules were implemented and why the
+    other twenty-two were not, and that answer is worth more than the code.
+  WHAT IT DOES: Lists all six with their APAR numbers and expressions, then walks
+    the twenty-two exclusions in groups: nine need a heating coil valve this unit
+    does not have, two need an economizer changeover temperature the dataset does
+    not publish, five belong to a mode whose definition here is only approximate,
+    two are redundant against rules already chosen, one needs an operating mode
+    the classifier never produces, and the rest test the control's decisions
+    rather than the equipment.
+  CHOICES: More than six qualify. The six were chosen to span the modes the unit
+    actually spends time in and to cover the three air-side faults this project
+    injects. Rule 19 was passed over for rule 20 specifically because 19 adds a
+    supply-air condition that a drifting supply air sensor can never satisfy —
+    the sensor reads at setpoint by construction — so 19 would be blind to the
+    one fault 20 catches.
+
+`analytics/rules/apar.py` — thresholds
+  WHY IT EXISTS: Every number a rule compares against has to come from somewhere
+    defensible, or the rules are just opinions.
+  WHAT IT DOES: Four thresholds are APAR's own, taken from the reference
+    implementation in NISTIR 7365: 2.0 degC on temperature errors, 0.02 on the
+    cooling valve signal, 0.30 on outdoor air fraction, and 5.6 degC as the
+    minimum outdoor-to-return temperature difference for the fraction to mean
+    anything. Two are building-specific and were measured.
+  CHOICES: The supply fan temperature rise is 0.53 degC here against APAR's
+    published default of 1.1. Measured as the difference between supply and mixed
+    air across the 17,508 samples of the fault-free year where the cooling coil
+    is shut, so nothing but the fan is moving heat. Using the published default
+    would bias rule 7 by 0.57 degC — a quarter of its threshold — in the
+    direction that hides a leaking valve.
+  ⚠ JUDGEMENT CALL: The minimum outdoor air fraction is 0.016, measured, where
+    APAR's reference implementation would set it to the minimum damper position
+    over 100, which is 0.10. Those differ by a factor of six. Damper position and
+    airflow are related through the pressure drop across a partly open blade and
+    are nowhere near proportional. Measured over the 15,910 fault-free samples in
+    minimum-outdoor-air cooling, the fraction sits between 0.0155 and 0.0161 from
+    the tenth to the ninetieth percentile, which is tight enough to use as a
+    fixed expectation. Taking the reference implementation's value on trust would
+    have put the healthy operating point 0.084 away from where the rule expects
+    it, eating a third of the rule's tolerance before any fault occurred.
+
+`analytics/rules/evaluate.py :: ewma_with_resets`
+  WHY IT EXISTS: The first of APAR's four suppression mechanisms. Rules run on a
+    smoothed signal, not a raw sample, so one noisy reading cannot trip an alarm.
+  WHAT IT DOES: Keeps a running average that leans mostly on its own history and
+    a little on each new sample, and RESTARTS it from scratch whenever the
+    operating mode changes. The restart is the important half: a plain average
+    carries the old mode's conditions across a changeover and takes many samples
+    to forget them, which is exactly the interval the delays are protecting.
+  CHOICES: NISTIR 7365 publishes a smoothing constant of 0.1 applied once per
+    control scan, and a building automation scan is roughly a minute where this
+    data arrives every five. Using 0.1 directly would smooth over five times as
+    much wall-clock time as intended, so it is converted to preserve the time
+    constant instead. Written as an explicit loop because the standard library
+    routine has no concept of a reset.
+
+`analytics/rules/evaluate.py :: suppression_mask`
+  WHY IT EXISTS: The second and third mechanisms. Some moments are simply not
+    admissible evidence.
+  WHAT IT DOES: Marks an instant evaluable only if the unit is occupied, at least
+    90 minutes have passed since occupancy began, and at least 60 minutes have
+    passed since the mode last changed. Both delays are APAR's published values.
+  CHOICES: Occupancy is taken from the mode itself rather than from a separate
+    signal, so the two clocks cannot disagree about when the day started.
+
+`analytics/rules/evaluate.py :: run_rules`
+  WHY IT EXISTS: Ties smoothing, suppression, dispatch and the quality gate
+    together across a whole season.
+  WHAT IT DOES: Smooths the inputs, works out which instants are admissible, and
+    at each of those asks every rule that applies to the machine's class. Quality
+    scores come from the RAW readings rather than the smoothed ones, because an
+    average of numbers nobody trusts is still untrustworthy and the quality layer
+    scored samples, not averages.
+  CHOICES: Values are pulled into plain arrays once before the loop. Building
+    each instant's readings out of table lookups instead is the difference
+    between seconds and tens of minutes across a year.
+
+`analytics/rules/evaluate.py :: sustained`
+  WHY IT EXISTS: The fourth mechanism, and the one that turns a condition into a
+    report.
+  WHAT IT DOES: Groups each rule's true instants into unbroken stretches and only
+    reports a stretch once it has lasted the full hour APAR requires.
+  ⚠ JUDGEMENT CALL: A stretch is broken by an evaluated instant where the rule
+    was false, but NOT by the gaps where evaluation was suppressed. A fault does
+    not stop existing because the unit changed mode, and requiring an unbroken
+    hour of admissible samples would mean almost nothing ever qualified — the
+    suppression windows are long enough to fragment every real fault.
+
+`scripts/run_apar.py`
+  WHY IT EXISTS: The verification. It produces every number the checkpoint asks
+    for and the plot that shows the suppression working.
+  WHAT IT DOES: Runs the six rules over the fault-free year, the three faulted
+    AHU scenarios and the clean scenario; prints per-rule evaluation counts,
+    firings and reports; computes false positives per asset-day on the fault-free
+    windows only; then counts firings landing inside any post-transition
+    suppression window and draws them against the mode changes.
+  CHOICES: The window boundaries are stated by the operator, not read from the
+    answer key — this script connects as the restricted role and could not read
+    it. The labels name the windows in the report and decide which count as
+    fault-free; nothing in the detection path consumes them.
+
+### MEASURED RESULT
+
+False positives, the headline number:
+
+    lbnl-fault-free-year     0 reported over 365 days = 0.0000 per asset-day
+    clean_ahu                0 reported over 120 days = 0.0000 per asset-day
+
+Across 485 fault-free asset-days, not one rule reported. On the fault-free year
+the six rules were evaluated 163,895 times between them and the condition was
+never true, not merely never sustained.
+
+Transient suppression:
+
+    firings inside a 60-minute post-transition window: 0, across 39 transitions
+    occupied time surviving suppression: 82.8% to 87.2% depending on scenario
+
+Detection, one of three air-side faults caught:
+
+    ahu_sat_sensor_drift   apar-20 reported 918 times (7.65/day), peak severity 1.00
+                           apar-7  reported  42 times (0.35/day), peak severity 0.74
+                           9 episodes, the longest 141 samples
+    ahu_cooling_valve_leakage   nothing reported
+    ahu_oa_damper_stuck         nothing reported
+
+### THE TWO MISSES, AND WHY THEY ARE NOT BUGS
+
+**Outdoor air damper stuck — the mode gate routes evaluation away from the rule.**
+Rule 18 is the rule for this fault and its evidence is overwhelming: with the
+damper seized at 0.750 the measured outdoor air fraction is 0.675 against an
+expected 0.016, a gap of 0.659 which is more than twice the rule's threshold. It
+never gets the chance. The mode classifier reads the same damper, sees it well
+above the economizer margin, and concludes the unit is economizing — so the unit
+spends 11.7% of occupied time in minimum-outdoor-air cooling during the fault
+against 92.5% when healthy, and rule 18 only ever evaluates during the three
+weeks before onset, where it correctly stays silent.
+
+This is a structural limitation of mode-gated detection, not a threshold that
+needs moving: the operating mode is inferred from the very actuator that is
+broken, so the fault disguises itself as a control decision. The detector that
+does not have this problem is a comparison of damper COMMAND against damper
+POSITION — the dataset carries both — but that is not one of the 28 APAR rules
+and does not belong in this module.
+
+**Cooling coil valve leaking — the fault is smaller than APAR's noise floor, and
+out of season.** Rule 7 is the rule for this fault, and it only applies while the
+unit is cooling with outdoor air, because that is the only state in which the
+coil is supposed to be doing nothing. Two things compound. Free cooling in that
+scenario's window runs from 25 February to 20 March; the fault is injected on 17
+March and does not reach full severity until 1 May, so only three days of
+admissible time overlap the fault at all, and those three days are its weakest.
+Second, even there the quantity the rule tests peaks at 0.43 degC against a
+threshold of 2.0 — 22% of the way. Once the season turns, the coil is supposed to
+be cooling, and extra cooling from a leaking valve is indistinguishable from the
+coil doing its job.
+
+Both misses say the same thing: APAR is a conservative, in-balance test that
+trades sensitivity for silence, and it earns its zero false alarms honestly. The
+faults it cannot see are the ones the condition-normalised baselines and the
+cross-sensor residuals are for.
+
+START HERE: `analytics/rules/apar.py` — the module docstring is the checkpoint;
+the six rules under it are a direct transcription of Table 2.1.

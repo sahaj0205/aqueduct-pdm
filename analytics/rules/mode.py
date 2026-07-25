@@ -93,6 +93,12 @@ HEATING_DEADBAND_C = 0.5
 # Quality below which a control signal is not trusted and the mode is unknown.
 # Matches the rule registry's default, deliberately: a mode derived from a
 # reading the rules themselves would refuse is worth no more than the reading.
+#
+# Callers should pass quality that has already had the staleness dimension taken
+# out of it -- see readings.effective_quality_frame. A damper resting on its
+# minimum position is scored badly for not moving, but it is still telling the
+# truth about where it is, and letting that make the mode unknown suppresses
+# every rule for a fifth of the flagged time.
 MIN_SIGNAL_QUALITY = 70
 
 

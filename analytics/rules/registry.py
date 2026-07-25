@@ -126,10 +126,46 @@ class RuleOutcome:
 
 @dataclass(frozen=True)
 class Reading:
-    """A point's value and how far it can be trusted, as the scorer left it."""
+    """A point's value and how far it can be trusted, as the scorer left it.
+
+    `flags` is the quality layer's breakdown of WHY the composite is what it is:
+    the dimensions scoring below 100, by name. It is carried alongside the
+    composite because some rules need to know the reason and not just the number
+    -- see effective_quality below.
+    """
 
     value: float | None
     quality: int | None
+    flags: dict[str, int] | None = None
+
+
+# The one quality dimension that does not mean the reading is wrong.
+#
+# A reading can score badly for five reasons. Four of them -- it never arrived,
+# it arrived empty, it is outside what is physically possible, it moved faster
+# than physics allows -- say the NUMBER cannot be believed. Staleness says
+# something different: the number stopped changing. A stuck sensor still reports
+# a perfectly valid value, and a stuck damper really is sitting at the position
+# it reports.
+#
+# That distinction is what lets a rule whose whole purpose is to catch a seized
+# actuator read the very point whose immobility is the symptom. Without it the
+# quality layer suppresses exactly the rule that was going to explain it.
+STALENESS = "staleness"
+
+
+def effective_quality(reading: Reading, staleness_is_evidence: bool) -> int | None:
+    """The trust score a rule should judge this reading by.
+
+    Normally the composite the quality layer wrote. For a rule that treats a
+    motionless reading as its evidence, the composite is recomputed across the
+    other four dimensions only, so a point marked down purely for not moving is
+    still readable while one that is genuinely out of range is still refused.
+    """
+    if not staleness_is_evidence or reading.flags is None:
+        return reading.quality
+    others = [score for name, score in reading.flags.items() if name != STALENESS]
+    return 100 if not others else min(others)
 
 
 # ---------------------------------------------------------------------------
@@ -173,12 +209,14 @@ class RuleContext:
         readings: Mapping[str, Reading],
         mode: str | None,
         min_input_quality: int,
+        staleness_is_evidence: frozenset[str] = frozenset(),
     ):
         self.asset_id = asset_id
         self.at = at
         self.mode = mode
         self._readings = readings
         self._min_quality = min_input_quality
+        self._staleness_ok = staleness_is_evidence
         self._seen: list[InputReading] = []
 
     def value(self, point_id: str, role: str) -> float:
@@ -186,14 +224,13 @@ class RuleContext:
         reading = self._readings.get(point_id)
         if reading is None or reading.value is None:
             raise InputMissing(point_id)
-        if reading.quality is None or reading.quality < self._min_quality:
+        quality = effective_quality(reading, point_id in self._staleness_ok)
+        if quality is None or quality < self._min_quality:
             # Record it before raising, so the outcome can name the point that
             # blocked the rule rather than just saying something was untrusted.
-            self._seen.append(
-                InputReading(point_id, role, reading.value, reading.quality or 0)
-            )
-            raise InsufficientQuality(point_id, reading.quality, self._min_quality)
-        self._seen.append(InputReading(point_id, role, reading.value, reading.quality))
+            self._seen.append(InputReading(point_id, role, reading.value, quality or 0))
+            raise InsufficientQuality(point_id, quality, self._min_quality)
+        self._seen.append(InputReading(point_id, role, reading.value, quality))
         return reading.value
 
     def optional(self, point_id: str, role: str) -> float | None:
@@ -224,6 +261,10 @@ class RegisteredRule:
     min_input_quality: int = 70
     persistence_minutes: int = 15
     description: str = ""
+    # Points this rule may read even when the quality layer marked them down for
+    # not moving. Declared per rule and per point, never globally, so the
+    # exemption is visible at the top of the rule that needs it.
+    staleness_is_evidence: tuple[str, ...] = ()
 
     @property
     def applies_to_uri(self) -> URIRef:
@@ -239,6 +280,7 @@ def rule(
     modes: Iterable[object] = (),
     min_input_quality: int = 70,
     persistence_minutes: int = 15,
+    staleness_is_evidence: Iterable[str] = (),
 ):
     """Register a rule against a Brick class.
 
@@ -249,8 +291,17 @@ def rule(
     evaluation time; an empty list means the rule applies in every mode.
 
     persistence_minutes is recorded but not enforced here. Holding a condition
-    open across time is transient suppression, which arrives with the APAR rules
-    in the next checkpoint; this field is where those rules will read it from.
+    open across time is transient suppression, which lives in the evaluation
+    driver; this field is where it reads the requirement from.
+
+    staleness_is_evidence names points this rule may read even when the quality
+    layer marked them down purely for not changing. It exists for rules that
+    detect a seized actuator or a frozen sensor, where a motionless reading is
+    the symptom rather than an obstacle -- without it the quality gate suppresses
+    precisely the rule that was going to explain the flag. It is declared per
+    rule and per point so the exemption is visible at the top of the rule that
+    claims it, and it never waives the other four quality dimensions: a reading
+    that is out of range or impossibly fast is still refused.
     """
 
     def register(fn: Callable[[RuleContext], Verdict]) -> Callable[[RuleContext], Verdict]:
@@ -266,6 +317,7 @@ def rule(
             min_input_quality=min_input_quality,
             persistence_minutes=persistence_minutes,
             description=(fn.__doc__ or "").strip().split("\n")[0],
+            staleness_is_evidence=tuple(staleness_is_evidence),
         )
         return fn
 
@@ -403,7 +455,14 @@ def evaluate_rule(
             (),
         )
 
-    ctx = RuleContext(asset_id, at, readings, mode, registered.min_input_quality)
+    ctx = RuleContext(
+        asset_id,
+        at,
+        readings,
+        mode,
+        registered.min_input_quality,
+        frozenset(registered.staleness_is_evidence),
+    )
     try:
         verdict = registered.fn(ctx)
     except InsufficientQuality as refused:

@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot api web
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar api web
 
 # Resolve and install the Python environment into .venv
 install:
@@ -71,6 +71,11 @@ rules-demo:
 # to make. Pass --from and --days for any other window.
 mode-plot:
 	uv run python scripts/plot_mode.py
+
+# Run the six APAR rules over every AHU scenario: what fired, false positives per
+# asset-day on fault-free data, and a plot of firings against mode changes.
+apar:
+	uv run python scripts/run_apar.py
 
 # Serve the API on :8000
 api:

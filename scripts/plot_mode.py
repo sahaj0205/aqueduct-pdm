@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from analytics.rules.mode import SIGNALS, Mode, classify_frame, transitions
 from analytics.rules.readings import (
+    effective_quality_frame,
     load_asset_readings,
     resolve_dsn,
     signal_frames,
@@ -81,21 +82,22 @@ def main() -> int:
     t_to = t_from + timedelta(days=args.days)
 
     with psycopg.connect(resolve_dsn()) as conn:
-        year_values, year_quality = load_asset_readings(
-            conn, "ahu-1", t_from.replace(month=1, day=1), t_from.replace(month=1, day=1)
-            + timedelta(days=365)
+        january = t_from.replace(month=1, day=1)
+        year_values, year_quality, year_flags = load_asset_readings(
+            conn, "ahu-1", january, january + timedelta(days=365)
         )
-        values, quality = load_asset_readings(conn, "ahu-1", t_from, t_to)
+        values, quality, flags = load_asset_readings(conn, "ahu-1", t_from, t_to)
 
     if values.empty:
         print(f"no readings for ahu-1 between {t_from} and {t_to}")
         return 1
 
-    year_modes = classify_frame(*signal_frames(year_values, year_quality, SIGNALS))
-    summarise(f"whole year from {t_from.date().replace(month=1, day=1)}", year_modes)
+    yv, yq, yf = signal_frames(year_values, year_quality, year_flags, SIGNALS)
+    year_modes = classify_frame(yv, effective_quality_frame(yq, yf))
+    summarise(f"whole year from {january.date()}", year_modes)
 
-    signals, signal_quality = signal_frames(values, quality, SIGNALS)
-    modes = classify_frame(signals, signal_quality)
+    signals, signal_quality, signal_flags = signal_frames(values, quality, flags, SIGNALS)
+    modes = classify_frame(signals, effective_quality_frame(signal_quality, signal_flags))
     summarise(f"{t_from.date()} .. {t_to.date()}", modes)
 
     changes = transitions(modes)
