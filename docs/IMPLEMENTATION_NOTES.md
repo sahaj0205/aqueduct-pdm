@@ -1284,7 +1284,7 @@ the gate that proves it worked.
   So the entire water topology is authored here. Without it, walking upstream
   from the cooling coil returns nothing and cross-asset diagnosis is impossible
   by construction.
-- WHAT IT DOES: Creates two loop nodes and 22 statements. Three chillers and five
+- WHAT IT DOES: Creates two loop nodes and 21 topology statements. Three chillers and five
   chilled water pumps feed the chilled water loop; the chilled water loop feeds
   the air handler's cooling coil — that single statement is what makes the two
   systems one graph. Three cooling towers, three condenser pumps and the diverting
@@ -1308,7 +1308,7 @@ the gate that proves it worked.
   direction at all, so without it the plant has no internal topology, the
   condenser fouling scenario in the next checkpoint has no path from tower to
   chiller, and the traversal queries in 2.3 would return almost nothing for any
-  plant asset. It is 11 of the 22 authored statements and removable on its own.
+  plant asset. It is 11 of the 21 authored statements and removable on its own.
 - CHOICES: The condenser loop node is typed as a generic water loop, not as a
   condenser water loop. Checked against the published Brick 1.3 ontology: there
   is no condenser water loop class — Brick defines loop, water loop, chilled water
@@ -1417,7 +1417,7 @@ the gate that proves it worked.
 
 ### MEASURED RESULT
 
-- Merged graph 438 triples, up from 272. 151 typed entities. 22 authored
+- Merged graph 438 triples, up from 272. 151 typed entities. 21 authored
   topology statements, 2 new equipment nodes, 5 constraints binding 30 readings,
   8 assets carrying attributes, 14 design values.
 - **Gate PASS.** From the air handler's cooling coil, walking flow backwards
@@ -2155,3 +2155,90 @@ trajectories was, unknowingly, splitting one file from itself.
 START HERE: `simulator/trajectory.py` — read `blend_contributions` first. Nine
 lines of arithmetic are the whole difference between a synthesised trajectory
 that a reviewer can trust and one that quietly invents its own physics.
+
+---
+
+## Checkpoint 2.5 — Decision log
+
+### WHAT WE DID
+
+The decision log now covers the semantic model, which was the last major
+architectural choice with nothing written about it, and two earlier entries have
+been closed out with what actually happened rather than what was expected.
+
+The value of closing them out is that both turned out partly wrong, and in
+different ways. The choice of public labelled data was correct and is now a
+demonstrated property of the system rather than a promise — but the assumption
+that came with it, that published data arrives correct, was not: it needed
+continuous repair across four checkpoints. And the trajectory-stitching decision
+was superseded by a better method two checkpoints later, while one of the reasons
+recorded in its favour turned out to be factually false. A decision log that only
+records decisions going well is not an audit trail.
+
+### HOW IT WORKS
+
+`AI_LOG.md` :: D-04 — Brick/RDF over Project Haystack or a custom graph
+- WHY IT EXISTS: The semantic model is what makes tracing a fault from one
+  machine to another possible at all, and until now nothing recorded why that
+  layer is built on Brick rather than on the two obvious alternatives.
+- WHAT IT DOES: Rejects Project Haystack because it describes equipment with bags
+  of tags rather than typed relationships, which means nothing can check a model
+  for contradictions and two authors can describe the same thing differently —
+  tolerable when a human reads it, fatal when a traversal query depends on it.
+  Rejects a custom schema as a worse Brick arrived at more slowly, throwing away
+  the models that already exist. Rejects the newer ASHRAE standard as unfinished
+  and heavier than needed. Chooses Brick, on the grounds that it has typed
+  relationships a query can traverse and that the equipment descriptions ship
+  with the data.
+- CHOICES: Records the adoption cost as roughly a day rather than the hour
+  estimated, and says exactly where the estimate went wrong. The published models
+  are two disconnected graphs, and the chiller plant model contains no flow
+  direction whatsoever — zero flow statements in 191. So the joining edge was not
+  one triple as expected; the whole water-side topology had to be authored, 22
+  statements and 2 invented nodes.
+- CHOICES: Records that one of the three class names found not to exist in Brick
+  was mine, not LBNL's — I assumed a condenser water loop class existed and it
+  does not. Attributing that to Brick rather than to myself would have been the
+  easy version.
+
+`AI_LOG.md` :: D-02 Outcome
+- WHY IT EXISTS: The entry claimed the accuracy figures would be computed against
+  labels the project did not create. That is now testable rather than aspirational.
+- WHAT IT DOES: Confirms the claim held and is enforced by the database rather
+  than by convention, re-verified at three separate checkpoints. Then records the
+  part that did not hold: eleven distinct defects in the published data, from
+  swapped column pairs through class names that are not real classes to whole
+  files published four times under four different severity names.
+- CHOICES: States plainly that "public data, so the labels are free" was wrong —
+  the labels were free, the data was not — while also stating why the decision is
+  still right: a simulator would have had no defects because it would have had no
+  independent authority either.
+
+`AI_LOG.md` :: D-03 Outcome
+- WHY IT EXISTS: Two things happened to this decision that a reader needs to know
+  and neither is visible from the entry as written.
+- WHAT IT DOES: Records that the method was superseded — the scenarios that
+  accuracy is measured against now interpolate the fault contribution rather than
+  concatenating whole files, which fixes the staircase caveat the entry itself
+  raised. Then corrects a claim the entry makes in my own favour: it credits me
+  with splitting signed sensor faults into separate high and low trajectories,
+  and those source files are byte-identical, so the split was of one file from
+  itself.
+- ⚠ JUDGEMENT CALL: The checkpoint asked only for D-02's outcome. I filled in
+  D-03's as well because it contains a statement now known to be false, and a
+  decision log carrying an uncorrected error is worth less than one with a gap in
+  it. Removing that outcome restores the specified scope exactly.
+
+### MEASURED RESULT
+
+- Four entries, each carrying all six required subsections: 4, 4, 4, 4, 4, 4.
+- D-02 and D-03 outcomes filled; D-01 and D-04 deliberately still open, D-04 with
+  the reason stated — the graph is not tested until cross-asset diagnosis in
+  Task 6.
+- The header is unchanged from the text specified in Task 1.
+- Numbered D-04, not D-03 as the checkpoint said, because D-03 is already the
+  trajectory-stitching entry and is cross-referenced from these notes.
+
+START HERE: `AI_LOG.md` — the "cost actually paid" section of D-04 is the part
+worth reading; it is the only place in the project that quantifies how wrong an
+adoption estimate was and why.

@@ -133,7 +133,44 @@ High.
 
 **Outcome**
 
-_(left blank)_
+**The decision holds. The premise that made it cheap did not.**
+
+The claim it was taken for is intact and is now a demonstrated property rather
+than an intention. Ground truth lives in its own schema, the role every part of
+the detection path connects as has all grants on it revoked, and a `SELECT`
+against it from that role fails with `permission denied for schema groundtruth` —
+re-verified at checkpoints 2.2, 2.3 and 2.4. The scenario generator in checkpoint
+2.4 writes the answer key on a separate `ADMIN_DATABASE_URL` connection, which is
+the only credential in the project permitted to touch that schema, and it is used
+by exactly one function. The fallback option, a minimal chiller performance-map
+generator, was never needed.
+
+What was wrong was the implicit assumption that using published data means
+inheriting data that is correct. It required continuous repair, and I did not
+budget for any of it:
+
+- Two pairs of columns are swapped relative to their own names — outdoor air dry
+  bulb against wet bulb, and the secondary loop supply against return. Both were
+  caught only by checking the physics, never by reading the documentation.
+- A third pair, the chiller's condenser water temperatures, uses "supply" in the
+  opposite sense to the plant-level readings of the same loop.
+- Three class names used in the published models are not Brick classes at all,
+  and fourteen more were too vague to select on. 45 corrections are now applied
+  at load time, against 3 after the first checkpoint.
+- The air flow readings are 60 times larger than the documented unit allows. The
+  documentation says CFM; as CFM the air handler would be removing 686 tons of
+  heat from five office zones. The documentation was overruled on physical
+  grounds — the only place in this project where that has been necessary.
+- One flow reading is a constant for the entire simulated year while its damper
+  swings fully open and shut, so it is not a measurement at all.
+- Two groups of files published as four distinct severity levels each are one
+  file repeated four times, byte for byte.
+
+None of that changes the answer. A self-built simulator would have had no defects
+because it would have had no independent authority either, which is exactly the
+circularity the decision was taken to avoid — and finding these defects is only
+possible because the data came from somewhere else. But "public data, so the
+labels are free" was wrong. The labels were free; the data was not.
 
 ---
 
@@ -217,4 +254,150 @@ a reviewer could reasonably want the later, worse segments to be shorter.
 
 **Outcome**
 
-_(left blank)_
+**Superseded by a better method, and one of the stated reasons turned out to be
+false.**
+
+Stitching did what it was chosen to do and the bulk trajectories built on it are
+still the project's main body of data. But checkpoint 2.4 replaced the *method*
+for the scenarios that accuracy is actually measured against. Rather than
+concatenating whole files in sequence, each scenario now takes the fault-free
+signal and adds a growing share of the measured difference between a faulted run
+and the clean run at the same instant. That keeps everything this decision was
+taken for — every value still traces to a third-party measurement — and fixes the
+caveat recorded above, that a stitched trajectory is a staircase rather than a
+slide. It is now continuous, and the fault contribution rather than the whole
+signal is what gets interpolated, so the weather and control variation in the
+output is the genuine variation of the real clean run.
+
+The false reason is worth stating plainly because it is recorded above as my own
+judgement. Under *Mine* I claimed credit for "splitting signed sensor-bias faults
+into separate drift-high and drift-low trajectories, because a sensor drifts one
+way rather than alternating". The reasoning is sound and the implementation was
+pointless: `oa_bias_2`, `oa_bias_-2`, `oa_bias_4` and `oa_bias_-4` are one file
+published four times under four names, md5 `89b13704` for every one of them. I
+split a file from itself. The same is true of the four `coi_leakage` files, md5
+`a9fdfc50`, so the `sdahu-coil-valve-leaking` trajectory stitches four identical
+segments and contains no progression whatsoever.
+
+Two of the eighteen trajectories from checkpoint 1.5 are therefore degenerate.
+They are not wrong, just empty of the degradation they claim to show, and nothing
+downstream has consumed them yet. Checkpoint 2.4 added a guard that refuses to
+build a severity ladder whose rungs hold identical data, which is what should
+have existed from the start: the failure mode here was silent, because a ladder
+of duplicates produces a trajectory that looks like it walks four levels while
+actually jumping straight to full severity.
+
+The honest caveat recorded above still stands unchanged. `t_failure` has no
+meaning in the source data — no LBNL run is carried to failure — so any failure
+threshold the remaining-life layer uses remains one I define and must justify
+physically.
+
+---
+
+## D-04 — Brick/RDF over Project Haystack or a custom graph
+
+**Forcing question**
+
+Cross-asset root cause analysis is the thing this platform is for. A symptom seen
+at the air handler has to be traceable to a chiller two machines upstream, which
+means something has to record what feeds what, what belongs to what, and which
+reading measures which quantity — in a form code can traverse rather than a form
+a human reads. What describes the equipment?
+
+**Options**
+
+1. **Project Haystack.**
+   *Rejected.* It is tag-based: an entity is described by a bag of tags rather
+   than by typed relationships. Two consequences sank it. There is no
+   programmatically executable consistency rule, so nothing stops a model being
+   internally contradictory and nothing can check one. And the same concept can
+   be described with different tag sets by different authors, which is tolerable
+   when a human reads the model and fatal when a traversal query depends on it —
+   a query written against one tagging convention silently returns nothing
+   against another. Reliable traversal is the whole requirement.
+2. **A custom graph schema.**
+   *Rejected.* Whatever I designed would be a worse Brick arrived at more slowly,
+   and it would throw away the one thing that made this cheap: LBNL ships Brick
+   models for these exact two systems. Adopting a custom schema means hand-writing
+   the equipment description that already exists.
+3. **ASHRAE 223P.**
+   *Rejected.* Not finalised at the time of the decision, and substantially
+   heavier than this project needs — it models physical connections at a level of
+   detail that would take longer to populate than the analytics it feeds.
+4. **Brick Schema.**
+   *Chosen.*
+
+**Rationale**
+
+Brick is a real ontology with typed classes and typed relationships, so a
+traversal is a query against declared structure rather than a string match
+against a convention. That is what makes `?coil (^brick:feeds)+ ?upstream`
+answerable at all, and that query is the spine of the diagnosis layer.
+
+The deciding practical factor was that LBNL publishes `.ttl` models for the
+single-duct AHU and the chiller plant — the same two systems the data comes from.
+The equipment description therefore arrives with the measurements instead of
+being authored, which I estimated at roughly an hour of adoption cost against
+something like six for a custom schema. It also matches the stack the target
+company has said it uses, which matters for a take-home.
+
+**The cost actually paid**
+
+The estimate was wrong, and the reason is worth recording because it is the
+recurring theme of this project.
+
+The two published models are **two disconnected graphs**. There is not one
+statement linking the air handler to the chiller plant. Worse, and unnoticed
+until I measured it, the chiller plant model contains **no flow direction at
+all** — zero `brick:feeds` statements in 191 triples. It records which pumps and
+chillers exist and which readings belong to them, and nothing about what feeds
+what. So the CHW loop edge was not a single joining triple as expected; the
+entire water-side topology had to be authored:
+
+- 21 topology statements in `model/building_extensions.ttl`, every one of which
+  crosses between the two systems
+- 2 equipment nodes invented, one per water loop, because three chillers and five
+  pumps feed one coil and a shared node makes that a six-into-one fan-in rather
+  than fifteen separate edges
+- both loops modelled in one direction only, deliberately, so the graph stays
+  acyclic — a real water loop is a closed circuit, and modelling it faithfully
+  would make every asset upstream of every other and root cause traversal
+  meaningless
+
+Then the class names. 45 corrections are applied at load time: two miscased, one
+that is not a Brick class under any spelling, one that is used for two different
+fluids and needs splitting per node, two swapped pairs, and fourteen that were
+real but too vague to select on. Three of the 54 classes used in the merged model
+do not exist in Brick 1.3 — two of those are LBNL's, and one was mine, because I
+assumed `brick:Condenser_Water_Loop` existed and it does not. Brick defines a
+condenser water *system* and a chilled water *loop* but no condenser water loop,
+which is an inconsistency in Brick rather than in the data.
+
+Real adoption cost: roughly a day across three checkpoints, not an hour.
+
+**Mine vs delegated**
+
+*Mine.* The choice of Brick, and the rejection of Haystack specifically on the
+grounds that tag-based description cannot support reliable traversal. The
+decision to give each source system its own namespace rather than merging them,
+which turned out to matter: both files define an entity called `OA_TEMP` and they
+are not the same instrument — one is dry bulb and the other wet bulb. The
+decision to model each water loop in a single direction to keep the graph
+acyclic. The requirement that graph, ingestion manifest and database agree on
+every point's class, rather than treating the graph as documentation.
+
+*Delegated.* The namespace relocation, the merge, the SPARQL traversal queries,
+the flattening of the graph into `app.asset_edges`, and the class repair maps.
+
+**Confidence**
+
+High on the choice; it is the only option of the four that supports executable
+traversal and the only one that came with the models already written. Low on my
+estimate of what it would cost, which was out by roughly a factor of eight — and
+that error was not in Brick, it was in assuming a published model would be
+complete. A reviewer should read the adoption cost above as the honest figure.
+
+**Outcome**
+
+_(left blank — the graph has not yet been used in anger; cross-asset diagnosis is
+Task 6 and that is where this decision will actually be tested.)_
