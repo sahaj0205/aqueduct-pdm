@@ -4,12 +4,26 @@
 install:
 	uv sync
 
-# Start the TimescaleDB container and wait for it to accept connections
+# Start the TimescaleDB container, wait for it, then apply the schema.
+# Applying the schema here is what makes `make db-up && make load` work against
+# a freshly created volume. schema.sql is idempotent, so this is safe to repeat.
 db-up:
 	docker compose up -d
 	@echo "waiting for timescaledb..."
-	@until docker compose exec -T db pg_isready -q; do sleep 1; done
+	@set -a; . ./.env; set +a; \
+	  for i in $$(seq 1 90); do \
+	    PGPASSWORD="$$POSTGRES_PASSWORD" psql -h localhost -p "$$POSTGRES_PORT" \
+	      -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc 'SELECT 1' >/dev/null 2>&1 \
+	      && break; \
+	    sleep 1; \
+	    if [ $$i = 90 ]; then echo "timed out waiting for timescaledb"; exit 1; fi; \
+	  done
 	@echo "timescaledb ready on $$(docker compose port db 5432)"
+	@set -a; . ./.env; set +a; \
+	  PGPASSWORD="$$POSTGRES_PASSWORD" psql -h localhost -p "$$POSTGRES_PORT" \
+	    -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -q -v ON_ERROR_STOP=1 \
+	    -f scripts/schema.sql
+	@echo "schema applied"
 
 # Stop the container. The named volume is left intact.
 db-down:

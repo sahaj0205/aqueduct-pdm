@@ -13,6 +13,11 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - timescale_data:/var/lib/postgresql/data
+    # Docker defaults /dev/shm to 64 MB. PostgreSQL puts the shared memory for
+    # parallel query workers there, and an aggregate over the measurements
+    # hypertable needs far more than that -- with the default it fails outright
+    # with "could not resize shared memory segment ... No space left on device".
+    shm_size: 1gb
 
 volumes:
   timescale_data:

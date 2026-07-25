@@ -480,3 +480,372 @@ Skipped as boilerplate: two secondary indexes (`points_asset_id_idx` and two on
 
 START HERE: `scripts/schema.sql` — read the `COMMENT ON SCHEMA groundtruth`
 block first, then the GRANTS section at the bottom that enforces it.
+
+---
+
+## Checkpoint 1.4 — Data reconnaissance (report gate, no commit)
+
+A report gate produces findings rather than code, so this entry records what
+the data turned out to be and which decisions it forced. Everything the loader
+in 1.5 does traces back to something here.
+
+### WHAT WE FOUND
+
+**Files.** 2.2 GB downloaded from `fdddata.lbl.gov`, 15 GB extracted into
+`data/raw/` (gitignored). 45 CSVs: 21 for the single-duct AHU and 24 for the
+chiller plant, of which 2 are fault-free baselines. Plus two inventory PDFs and
+two Brick `.ttl` files. The two archives nest differently — the AHU wraps its
+CSVs in a subfolder, the chiller archive does not — so the loader cannot assume
+a layout.
+
+**Columns.** AHU fault-free CSV is 525,540 rows x 31 columns (`Datetime` plus
+30 points). Chiller fault-free CSV is 525,540 rows x 78 columns (`Datetime`
+plus 77 points). Every point column is `float64`, zero NaN, no non-numeric
+columns anywhere. Chiller column order does not match its PDF's table order, so
+the manifest must key by column name and never by position.
+
+**Severity is expressed in the filename only.** All 45 headers are byte-identical
+to their system's fault-free header — there is no fault column, severity column
+or label column in any file. Three mutually incompatible naming conventions are
+in use: signed degrees Celsius for sensor bias, percent open for stuck valves
+and dampers, and percent *heat-transfer capability retained* for fouling.
+
+**The fouling numbers run backwards from the obvious reading.** `065` is the
+worst case and `095` the mildest, because the number is the fraction of heat
+transfer retained, not the fraction fouled. Measured cooling-tower range (water
+in minus water out) against the fault-free run confirms it: January means of
+4.539 fault-free, 4.320 at `095`, 3.658 at `080`, 2.989 at `065`. Anything that
+sorts severity numerically ranks these exactly backwards. This is why
+`groundtruth.fault_events.severity_level` is TEXT and why severity order is
+stated explicitly in the manifests rather than derived.
+
+**Timestamps.** Format `2018-01-01 01:00:00` — space separated, naive, no zone.
+Exactly one minute apart, with all 525,539 diffs equal and no duplicates or
+gaps. Range `2018-01-01 01:00` to `2018-12-31 23:59` for 44 of 45 files; LBNL
+strips the first hour of every file to discard simulation start-up transients.
+The exception is `damper_stuck_100_annual_short.csv`, 308,101 rows covering
+Apr 1 to Nov 1 only. Weather is Chicago TMY for both systems.
+
+**All 45 runs occupy the identical timestamp range.** This settled the open
+question from 1.3: a unique index on `(point_id, time)` would have rejected 44
+of the 45 files. Leaving it non-unique was correct.
+
+**Brick TTL files are present and complete.** Both parse with rdflib. Every CSV
+column has a matching TTL node in both systems — 30/30 and 77/77. The AHU file
+has 26 distinct Brick classes across 41 nodes; the chiller file has 30 classes
+across 95 nodes. Three problems: two class names are invalid through wrong
+capitalisation (`brick:Speed_status`, and `brick:Water_temperature_Sensor` on
+`CT_SW_TEMP_1` where its two identical siblings use the correct spelling, so a
+SPARQL query for tower supply temperature silently misses tower 1); both files
+declare the same `bldg-59#` namespace and both define `bldg:OA_TEMP`, so
+merging the graphs would collapse two different sensors into one node; and
+there is **no edge linking the AHU cooling coil to the chiller plant**, which is
+the relationship the entire cross-asset diagnosis story depends on.
+
+### DATA DEFECTS THAT CHANGED THE DESIGN
+
+- **The chiller's two outdoor temperature columns are swapped.** Wet bulb
+  exceeded dry bulb in 521,925 of 525,540 rows, which is physically impossible.
+  The column named `OA_TEMP_WB` matches the AHU's dry bulb to within 0.33 degF
+  while the column named `OA_TEMP` differs by up to 26.9 degF. So `OA_TEMP`
+  holds wet bulb and `OA_TEMP_WB` holds dry bulb. This matters directly:
+  cooling-tower approach temperature (how close the tower gets the water to the
+  wet-bulb floor) is the primary tower-fouling indicator.
+- **`SA_SP` is in Pascals, not inches H2O as the PDF states.** Mean 402.8
+  against a setpoint of 1.607 inH2O, a ratio of 250.6 where 1 inH2O = 249.089
+  Pa. A rule comparing pressure to its own setpoint would be wrong by 250x.
+- **Airflow magnitudes are about 13x the documented equipment.** The PDF's own
+  figure gives design supply airflow as ~36,800 CFM; measured median is 496,328
+  with a max of 1,266,232. Unresolved — either the unit is not CFM or the
+  simulated unit is not the one documented. Consequence: `expected_min` and
+  `expected_max` should be derived empirically from the fault-free run, not
+  from the PDF.
+- **`SF_SPD` is dead and `SF_CS` carries the real fan speed.** `SF_SPD` is
+  pinned at 0.9 for the entire year while `SF_CS` varies across 158,208 distinct
+  values, and `RF_SPD` equals `0.9 * SF_CS` in 426,292 of 525,540 rows with a
+  correlation of 0.9998 — which is what the documented control sequence
+  describes. Any fan-degradation rule must read `SF_CS`.
+- **Two different kinds of impossible value.** Negative valve positions and fan
+  power are solver round-off at 1e-13 and smaller (8 and 10 rows), harmless.
+  Return airflow reaching -3,284 across 148,435 rows — 28% of the year — is a
+  real wrong number. The first should be clamped, the second flagged.
+- **Constant columns.** AHU `OA_CFM` holds a single value all year and is
+  unusable; `SA_SPSPT` and `SA_TEMPSPT` are legitimately fixed setpoints
+  matching the documented control sequence. Chiller `CHL_STA_1`, `CT_STA_1` and
+  `CWL_SEC_PM_STA_1` are pinned on, because the lead units never cycle off.
+
+### THE PDFs ARE WRONG IN TWO PLACES
+
+- **Four AHU files are named differently than documented.** The PDF lists
+  `sa_bias_{-4,-2,2,4}_annual.csv` as a supply-air-temperature sensor bias; the
+  archive ships `coi_bias_{-4,-2,2,4}_annual.csv`. Counts match, but
+  differencing each against the fault-free run does **not** confirm a supply air
+  temperature bias: `coi_bias_2` shifts `SA_TEMP` by -1.007 degF where +3.6 was
+  expected, the effect is not monotonic in severity, and both the +2 and -2
+  cases move the system colder. `MA_TEMP` and `RA_TEMP` shift too, so whatever
+  is biased sits inside a control loop that drags the whole unit. Leading
+  hypothesis: it biases a coil-leaving-air temperature sensor that the
+  controller uses but which is not among the 30 logged points. Unresolved.
+- **Two chiller scenarios are undocumented.**
+  `ChillerPlant_chiller_fouling_065.csv` and `_095.csv` exist on disk and are
+  absent from the PDF's file inventory. They are arguably the most valuable
+  files in the download, since chiller condenser fouling is the textbook
+  gradual-degradation mode this project exists to track.
+
+### THE TWO BLOCKERS, AND THE DECISIONS TAKEN
+
+- **Volume.** Loading everything at native one-minute resolution is
+  1,295,764,950 rows and roughly 103 GB, incompatible with the 60-minute
+  ingestion timebox. **Decision: downsample to 5-minute intervals on ingest.**
+- **No fault progresses over time.** Every faulted run holds its severity fixed
+  from the first row to the last. Fitting a line through the monthly effect of
+  the worst tower-fouling case gives a trend of +0.006 degF per month — flat;
+  the month-to-month variation is weather, not degradation. The dataset
+  therefore provides discrete severity levels, not degradation trajectories,
+  while the health-index and remaining-life layers both assume a trajectory.
+  **Decision: synthesise trajectories by stitching severity levels
+  sequentially over simulated time.** Implemented in 1.5 and logged as a
+  decision in `AI_LOG.md`.
+- Also decided here: **ignore the four `coi_bias` files entirely** rather than
+  guess a label for them, and **manually assert the missing chilled-water loop
+  edge** in `model/extensions.ttl` when the semantic-graph layer is built.
+
+START HERE: `PROJECT_CONTEXT.md` — unchanged by this checkpoint, but the data
+source section is what these findings qualify.
+
+---
+
+## Checkpoint 1.5 — Loader
+
+### WHAT WE DID
+
+The database now holds twelve simulated years of sensor readings for eight
+pieces of equipment — one air handler, three chillers, three cooling towers,
+and the pipework and pumps that connect them. Before this the database was an
+empty shape. Two things happened on the way in that the raw files could not
+give us. First, the readings were thinned from one-per-minute to
+one-per-five-minutes, which cut 1.3 billion readings down to 116 million
+without losing anything the later maths needs, and is what made the whole load
+finish in forty minutes instead of most of a day. Second, and more important,
+the system now has equipment that gets worse over time. The downloaded files
+could not do that — each one holds a single fixed fault level for a whole year,
+so nothing in them ever deteriorates. The loader builds a deteriorating history
+by taking the first stretch of a year from the healthy recording, the next
+stretch from the mildest faulty recording, and so on down to the worst,
+producing one continuous story per fault type of a machine sliding from fine to
+badly degraded. Everything the remaining-life prediction does depends on that
+story existing.
+
+### HOW IT WORKS
+
+`ingestion/manifests/sdahu.yaml` and `chiller.yaml` :: the `points` list
+- WHY IT EXISTS: The only place that knows what a CSV column means. Nothing
+  about either dataset is written into Python, so adding a sensor or fixing a
+  wrong unit is a YAML edit.
+- WHAT IT DOES: One entry per source column — 30 for the air handler, 77 for
+  the chiller, verified to cover every column exactly once with no duplicates.
+  Each entry names the column, the point id it becomes, the asset it belongs
+  to, its Brick class, the unit the file actually contains, the unit we store,
+  and how to aggregate it when downsampling. A `note` field carries the defect
+  warnings from 1.4 so nobody trusts a bad point by accident.
+- CHOICES: The two data defects are fixed here, not in code. The chiller's
+  swapped outdoor temperature columns are cross-mapped — source column
+  `OA_TEMP_WB` becomes the point `oa_temp` with the dry-bulb Brick class, and
+  `OA_TEMP` becomes `oa_temp_wb`. `SA_SP` is declared `pascal` against the
+  PDF's claim of inches H2O, while its setpoint is declared `inch_H2O`; both
+  convert to Pa so a rule can compare them. Expressing the fixes as data makes
+  the correction visible to a reviewer reading the manifest rather than buried
+  in a special case.
+
+Manifest :: the `trajectories` list
+- WHY IT EXISTS: The construction that turns discrete severity levels into a
+  degradation curve. The highest-consequence thing in the checkpoint, and
+  entirely declarative.
+- WHAT IT DOES: Each entry names a fault mode and an ordered list of segments,
+  each segment naming a source file and a human-readable severity. The order is
+  mild-to-severe and is stated explicitly rather than derived, which matters
+  because the fouling files are numbered backwards. Every trajectory starts
+  with a fault-free segment so there is a healthy baseline before the decline.
+- CHOICES: Signed sensor-bias faults get two trajectories, one drifting high
+  and one drifting low, rather than one ordered by absolute bias. A sensor
+  drifts in one direction, not alternately; and it uses all four severity files
+  instead of discarding two. This is why there are 18 trajectories rather than
+  the 16 projected, and why the row count came out at 116M rather than ~100M.
+- ⚠ JUDGEMENT CALL: A comment warns that new trajectories must be appended,
+  never inserted. A trajectory's position in the list determines which span of
+  simulated time it occupies, so inserting one silently relocates every
+  trajectory after it and orphans their already-loaded rows. That coupling
+  between list order and stored data is the weakest part of the design; an
+  explicit `starts:` date per trajectory would remove it. Left implicit because
+  deterministic packing means nobody has to pick dates by hand.
+- ⚠ JUDGEMENT CALL: `damper_stuck_100_annual_short.csv` is excluded. It covers
+  only Apr 1 to Nov 1, so it cannot fill the last segment of an annual
+  trajectory without leaving a two-month hole. That trajectory therefore steps
+  10% -> 25% -> 75% and never reaches fully-stuck. Alternative was to give that
+  one trajectory a shorter, non-annual span.
+
+`ingestion/lbnl_loader.py` :: `resolve_dsn` and `libpq_dsn`
+- WHY IT EXISTS: The loader is the first code to connect to the database, and
+  it must connect as the restricted role so the groundtruth wall is exercised
+  rather than assumed.
+- WHAT IT DOES: Reads `.env`, takes `APP_RW_DATABASE_URL`, and strips the
+  `+psycopg` driver tag that SQLAlchemy needs but the raw PostgreSQL client
+  library rejects — so one environment variable serves both the API layer later
+  and this loader now. Exits with a readable message if the variable is missing.
+
+`ingestion/lbnl_loader.py` :: `affine_conversion`
+- WHY IT EXISTS: Converting units naively means calling the unit library once
+  per value, which for 116 million values would dominate the entire run.
+- WHAT IT DOES: Every conversion this project needs is affine — Fahrenheit to
+  Celsius has both a multiplier and an offset, the rest are pure multipliers. It
+  asks pint what 0 and 100 of the source unit become in the target unit, then
+  recovers the multiplier as the difference over 100 and the offset as the
+  converted zero. After that a whole year of one sensor converts with a single
+  numpy multiply and add. pint is called twice per point instead of 116 million
+  times.
+- CHOICES: Two probe points 100 apart rather than 0 and 1, because subtracting
+  two nearly equal numbers loses precision and 0-and-1 is exactly that case for
+  temperature.
+
+`ingestion/lbnl_loader.py` :: `upsert_assets` and `upsert_points`
+- WHY IT EXISTS: Measurements cannot be written before the equipment and
+  sensors they reference exist, because of the foreign keys.
+- WHAT IT DOES: Inserts every asset and point from the manifest, and on a
+  primary-key collision updates the existing row instead of failing. Editing a
+  name or a Brick class in the manifest and re-running propagates the change.
+- CHOICES: `sample_interval_s` is set to the resampled interval, 300, not the
+  source 60, because that is the cadence of what is actually stored and gap
+  detection later must compare against reality. `expected_min`, `expected_max`
+  and `max_roc_per_min` are left NULL — 1.4 established the PDF's stated units
+  are unreliable for airflow, so those bounds should be derived from the loaded
+  data by the quality layer rather than guessed here.
+- ⚠ JUDGEMENT CALL: The eight assets are modelled at the level where faults are
+  actually injected — the air handler, three chillers, three cooling towers,
+  and one plant-level asset holding the loop and pump points. Scope said two
+  equipment classes; the chiller data has three of each machine plus eleven
+  pumps. No fault in the dataset targets a pump, so their power and speed points
+  hang off the plant asset rather than becoming eight separate assets.
+- NOTE: `criticality_tier`, `replacement_cost_usd` and `install_date` are
+  invented. They are business inputs appearing nowhere in the LBNL data, and
+  the advisory layer will rank on them. Flagged so they are not mistaken for
+  measured facts.
+
+`ingestion/lbnl_loader.py` :: `segment_windows`
+- WHY IT EXISTS: Decides where in the year the fault steps worse.
+- WHAT IT DOES: Cuts a 365-day span into as many consecutive, non-overlapping
+  windows as the trajectory has segments, using integer arithmetic so the
+  remainder lands in the final window and the span is covered exactly with no
+  gap or overlap.
+
+`ingestion/lbnl_loader.py` :: `read_segment`
+- WHY IT EXISTS: The source files are 140 MB to 430 MB each and a segment needs
+  roughly a quarter of one. Reading whole files and discarding most of each
+  would have added a large multiple to the run time.
+- WHAT IT DOES: Reads just the first data row to learn where the file's
+  timestamps begin, then computes the row offset of the window start by
+  arithmetic — the grid is exactly one minute with no gaps, so the offset is
+  elapsed minutes. It then tells the CSV reader to skip straight to that offset
+  and read only that many rows. Measured on a chiller file, this reads 174,180
+  rows in 2.1 s instead of parsing all 430 MB.
+- CHOICES: It still filters the result by timestamp afterwards. The offset
+  arithmetic assumes a gapless grid; the filter means a file violating that
+  assumption produces short output rather than silently wrong output.
+
+`ingestion/lbnl_loader.py` :: `resample_segment`
+- WHY IT EXISTS: The 5-minute downsample, and the reason 1.3 billion readings
+  became 116 million.
+- WHAT IT DOES: Groups one-minute rows into 5-minute buckets, left-labelled and
+  left-closed so bucket 01:00 covers 01:00 to 01:04 and the boundaries line up
+  with the hourly rollup in the database. Analog points take the bucket mean.
+- CHOICES: On/off statuses and the occupancy flag take the last value in the
+  bucket, not the mean. Averaging a 0/1 status over five minutes yields values
+  like 0.4, which is not a state the equipment is ever in and would break any
+  rule testing whether a chiller is running. Verified after loading: status
+  points still contain only 0.0 and 1.0.
+
+`ingestion/lbnl_loader.py` :: `write_segment`
+- WHY IT EXISTS: Where converted values enter the hypertable, and where source
+  timestamps become real instants.
+- WHAT IT DOES: Shifts the segment's timestamps into the year this trajectory
+  occupies, stamps them with a fixed UTC offset, converts to UTC, then streams
+  every point's converted values into the database over the bulk-copy protocol
+  in a single binary stream per segment. If a point's values contain no gaps it
+  skips the per-value null check entirely.
+- CHOICES: Timestamps are stamped with a fixed -6 hour offset rather than the
+  named zone `America/Chicago`. Simulation output has no daylight-saving step,
+  so a named zone would make the spring-forward hour non-existent and the
+  autumn hour ambiguous, and both raise errors. A fixed offset is both correct
+  for this data and incapable of failing that way.
+- CHOICES: Throughput measured at roughly 51,000 rows/s, which is the
+  Python-level per-row loop, not the database. Batching rows into pre-formatted
+  buffers would be several times faster. Left as-is because 39.6 minutes fits
+  the timebox and this runs once.
+
+`ingestion/lbnl_loader.py` :: `load_trajectory`
+- WHY IT EXISTS: Assembles one degradation story and is the unit of
+  idempotency.
+- WHAT IT DOES: Works out which span of simulated time this trajectory owns,
+  deletes anything already stored for its points in that span, then walks the
+  segments in order — reading each source file's slice, downsampling it,
+  converting units, and writing it — all inside one transaction, so an
+  interrupted run leaves the trajectory either wholly old or wholly new and
+  never half-written. It logs how many rows it wrote and how many it replaced,
+  which is what made the idempotency check measurable: re-running one
+  trajectory reported 3,153,240 written and 3,153,240 replaced, with the total
+  row count and a value checksum both unchanged.
+- CHOICES: Successive trajectories are offset by whole 365-day blocks rather
+  than calendar years. Calendar-year offsets would land a leap day inside some
+  trajectories and leave a one-day hole in the timestamp grid; fixed 365-day
+  blocks keep the grid gapless at the cost of the seasons drifting by a day per
+  leap year, two days across the widest case here.
+- CHOICES: Each trajectory owning a distinct span of time is what makes the
+  scheme work without a schema change. It is why 1.3's non-unique index on
+  `(point_id, time)` was the right call and why nothing actually collides:
+  point ids are shared across trajectories, and the time spans keep them apart.
+  It also means `groundtruth.scenarios.t_start`/`t_end` can identify a scenario
+  later with no extra column.
+
+`Makefile` :: `db-up` readiness poll and schema apply
+- CHANGED FROM BEFORE: It called `pg_isready` inside the container and then
+  reported ready. That check tests the unix socket, which the TimescaleDB
+  entrypoint's temporary init-phase server also answers — so on a fresh volume
+  it returned success against a server about to shut down, and the first clean
+  run failed with `server closed the connection unexpectedly`. It now loops up
+  to 90 times attempting a real authenticated connection from the host over
+  TCP, which is exactly what the next step needs, and fails with a clear
+  message on timeout. It then applies `scripts/schema.sql`, which is what makes
+  `make db-up && make load` work against a brand-new volume.
+
+`docker-compose.yml` :: `shm_size`
+- CHANGED FROM BEFORE: Not present. Docker defaults the container's shared
+  memory filesystem to 64 MB, and PostgreSQL allocates parallel-query worker
+  memory there. Any aggregate spanning the measurements hypertable failed with
+  `could not resize shared memory segment ... No space left on device`. Now
+  1 GB, with a comment recording the symptom.
+
+`.env.example` :: `APP_RW_DATABASE_URL`
+- CHANGED FROM BEFORE: Added. The loader needed a connection string for the
+  restricted role, and nothing previously told anyone to set one. Documented as
+  the URL every part of the detection path uses, with the reason: a SELECT
+  against groundtruth from that code fails loudly.
+
+### MEASURED RESULT
+
+- 116,039,232 measurement rows in 39.6 minutes from a clean database.
+  97,119,792 for the chiller plant across 77 points, 18,919,440 for the AHU
+  across 30 points, 8 assets, 107 points, 18 trajectories.
+- Both totals sit exactly 12 five-minute buckets per trajectory below the
+  arithmetic projection, which is the first hour LBNL strips from every file.
+- 18 GB in the hypertable across 4,381 one-day chunks, 19 GB for the whole
+  database. That is 155 bytes per row against the 80 estimated in 1.4 — the
+  text `point_id` repeated 116 million times plus the `(point_id, time DESC)`
+  index. A smallint surrogate key for points would roughly halve it.
+- Stitching verified to produce real degradation: cooling-tower approach
+  temperature in the tower-fouling trajectory runs level with the fault-free
+  trajectory through the healthy and 95%-retained segments, then rises to
+  +0.29..+0.34 degC in the 80% segment and +0.44..+1.12 degC in the 65%
+  segment.
+
+START HERE: `ingestion/lbnl_loader.py` — read `load_trajectory` first; it is
+the stitching, the idempotency and the time-partitioning scheme in one
+function, and everything else is a helper it calls.

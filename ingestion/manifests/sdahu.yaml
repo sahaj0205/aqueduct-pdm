@@ -1,0 +1,359 @@
+# Manifest: LBNL single-duct VAV air handling unit (SD-AHU).
+#
+# Generated once and then hand-maintained. Every source column in the dataset
+# appears exactly once below. `note` fields record defects found during the
+# checkpoint 1.4 data reconnaissance -- read them before trusting a point.
+#
+# unit_native is what the source file actually contains (NOT always what the
+# LBNL PDF claims). unit_si is what app.measurements.value_si stores.
+
+system: sdahu
+display_name: Single-duct VAV air handling unit
+source_root: data/raw/sdahu/LBNL_FDD_Dataset_SDAHU
+timestamps:
+  column: Datetime
+  source_utc_offset_hours: -6
+  native_interval_s: 60
+  resample_interval_s: 300
+trajectory_start_date: '2018-01-01'
+trajectory_span_days: 365
+assets:
+- asset_id: ahu-1
+  brick_class: brick:AHU
+  name: AHU-1 single-duct VAV air handling unit
+  criticality_tier: 2
+  replacement_cost_usd: 85000.0
+  install_date: '2012-06-01'
+points:
+- column: SA_TEMP
+  point_id: ahu-1.sa_temp
+  asset_id: ahu-1
+  brick_class: brick:Supply_Air_Temperature_Sensor
+  name: Supply air temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: SA_TEMPSPT
+  point_id: ahu-1.sa_temp_spt
+  asset_id: ahu-1
+  brick_class: brick:Supply_Air_Temperature_Setpoint
+  name: Supply air temperature setpoint
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: MA_TEMP
+  point_id: ahu-1.ma_temp
+  asset_id: ahu-1
+  brick_class: brick:Mixed_Air_Temperature_Sensor
+  name: Mixed air temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: RA_TEMP
+  point_id: ahu-1.ra_temp
+  asset_id: ahu-1
+  brick_class: brick:Return_Air_Temperature_Sensor
+  name: Return air temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: OA_TEMP
+  point_id: ahu-1.oa_temp
+  asset_id: ahu-1
+  brick_class: brick:Outside_Air_Temperature_Sensor
+  name: Outdoor air temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: SA_CFM
+  point_id: ahu-1.sa_flow
+  asset_id: ahu-1
+  brick_class: brick:Supply_Air_Flow_Sensor
+  name: Supply air volumetric flow
+  unit_native: foot**3/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: magnitude ~13x the documented design airflow; unit is suspect, see docs
+- column: RA_CFM
+  point_id: ahu-1.ra_flow
+  asset_id: ahu-1
+  brick_class: brick:Return_Air_Flow_Sensor
+  name: Return air volumetric flow
+  unit_native: foot**3/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: negative for 28% of the year in the fault-free run; real defect, not float noise
+- column: OA_CFM
+  point_id: ahu-1.oa_flow
+  asset_id: ahu-1
+  brick_class: brick:Outside_Air_Flow_Sensor
+  name: Outdoor air volumetric flow
+  unit_native: foot**3/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: constant 357730.44 all year in every run; unusable as a signal
+- column: SA_SP
+  point_id: ahu-1.sa_static_p
+  asset_id: ahu-1
+  brick_class: brick:Supply_Air_Static_Pressure_Sensor
+  name: Supply duct static pressure
+  unit_native: pascal
+  unit_si: pascal
+  resample: mean
+  note: 'DEFECT: PDF says inches H2O but values are Pascals (mean 402.8 Pa vs 1.607 inH2O setpoint = 400.4
+    Pa)'
+- column: SA_SPSPT
+  point_id: ahu-1.sa_static_p_spt
+  asset_id: ahu-1
+  brick_class: brick:Supply_Air_Static_Pressure_Setpoint
+  name: Supply duct static pressure setpoint
+  unit_native: inch_H2O
+  unit_si: pascal
+  resample: mean
+  note: genuinely inches H2O; converted to Pa so it is comparable with sa_static_p
+- column: SF_CS
+  point_id: ahu-1.sf_speed_cmd
+  asset_id: ahu-1
+  brick_class: brick:Speed_Setpoint
+  name: Supply fan speed command
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: carries the ACTUAL modulating supply fan speed; RF_SPD tracks 0.9*SF_CS
+- column: SF_SPD
+  point_id: ahu-1.sf_speed
+  asset_id: ahu-1
+  brick_class: brick:Speed_Status
+  name: Supply fan speed feedback
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: pinned at 0.9 all year; dead point, use sf_speed_cmd instead
+- column: SF_SPD_DM
+  point_id: ahu-1.sf_status
+  asset_id: ahu-1
+  brick_class: brick:Fan_On_Off_Status
+  name: Supply fan on/off status
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: last
+  note: null
+- column: SF_WAT
+  point_id: ahu-1.sf_power
+  asset_id: ahu-1
+  brick_class: brick:Electrical_Power_Sensor
+  name: Supply fan power
+  unit_native: watt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: RF_CS
+  point_id: ahu-1.rf_speed_cmd
+  asset_id: ahu-1
+  brick_class: brick:Speed_Setpoint
+  name: Return fan speed command
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: RF_SPD
+  point_id: ahu-1.rf_speed
+  asset_id: ahu-1
+  brick_class: brick:Speed_Status
+  name: Return fan speed feedback
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: RF_SPD_DM
+  point_id: ahu-1.rf_status
+  asset_id: ahu-1
+  brick_class: brick:Fan_On_Off_Status
+  name: Return fan on/off status
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: last
+  note: null
+- column: RF_WAT
+  point_id: ahu-1.rf_power
+  asset_id: ahu-1
+  brick_class: brick:Electrical_Power_Sensor
+  name: Return fan power
+  unit_native: watt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: OA_DMPR
+  point_id: ahu-1.oa_damper
+  asset_id: ahu-1
+  brick_class: brick:Damper_Position_Sensor
+  name: Outdoor air damper position
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: OA_DMPR_DM
+  point_id: ahu-1.oa_damper_cmd
+  asset_id: ahu-1
+  brick_class: brick:Damper_Position_Command
+  name: Outdoor air damper command
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: RA_DMPR
+  point_id: ahu-1.ra_damper
+  asset_id: ahu-1
+  brick_class: brick:Damper_Position_Sensor
+  name: Return air damper position
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: RA_DMPR_DM
+  point_id: ahu-1.ra_damper_cmd
+  asset_id: ahu-1
+  brick_class: brick:Damper_Position_Command
+  name: Return air damper command
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: CHWC_VLV
+  point_id: ahu-1.chw_valve
+  asset_id: ahu-1
+  brick_class: brick:Valve_Position_Sensor
+  name: Cooling coil chilled water valve position
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: CHWC_VLV_DM
+  point_id: ahu-1.chw_valve_cmd
+  asset_id: ahu-1
+  brick_class: brick:Valve_Position_Command
+  name: Cooling coil chilled water valve command
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: SYS_CTL
+  point_id: ahu-1.occupancy
+  asset_id: ahu-1
+  brick_class: brick:Occupancy_Status
+  name: Occupancy mode indicator
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: last
+  note: null
+- column: ZONE_TEMP_1
+  point_id: ahu-1.zone_1_temp
+  asset_id: ahu-1
+  brick_class: brick:Zone_Air_Temperature_Sensor
+  name: Zone 1 air temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: ZONE_TEMP_2
+  point_id: ahu-1.zone_2_temp
+  asset_id: ahu-1
+  brick_class: brick:Zone_Air_Temperature_Sensor
+  name: Zone 2 air temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: ZONE_TEMP_3
+  point_id: ahu-1.zone_3_temp
+  asset_id: ahu-1
+  brick_class: brick:Zone_Air_Temperature_Sensor
+  name: Zone 3 air temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: ZONE_TEMP_4
+  point_id: ahu-1.zone_4_temp
+  asset_id: ahu-1
+  brick_class: brick:Zone_Air_Temperature_Sensor
+  name: Zone 4 air temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: ZONE_TEMP_5
+  point_id: ahu-1.zone_5_temp
+  asset_id: ahu-1
+  brick_class: brick:Zone_Air_Temperature_Sensor
+  name: Zone 5 air temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+trajectories:
+- trajectory_id: sdahu-fault-free
+  fault_mode: null
+  segments:
+  - file: AHU_annual.csv
+    severity: none
+- trajectory_id: sdahu-coil-valve-leaking
+  fault_mode: cooling_coil_valve_leaking
+  segments:
+  - file: AHU_annual.csv
+    severity: none
+  - file: coi_leakage_010_annual.csv
+    severity: 10% leakage
+  - file: coi_leakage_025_annual.csv
+    severity: 25% leakage
+  - file: coi_leakage_040_annual.csv
+    severity: 40% leakage
+  - file: coi_leakage_050_annual.csv
+    severity: 50% leakage
+- trajectory_id: sdahu-coil-valve-stuck
+  fault_mode: cooling_coil_valve_stuck
+  segments:
+  - file: AHU_annual.csv
+    severity: none
+  - file: coi_stuck_010_annual.csv
+    severity: stuck at 10% open
+  - file: coi_stuck_025_annual.csv
+    severity: stuck at 25% open
+  - file: coi_stuck_050_annual.csv
+    severity: stuck at 50% open
+  - file: coi_stuck_075_annual.csv
+    severity: stuck at 75% open
+- trajectory_id: sdahu-oa-damper-stuck
+  fault_mode: outdoor_air_damper_stuck
+  segments:
+  - file: AHU_annual.csv
+    severity: none
+  - file: damper_stuck_010_annual.csv
+    severity: stuck at 10% open
+  - file: damper_stuck_025_annual.csv
+    severity: stuck at 25% open
+  - file: damper_stuck_075_annual.csv
+    severity: stuck at 75% open
+- trajectory_id: sdahu-oa-temp-sensor-drift-high
+  fault_mode: outdoor_air_temp_sensor_bias
+  segments:
+  - file: AHU_annual.csv
+    severity: none
+  - file: oa_bias_2_annual.csv
+    severity: +2 degC bias
+  - file: oa_bias_4_annual.csv
+    severity: +4 degC bias
+- trajectory_id: sdahu-oa-temp-sensor-drift-low
+  fault_mode: outdoor_air_temp_sensor_bias
+  segments:
+  - file: AHU_annual.csv
+    severity: none
+  - file: oa_bias_-2_annual.csv
+    severity: -2 degC bias
+  - file: oa_bias_-4_annual.csv
+    severity: -4 degC bias

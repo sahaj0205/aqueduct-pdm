@@ -1,0 +1,857 @@
+# Manifest: LBNL water-cooled chiller plant.
+#
+# Generated once and then hand-maintained. Every source column in the dataset
+# appears exactly once below. `note` fields record defects found during the
+# checkpoint 1.4 data reconnaissance -- read them before trusting a point.
+#
+# Note the OA_TEMP / OA_TEMP_WB mapping: the source columns are swapped and
+# this manifest un-swaps them. See the notes on those two entries.
+
+system: chiller
+display_name: Water-cooled chiller plant
+source_root: data/raw/chiller
+timestamps:
+  column: Datetime
+  source_utc_offset_hours: -6
+  native_interval_s: 60
+  resample_interval_s: 300
+trajectory_start_date: '2018-01-01'
+trajectory_span_days: 365
+assets:
+- asset_id: chw-plant-1
+  brick_class: brick:Chilled_Water_System
+  name: Chilled water plant (loops, pumps, bypass valve)
+  criticality_tier: 1
+  replacement_cost_usd: 450000.0
+  install_date: '2010-04-01'
+- asset_id: chiller-1
+  brick_class: brick:Chiller
+  name: Water-cooled chiller 1
+  criticality_tier: 1
+  replacement_cost_usd: 320000.0
+  install_date: '2010-04-01'
+- asset_id: chiller-2
+  brick_class: brick:Chiller
+  name: Water-cooled chiller 2
+  criticality_tier: 1
+  replacement_cost_usd: 320000.0
+  install_date: '2010-04-01'
+- asset_id: chiller-3
+  brick_class: brick:Chiller
+  name: Water-cooled chiller 3
+  criticality_tier: 1
+  replacement_cost_usd: 320000.0
+  install_date: '2010-04-01'
+- asset_id: ct-1
+  brick_class: brick:Cooling_Tower
+  name: Cooling tower 1
+  criticality_tier: 2
+  replacement_cost_usd: 95000.0
+  install_date: '2010-04-01'
+- asset_id: ct-2
+  brick_class: brick:Cooling_Tower
+  name: Cooling tower 2
+  criticality_tier: 2
+  replacement_cost_usd: 95000.0
+  install_date: '2010-04-01'
+- asset_id: ct-3
+  brick_class: brick:Cooling_Tower
+  name: Cooling tower 3
+  criticality_tier: 2
+  replacement_cost_usd: 95000.0
+  install_date: '2010-04-01'
+points:
+- column: CWL_SEC_LOAD
+  point_id: chw-plant-1.sec_cooling_load
+  asset_id: chw-plant-1
+  brick_class: brick:Cooling_Demand_Sensor
+  name: Secondary loop cooling load
+  unit_native: watt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: CWL_SEC_SW_TEMP
+  point_id: chw-plant-1.sec_supply_temp
+  asset_id: chw-plant-1
+  brick_class: brick:Water_Temperature_Sensor
+  name: Secondary loop supply water temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CWL_SEC_RW_TEMP
+  point_id: chw-plant-1.sec_return_temp
+  asset_id: chw-plant-1
+  brick_class: brick:Return_Water_Temperature_Sensor
+  name: Secondary loop return water temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CWL_SEC_CW_FLOW
+  point_id: chw-plant-1.sec_flow
+  asset_id: chw-plant-1
+  brick_class: brick:Chilled_Water_Flow_Sensor
+  name: Secondary loop chilled water flow
+  unit_native: gallon/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: null
+- column: CWL_SEC_DP
+  point_id: chw-plant-1.sec_diff_press
+  asset_id: chw-plant-1
+  brick_class: brick:Chilled_Water_Differential_Pressure_Sensor
+  name: Secondary loop differential pressure
+  unit_native: inch_H2O
+  unit_si: pascal
+  resample: mean
+  note: null
+- column: CWL_SEC_DPSPT
+  point_id: chw-plant-1.sec_diff_press_spt
+  asset_id: chw-plant-1
+  brick_class: brick:Chilled_Water_Differential_Pressure_Setpoint
+  name: Secondary loop differential pressure setpoint
+  unit_native: inch_H2O
+  unit_si: pascal
+  resample: mean
+  note: null
+- column: CWL_PRI_SW_TEMP
+  point_id: chw-plant-1.pri_supply_temp
+  asset_id: chw-plant-1
+  brick_class: brick:Water_Temperature_Sensor
+  name: Primary loop supply water temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CWL_PRI_RW_TEMP
+  point_id: chw-plant-1.pri_return_temp
+  asset_id: chw-plant-1
+  brick_class: brick:Return_Water_Temperature_Sensor
+  name: Primary loop return water temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CWL_PRI_SW_TEMPSPT
+  point_id: chw-plant-1.pri_supply_temp_spt
+  asset_id: chw-plant-1
+  brick_class: brick:Supply_Water_Temperature_Setpoint
+  name: Primary loop supply water temperature setpoint
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CWL_PRI_CW_FLOW
+  point_id: chw-plant-1.pri_flow
+  asset_id: chw-plant-1
+  brick_class: brick:Chilled_Water_Flow_Sensor
+  name: Primary loop chilled water flow
+  unit_native: gallon/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: null
+- column: CDWL_SW_TEMP
+  point_id: chw-plant-1.cdw_supply_temp
+  asset_id: chw-plant-1
+  brick_class: brick:Water_Temperature_Sensor
+  name: Condenser loop supply water temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CDWL_RW_TEMP
+  point_id: chw-plant-1.cdw_return_temp
+  asset_id: chw-plant-1
+  brick_class: brick:Return_Water_Temperature_Sensor
+  name: Condenser loop return water temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CDWL_CW_FLOW
+  point_id: chw-plant-1.cdw_flow
+  asset_id: chw-plant-1
+  brick_class: brick:Water_Flow_Sensor
+  name: Condenser loop water flow
+  unit_native: gallon/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: null
+- column: CT_SW_TEMPSPT
+  point_id: chw-plant-1.ct_supply_temp_spt
+  asset_id: chw-plant-1
+  brick_class: brick:Supply_Water_Temperature_Setpoint
+  name: Cooling tower supply water temperature setpoint
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: TWV_CTRL
+  point_id: chw-plant-1.bypass_valve_cmd
+  asset_id: chw-plant-1
+  brick_class: brick:Valve_Command
+  name: Condenser loop three-way bypass valve command
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: OA_TEMP_WB
+  point_id: chw-plant-1.oa_temp
+  asset_id: chw-plant-1
+  brick_class: brick:Outside_Air_Temperature_Sensor
+  name: Outdoor air dry bulb temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: 'DEFECT: column named OA_TEMP_WB actually holds DRY bulb - matches the AHU dry bulb to 0.33 degF'
+- column: OA_TEMP
+  point_id: chw-plant-1.oa_temp_wb
+  asset_id: chw-plant-1
+  brick_class: brick:Outside_Air_Wet_Bulb_Temperature_Sensor
+  name: Outdoor air wet bulb temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: 'DEFECT: column named OA_TEMP actually holds WET bulb; labelled WB exceeded labelled DB in 99.3%
+    of rows'
+- column: CDWL_PM_POW_1
+  point_id: chw-plant-1.cdw_pump_1_power
+  asset_id: chw-plant-1
+  brick_class: brick:Electrical_Power_Sensor
+  name: Condenser water pump 1 power
+  unit_native: kilowatt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: CDWL_PM_POW_2
+  point_id: chw-plant-1.cdw_pump_2_power
+  asset_id: chw-plant-1
+  brick_class: brick:Electrical_Power_Sensor
+  name: Condenser water pump 2 power
+  unit_native: kilowatt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: CDWL_PM_POW_3
+  point_id: chw-plant-1.cdw_pump_3_power
+  asset_id: chw-plant-1
+  brick_class: brick:Electrical_Power_Sensor
+  name: Condenser water pump 3 power
+  unit_native: kilowatt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: CWL_PRI_PM_POW_1
+  point_id: chw-plant-1.pri_pump_1_power
+  asset_id: chw-plant-1
+  brick_class: brick:Electrical_Power_Sensor
+  name: Primary chilled water pump 1 power
+  unit_native: kilowatt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: CWL_PRI_PM_POW_2
+  point_id: chw-plant-1.pri_pump_2_power
+  asset_id: chw-plant-1
+  brick_class: brick:Electrical_Power_Sensor
+  name: Primary chilled water pump 2 power
+  unit_native: kilowatt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: CWL_PRI_PM_POW_3
+  point_id: chw-plant-1.pri_pump_3_power
+  asset_id: chw-plant-1
+  brick_class: brick:Electrical_Power_Sensor
+  name: Primary chilled water pump 3 power
+  unit_native: kilowatt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: CWL_SEC_PM_POW_1
+  point_id: chw-plant-1.sec_pump_1_power
+  asset_id: chw-plant-1
+  brick_class: brick:Electrical_Power_Sensor
+  name: Secondary chilled water pump 1 power
+  unit_native: kilowatt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: CWL_SEC_PM_SPD_1
+  point_id: chw-plant-1.sec_pump_1_speed
+  asset_id: chw-plant-1
+  brick_class: brick:Speed_Status
+  name: Secondary chilled water pump 1 speed
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: CWL_SEC_PM_STA_1
+  point_id: chw-plant-1.sec_pump_1_status
+  asset_id: chw-plant-1
+  brick_class: brick:Pump_On_Off_Status
+  name: Secondary chilled water pump 1 on/off status
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: last
+  note: null
+- column: CWL_SEC_PM_POW_2
+  point_id: chw-plant-1.sec_pump_2_power
+  asset_id: chw-plant-1
+  brick_class: brick:Electrical_Power_Sensor
+  name: Secondary chilled water pump 2 power
+  unit_native: kilowatt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: CWL_SEC_PM_SPD_2
+  point_id: chw-plant-1.sec_pump_2_speed
+  asset_id: chw-plant-1
+  brick_class: brick:Speed_Status
+  name: Secondary chilled water pump 2 speed
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: CWL_SEC_PM_STA_2
+  point_id: chw-plant-1.sec_pump_2_status
+  asset_id: chw-plant-1
+  brick_class: brick:Pump_On_Off_Status
+  name: Secondary chilled water pump 2 on/off status
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: last
+  note: null
+- column: CHL_STA_1
+  point_id: chiller-1.status
+  asset_id: chiller-1
+  brick_class: brick:On_Off_Status
+  name: Chiller 1 on/off status
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: last
+  note: null
+- column: CHL_COMP_SPD_CTRL_1
+  point_id: chiller-1.compressor_cmd
+  asset_id: chiller-1
+  brick_class: brick:Command
+  name: Chiller 1 compressor speed command
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: CHL_SW_TEMP_1
+  point_id: chiller-1.chw_supply_temp
+  asset_id: chiller-1
+  brick_class: brick:Chilled_Water_Supply_Temperature_Sensor
+  name: Chiller 1 chilled water supply temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CHL_RW_TEMP_1
+  point_id: chiller-1.chw_return_temp
+  asset_id: chiller-1
+  brick_class: brick:Chilled_Water_Return_Temperature_Sensor
+  name: Chiller 1 chilled water return temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CHL_CW_FLOW_1
+  point_id: chiller-1.chw_flow
+  asset_id: chiller-1
+  brick_class: brick:Chilled_Water_Flow_Sensor
+  name: Chiller 1 chilled water flow
+  unit_native: gallon/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: null
+- column: CHL_SWCD_TEMP_1
+  point_id: chiller-1.cdw_supply_temp
+  asset_id: chiller-1
+  brick_class: brick:Supply_Condenser_Water_Temperature_Sensor
+  name: Chiller 1 condenser water leaving temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CHL_RWCD_TEMP_1
+  point_id: chiller-1.cdw_return_temp
+  asset_id: chiller-1
+  brick_class: brick:Return_Condenser_Water_Temperature_Sensor
+  name: Chiller 1 condenser water entering temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CHL_CD_FLOW_1
+  point_id: chiller-1.cdw_flow
+  asset_id: chiller-1
+  brick_class: brick:Supply_Condenser_Water_Flow_Sensor
+  name: Chiller 1 condenser water flow
+  unit_native: gallon/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: null
+- column: CHL_POW_1
+  point_id: chiller-1.power
+  asset_id: chiller-1
+  brick_class: brick:Electrical_Power_Sensor
+  name: Chiller 1 power
+  unit_native: kilowatt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: CHL_STA_2
+  point_id: chiller-2.status
+  asset_id: chiller-2
+  brick_class: brick:On_Off_Status
+  name: Chiller 2 on/off status
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: last
+  note: null
+- column: CHL_COMP_SPD_CTRL_2
+  point_id: chiller-2.compressor_cmd
+  asset_id: chiller-2
+  brick_class: brick:Command
+  name: Chiller 2 compressor speed command
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: CHL_SW_TEMP_2
+  point_id: chiller-2.chw_supply_temp
+  asset_id: chiller-2
+  brick_class: brick:Chilled_Water_Supply_Temperature_Sensor
+  name: Chiller 2 chilled water supply temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CHL_RW_TEMP_2
+  point_id: chiller-2.chw_return_temp
+  asset_id: chiller-2
+  brick_class: brick:Chilled_Water_Return_Temperature_Sensor
+  name: Chiller 2 chilled water return temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CHL_CW_FLOW_2
+  point_id: chiller-2.chw_flow
+  asset_id: chiller-2
+  brick_class: brick:Chilled_Water_Flow_Sensor
+  name: Chiller 2 chilled water flow
+  unit_native: gallon/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: null
+- column: CHL_SWCD_TEMP_2
+  point_id: chiller-2.cdw_supply_temp
+  asset_id: chiller-2
+  brick_class: brick:Supply_Condenser_Water_Temperature_Sensor
+  name: Chiller 2 condenser water leaving temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CHL_RWCD_TEMP_2
+  point_id: chiller-2.cdw_return_temp
+  asset_id: chiller-2
+  brick_class: brick:Return_Condenser_Water_Temperature_Sensor
+  name: Chiller 2 condenser water entering temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CHL_CD_FLOW_2
+  point_id: chiller-2.cdw_flow
+  asset_id: chiller-2
+  brick_class: brick:Supply_Condenser_Water_Flow_Sensor
+  name: Chiller 2 condenser water flow
+  unit_native: gallon/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: null
+- column: CHL_POW_2
+  point_id: chiller-2.power
+  asset_id: chiller-2
+  brick_class: brick:Electrical_Power_Sensor
+  name: Chiller 2 power
+  unit_native: kilowatt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: CHL_STA_3
+  point_id: chiller-3.status
+  asset_id: chiller-3
+  brick_class: brick:On_Off_Status
+  name: Chiller 3 on/off status
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: last
+  note: null
+- column: CHL_COMP_SPD_CTRL_3
+  point_id: chiller-3.compressor_cmd
+  asset_id: chiller-3
+  brick_class: brick:Command
+  name: Chiller 3 compressor speed command
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: CHL_SW_TEMP_3
+  point_id: chiller-3.chw_supply_temp
+  asset_id: chiller-3
+  brick_class: brick:Chilled_Water_Supply_Temperature_Sensor
+  name: Chiller 3 chilled water supply temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CHL_RW_TEMP_3
+  point_id: chiller-3.chw_return_temp
+  asset_id: chiller-3
+  brick_class: brick:Chilled_Water_Return_Temperature_Sensor
+  name: Chiller 3 chilled water return temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CHL_CW_FLOW_3
+  point_id: chiller-3.chw_flow
+  asset_id: chiller-3
+  brick_class: brick:Chilled_Water_Flow_Sensor
+  name: Chiller 3 chilled water flow
+  unit_native: gallon/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: null
+- column: CHL_SWCD_TEMP_3
+  point_id: chiller-3.cdw_supply_temp
+  asset_id: chiller-3
+  brick_class: brick:Supply_Condenser_Water_Temperature_Sensor
+  name: Chiller 3 condenser water leaving temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CHL_RWCD_TEMP_3
+  point_id: chiller-3.cdw_return_temp
+  asset_id: chiller-3
+  brick_class: brick:Return_Condenser_Water_Temperature_Sensor
+  name: Chiller 3 condenser water entering temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CHL_CD_FLOW_3
+  point_id: chiller-3.cdw_flow
+  asset_id: chiller-3
+  brick_class: brick:Supply_Condenser_Water_Flow_Sensor
+  name: Chiller 3 condenser water flow
+  unit_native: gallon/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: null
+- column: CHL_POW_3
+  point_id: chiller-3.power
+  asset_id: chiller-3
+  brick_class: brick:Electrical_Power_Sensor
+  name: Chiller 3 power
+  unit_native: kilowatt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: CT_STA_1
+  point_id: ct-1.status
+  asset_id: ct-1
+  brick_class: brick:On_Off_Status
+  name: Cooling tower 1 on/off status
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: last
+  note: null
+- column: CT_FAN_SPD_1
+  point_id: ct-1.fan_speed
+  asset_id: ct-1
+  brick_class: brick:Speed_Status
+  name: Cooling tower 1 fan speed
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: CT_FAN_SPD_CTRL_1
+  point_id: ct-1.fan_speed_cmd
+  asset_id: ct-1
+  brick_class: brick:Command
+  name: Cooling tower 1 fan speed command
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: CT_SW_TEMP_1
+  point_id: ct-1.supply_temp
+  asset_id: ct-1
+  brick_class: brick:Water_Temperature_Sensor
+  name: Cooling tower 1 leaving water temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CT_RW_TEMP_1
+  point_id: ct-1.return_temp
+  asset_id: ct-1
+  brick_class: brick:Return_Water_Temperature_Sensor
+  name: Cooling tower 1 entering water temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CT_FLOW_1
+  point_id: ct-1.flow
+  asset_id: ct-1
+  brick_class: brick:Water_Flow_Sensor
+  name: Cooling tower 1 water flow
+  unit_native: gallon/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: null
+- column: CT_POW_1
+  point_id: ct-1.fan_power
+  asset_id: ct-1
+  brick_class: brick:Electrical_Power_Sensor
+  name: Cooling tower 1 fan power
+  unit_native: kilowatt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: CT_STA_2
+  point_id: ct-2.status
+  asset_id: ct-2
+  brick_class: brick:On_Off_Status
+  name: Cooling tower 2 on/off status
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: last
+  note: null
+- column: CT_FAN_SPD_2
+  point_id: ct-2.fan_speed
+  asset_id: ct-2
+  brick_class: brick:Speed_Status
+  name: Cooling tower 2 fan speed
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: CT_FAN_SPD_CTRL_2
+  point_id: ct-2.fan_speed_cmd
+  asset_id: ct-2
+  brick_class: brick:Command
+  name: Cooling tower 2 fan speed command
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: CT_SW_TEMP_2
+  point_id: ct-2.supply_temp
+  asset_id: ct-2
+  brick_class: brick:Water_Temperature_Sensor
+  name: Cooling tower 2 leaving water temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CT_RW_TEMP_2
+  point_id: ct-2.return_temp
+  asset_id: ct-2
+  brick_class: brick:Return_Water_Temperature_Sensor
+  name: Cooling tower 2 entering water temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CT_FLOW_2
+  point_id: ct-2.flow
+  asset_id: ct-2
+  brick_class: brick:Water_Flow_Sensor
+  name: Cooling tower 2 water flow
+  unit_native: gallon/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: null
+- column: CT_POW_2
+  point_id: ct-2.fan_power
+  asset_id: ct-2
+  brick_class: brick:Electrical_Power_Sensor
+  name: Cooling tower 2 fan power
+  unit_native: kilowatt
+  unit_si: watt
+  resample: mean
+  note: null
+- column: CT_STA_3
+  point_id: ct-3.status
+  asset_id: ct-3
+  brick_class: brick:On_Off_Status
+  name: Cooling tower 3 on/off status
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: last
+  note: null
+- column: CT_FAN_SPD_3
+  point_id: ct-3.fan_speed
+  asset_id: ct-3
+  brick_class: brick:Speed_Status
+  name: Cooling tower 3 fan speed
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: CT_FAN_SPD_CTRL_3
+  point_id: ct-3.fan_speed_cmd
+  asset_id: ct-3
+  brick_class: brick:Command
+  name: Cooling tower 3 fan speed command
+  unit_native: dimensionless
+  unit_si: dimensionless
+  resample: mean
+  note: null
+- column: CT_SW_TEMP_3
+  point_id: ct-3.supply_temp
+  asset_id: ct-3
+  brick_class: brick:Water_Temperature_Sensor
+  name: Cooling tower 3 leaving water temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CT_RW_TEMP_3
+  point_id: ct-3.return_temp
+  asset_id: ct-3
+  brick_class: brick:Return_Water_Temperature_Sensor
+  name: Cooling tower 3 entering water temperature
+  unit_native: degF
+  unit_si: degC
+  resample: mean
+  note: null
+- column: CT_FLOW_3
+  point_id: ct-3.flow
+  asset_id: ct-3
+  brick_class: brick:Water_Flow_Sensor
+  name: Cooling tower 3 water flow
+  unit_native: gallon/minute
+  unit_si: meter**3/second
+  resample: mean
+  note: null
+- column: CT_POW_3
+  point_id: ct-3.fan_power
+  asset_id: ct-3
+  brick_class: brick:Electrical_Power_Sensor
+  name: Cooling tower 3 fan power
+  unit_native: kilowatt
+  unit_si: watt
+  resample: mean
+  note: null
+trajectories:
+- trajectory_id: chiller-fault-free
+  fault_mode: null
+  segments:
+  - &id001
+    file: ChillerPlant.csv
+    severity: none
+- trajectory_id: chiller-condenser-fouling
+  fault_mode: chiller_condenser_fouling
+  segments:
+  - *id001
+  - file: ChillerPlant_chiller_fouling_095.csv
+    severity: 95% heat transfer retained
+  - file: ChillerPlant_chiller_fouling_065.csv
+    severity: 65% heat transfer retained
+- trajectory_id: chiller-tower-fouling
+  fault_mode: cooling_tower_fouling
+  segments:
+  - *id001
+  - file: ChillerPlant_coolingtower_fouling_095.csv
+    severity: 95% heat transfer retained
+  - file: ChillerPlant_coolingtower_fouling_080.csv
+    severity: 80% heat transfer retained
+  - file: ChillerPlant_coolingtower_fouling_065.csv
+    severity: 65% heat transfer retained
+- trajectory_id: chiller-bypass-valve-leaking
+  fault_mode: bypass_valve_leaking
+  segments:
+  - *id001
+  - file: ChillerPlant_bypass_leakage_025.csv
+    severity: 25% leakage
+  - file: ChillerPlant_bypass_leakage_050.csv
+    severity: 50% leakage
+  - file: ChillerPlant_bypass_leakage_075.csv
+    severity: 75% leakage
+- trajectory_id: chiller-bypass-valve-stuck
+  fault_mode: bypass_valve_stuck
+  segments:
+  - *id001
+  - file: ChillerPlant_bypass_stuck_050.csv
+    severity: stuck at 50%
+  - file: ChillerPlant_bypass_stuck_075.csv
+    severity: stuck at 75%
+- trajectory_id: chiller-chw-temp-sensor-drift-high
+  fault_mode: chiller_chw_supply_temp_sensor_bias
+  segments:
+  - *id001
+  - file: ChillerPlant_chiller_bias_1.csv
+    severity: +1 degC bias
+  - file: ChillerPlant_chiller_bias_2.csv
+    severity: +2 degC bias
+- trajectory_id: chiller-chw-temp-sensor-drift-low
+  fault_mode: chiller_chw_supply_temp_sensor_bias
+  segments:
+  - *id001
+  - file: ChillerPlant_chiller_bias_-1.csv
+    severity: -1 degC bias
+  - file: ChillerPlant_chiller_bias_-2.csv
+    severity: -2 degC bias
+- trajectory_id: chiller-tower-temp-sensor-drift-high
+  fault_mode: cooling_tower_cdw_temp_sensor_bias
+  segments:
+  - *id001
+  - file: ChillerPlant_coolingtower_bias_1.csv
+    severity: +1 degC bias
+  - file: ChillerPlant_coolingtower_bias_2.csv
+    severity: +2 degC bias
+- trajectory_id: chiller-tower-temp-sensor-drift-low
+  fault_mode: cooling_tower_cdw_temp_sensor_bias
+  segments:
+  - *id001
+  - file: ChillerPlant_coolingtower_bias_-1.csv
+    severity: -1 degC bias
+  - file: ChillerPlant_coolingtower_bias_-2.csv
+    severity: -2 degC bias
+- trajectory_id: chiller-tower-control-mistuned
+  fault_mode: cooling_tower_control_mistuned
+  segments:
+  - *id001
+  - file: ChillerPlant_coolingtower_PI.csv
+    severity: mistuned PI gains
+# New trajectories go on the END of this list, never in the middle. A
+# trajectory's position here determines which span of simulated time it
+# occupies, so inserting one would silently move every trajectory after it.
+- trajectory_id: chiller-secondary-dp-sensor-drift-high
+  fault_mode: secondary_loop_dp_sensor_bias
+  segments:
+  - *id001
+  - file: ChillerPlant_secondary_chilled_water_pressure_bias_010.csv
+    severity: +10% bias
+  - file: ChillerPlant_secondary_chilled_water_pressure_bias_020.csv
+    severity: +20% bias
+- trajectory_id: chiller-secondary-dp-sensor-drift-low
+  fault_mode: secondary_loop_dp_sensor_bias
+  segments:
+  - *id001
+  - file: ChillerPlant_secondary_chilled_water_pressure_bias_-010.csv
+    severity: -10% bias
+  - file: ChillerPlant_secondary_chilled_water_pressure_bias_-020.csv
+    severity: -20% bias
