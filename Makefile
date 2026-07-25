@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar api web
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules api web
 
 # Resolve and install the Python environment into .venv
 install:
@@ -76,6 +76,11 @@ mode-plot:
 # asset-day on fault-free data, and a plot of firings against mode changes.
 apar:
 	uv run python scripts/run_apar.py
+
+# Run the three chiller rules over every chiller scenario: what fired, the
+# held-out fault check, and false positives per asset-day on fault-free data.
+chiller-rules:
+	uv run python scripts/run_chiller_rules.py
 
 # Serve the API on :8000
 api:

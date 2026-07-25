@@ -2946,3 +2946,195 @@ cross-sensor residuals are for.
 
 START HERE: `analytics/rules/apar.py` — the module docstring is the checkpoint;
 the six rules under it are a direct transcription of Table 2.1.
+
+## Checkpoint 3.4 — Chiller rules
+
+### WHAT WE DID
+
+The chillers can now be judged on their own performance rather than on a fixed
+efficiency number. A chiller's power draw depends far more on what is being asked
+of it than on its condition — the same healthy machine uses a third more energy
+per unit of cooling on a hot afternoon than on a mild morning, because the
+compressor has to push heat across a much bigger temperature gap. Comparing a raw
+efficiency figure against a constant therefore flags every hot day and misses
+every mild one, and that single mistake is the most common reason chiller fault
+detection produces alarms nobody believes.
+
+Every rule here first works out what a healthy machine WOULD have done at this
+exact operating point — this load, this temperature gap, these water
+temperatures — and then reports only what is left over. Fitted on fault-free
+operation and run against the injected faults, the result is 7,183 reports on
+condenser fouling and 25,656 on a leaking bypass valve, against zero reports
+across 605 days of fault-free running.
+
+The fault the project holds back for later — cooling tower fouling — produced
+zero reports, which was checked explicitly rather than assumed.
+
+### HOW IT WORKS
+
+`analytics/rules/chiller.py` — module docstring
+  WHY IT EXISTS: The checkpoint asks for condenser and evaporator approach
+    temperatures, and this plant cannot compute them. That has to be said clearly
+    rather than quietly worked around.
+  WHAT IT DOES: Records that approach temperature is the gap between the
+    refrigerant's saturation temperature and the water, that all 78 published
+    columns are water and air side with no refrigerant instrumentation anywhere,
+    and that the saturation temperature cannot be recovered from what is left.
+    Each heat exchanger gives one equation in two unknowns, and the water-side
+    energy balance supplies no second equation because it is an identity.
+  CHOICES: It also records why the obvious escape fails. Assuming a design heat
+    transfer coefficient and solving for the saturation temperature yields a
+    fixed function of the measured water temperatures; fouling changes the real
+    coefficient, which that assumption has already frozen, so the resulting
+    "approach" cannot move in response to the fault it exists to catch. Two rules
+    that look right and detect nothing are worse than two honest substitutes.
+
+`analytics/rules/chiller.py` — the held-out fault
+  WHY IT EXISTS: Task 8 needs a fault that no rule was ever written for.
+  WHAT IT DOES: States that no rule tests for non-condensable gas, and then says
+    two things the instruction assumed but the data does not support: the LBNL
+    chiller dataset contains no non-condensable gas run and no refrigerant leak
+    run at all — it ships 23 fault runs and neither is among them — and the fault
+    this project actually holds out is cooling tower fouling, chosen back in
+    checkpoint 2.4. The instruction is honoured against that instead: no rule
+    references a cooling tower point, a tower approach, or the wet bulb
+    temperature.
+
+`analytics/rules/chiller.py :: POWER_MODEL` and `predicted_kw`
+  WHY IT EXISTS: The baseline the efficiency rule measures against. Without it
+    there is nothing to compare a kilowatt to.
+  WHAT IT DOES: A least-squares quadratic surface giving the power a healthy
+    machine draws for a given cooling output and a given temperature gap between
+    the two water loops. Fitted across the 38,407 running samples of the
+    fault-free year for chillers 1 and 2.
+  CHOICES: Power is modelled, not efficiency. An earlier version fitted
+    efficiency directly and reached a correlation of 0.73, because efficiency
+    climbs steeply as load falls toward zero and no polynomial in load follows
+    that shape. Modelling power and dividing afterwards reaches 0.98 and cuts the
+    residual scatter from 0.295 to 0.110. Chiller 3 runs for 456 samples in the
+    whole year and is not represented in the fit; that is reported rather than
+    papered over.
+
+`analytics/rules/chiller.py :: LIFT_MODEL` and `predicted_lift`
+  WHY IT EXISTS: The condenser-side check. Efficiency tells you the machine is
+    working too hard; this says whether the temperature gap it is working against
+    is bigger than the conditions justify.
+  WHAT IT DOES: Predicts the temperature gap between the water leaving the
+    condenser and the water leaving the evaporator, from the cooling output, the
+    condenser water arriving from the tower, and the chilled water leaving.
+  ⚠ JUDGEMENT CALL: Chilled water supply is one of the inputs, and adding it was
+    not obvious. The first version matched only on load and entering condenser
+    water, and the residual moved the WRONG WAY under condenser fouling — minus
+    0.53 K where physics says it should rise. The reason is that a fouled chiller
+    loses a little grip on its chilled water setpoint, the chilled water drifts
+    up, and because the gap is measured down to that water the drift cancels the
+    condenser effect. Matching on it restores the correct sign. This is the same
+    principle the checkpoint states for efficiency — compare only at matched
+    conditions — applied to one more condition than was asked for.
+
+`analytics/rules/chiller.py` — thresholds
+  WHY IT EXISTS: Every limit has to come from somewhere that is not the answer
+    key.
+  WHAT IT DOES: Both residual limits are three standard deviations of the
+    residual scatter on fault-free operation — 0.330 kW per ton and 1.08 K.
+  CHOICES: Three standard deviations is the ordinary statistical process control
+    limit and is used for that reason: it fixes a false alarm rate from healthy
+    data alone. No fault label was read, and neither limit was adjusted after
+    seeing whether a fault crossed it. The capacity limit of 2.0 K is set the same
+    way — fault-free operation at full compressor command sits 0.22 K above
+    setpoint on average and reaches 1.505 K at the 99th percentile.
+
+`analytics/rules/chiller.py :: kw_per_ton_residual`
+  WHY IT EXISTS: The primary detector, and the one the checkpoint specifies
+    exactly.
+  WHAT IT DOES: Computes the cooling actually delivered from the chilled water
+    flow and its temperature drop, works out what the compressor should be drawing
+    at that output and that temperature gap, and reports the difference per unit
+    of cooling. Skips anything under 20 tons, about an eighth of capacity, where
+    dividing by a small number swamps everything.
+  CHOICES: Rules read their points through the asset identifier rather than
+    naming chiller-1 directly, so one registration covers all three machines.
+
+`analytics/rules/chiller.py :: capacity_shortfall`
+  WHY IT EXISTS: The evaporator-side check. A machine can be efficient and still
+    be failing, if it simply cannot make the water cold enough.
+  WHAT IT DOES: Reports when the chilled water leaving the chiller sits more than
+    2 K above its setpoint while the compressor is already at 95% of full
+    command. Both halves are needed: water above setpoint with capacity in
+    reserve is the control still working, not a fault.
+  CHOICES: Claims the staleness exemption for the compressor command, for the
+    same reason the air handler's saturated cooling valve does — a compressor
+    pinned at full command has by definition stopped moving, and the pinning is
+    the evidence.
+
+`analytics/rules/evaluate.py :: suppression_mask`
+  CHANGED FROM BEFORE: The idle state is now a parameter rather than the
+    hardcoded unoccupied. A chiller has no occupancy schedule, but the settling
+    physics is identical — neither machine is in balance for the first hour after
+    it starts — so the same delays apply with only the name of the idle state
+    changed.
+
+`scripts/run_chiller_rules.py :: chiller_state`
+  WHY IT EXISTS: The suppression needs to know when a chiller starts, and the
+    status point cannot tell it.
+  WHAT IT DOES: Calls a chiller running only when its status is on AND it is
+    drawing real power AND it is moving chilled water. All three are required
+    because chiller 1's status point sits at 1 for the entire year, so on its own
+    it would never mark the machine as off and the start-up delay would never
+    fire once.
+
+### MEASURED RESULT
+
+    window                                reported   per asset-day
+    lbnl-fault-free-year                         0          0.0000
+    chiller_condenser_fouling                7,183         59.8583
+    chiller_bypass_valve_leakage            25,656        213.8000
+    cooling_tower_fouling  [HELD OUT]            0          0.0000
+    clean_chiller                                0          0.0000
+
+    FALSE POSITIVES, all fault-free windows combined:
+        0 reported over 605 asset-days = 0.0000 per asset-day
+
+Condenser fouling, chiller 1: the efficiency residual reported 5,863 times at
+48.86 per day with peak severity 1.00, and the capacity shortfall 1,320 times at
+11.0 per day. Both confirm the fault the checkpoint asks to see fire.
+
+Which rule catches which fault turns out to matter:
+
+    rule                        condenser fouling   bypass valve leaking
+    kw-per-ton-residual              5,863                    292
+    capacity-shortfall               1,320                 24,441
+    excess-lift                          0                    923
+
+The condenser-side lift rule does NOT catch condenser fouling — 76 instants where
+the condition was momentarily true, none of them sustained for the required hour.
+That was known before it was written: measured against the matched clean
+scenario, condenser fouling moves the lift residual by 0.15 K against 0.36 K of
+healthy scatter, about 0.4 standard deviations, while it moves the efficiency
+residual by roughly four. The rule earns its place on a different failure mode —
+it is the one that fires hardest on a leaking bypass valve, which is a condenser
+water flow disturbance rather than a heat transfer one.
+
+This is worth stating plainly because it is a physical result, not a tuning
+problem: **in this dataset condenser fouling is carried almost entirely by
+compressor power and is very nearly invisible in the water temperatures.** The
+simulation's fouled condenser raises the refrigerant's condensing temperature,
+which the compressor pays for, while the water-side heat balance stays
+consistent. It is the clearest possible argument for why the checkpoint insisted
+on an efficiency residual at matched conditions rather than a temperature check.
+
+### HELD-OUT FAULT, CONFIRMED
+
+    cooling tower fouling produced 0 rule reports over 120 days
+
+One nuance worth recording rather than hiding. The conditions were momentarily
+true during that window — 54 instants on the lift rule and 65 on the efficiency
+rule, one of them reaching severity 1.00 — but none held for the hour required
+before a report. Tower fouling does perturb chiller efficiency, because a fouled
+tower delivers warmer condenser water and the chiller pays for it, so the fault
+is not completely invisible to rules written about a different machine. What
+matters for Task 8 is that no rule was written for it and none reported it, and
+both are true.
+
+START HERE: `analytics/rules/chiller.py` — the module docstring explains what
+could not be built and why; the three rules under it are what replaced it.

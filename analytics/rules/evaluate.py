@@ -99,16 +99,25 @@ class Suppression:
     since_mode_switch: pd.Series  # minutes
 
 
-def suppression_mask(modes: pd.Series, interval_s: int) -> Suppression:
+def suppression_mask(
+    modes: pd.Series, interval_s: int, off_state: str = Mode.UNOCCUPIED.value
+) -> Suppression:
     """Work out where rules may be evaluated at all.
 
-    Occupancy is taken from the mode itself: anything other than unoccupied means
-    the unit is running. Both clocks restart together at the start of a day,
-    because the start of occupancy is also a mode switch, and the longer of the
-    two delays is what actually governs there.
+    Whether the machine is running is taken from the mode itself: anything other
+    than `off_state` means it is. Both clocks restart together when it starts,
+    because starting is also a mode switch, and the longer of the two delays is
+    what actually governs there.
+
+    `off_state` is a parameter rather than a constant so the same suppression
+    applies to equipment with no notion of occupancy. An air handler is off when
+    nobody is in the building; a chiller is off when it is not running. The
+    settling physics is identical -- neither machine is in balance for the first
+    hour after it starts -- so the machinery is shared and only the name of the
+    idle state differs.
     """
     step_minutes = interval_s / 60.0
-    occupied = modes != Mode.UNOCCUPIED.value
+    occupied = modes != off_state
 
     # Minutes since the current occupied block began.
     block = (occupied != occupied.shift()).cumsum()
@@ -156,6 +165,7 @@ def run_rules(
     modes: pd.Series,
     points: Sequence[str],
     interval_s: int = 300,
+    off_state: str = Mode.UNOCCUPIED.value,
 ) -> pd.DataFrame:
     """Evaluate every applicable rule at every instant that is quiet enough.
 
@@ -168,7 +178,7 @@ def run_rules(
     if not applicable:
         return pd.DataFrame()
 
-    suppression = suppression_mask(modes, interval_s)
+    suppression = suppression_mask(modes, interval_s, off_state)
     smoothed = smooth_inputs(values, points, modes, interval_s)
 
     # Pull everything into plain arrays once. Building a dict of readings per
