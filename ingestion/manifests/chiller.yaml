@@ -128,7 +128,7 @@ points:
 - column: CWL_PRI_SW_TEMP
   point_id: chw-plant-1.pri_supply_temp
   asset_id: chw-plant-1
-  brick_class: brick:Water_Temperature_Sensor
+  brick_class: brick:Chilled_Water_Supply_Temperature_Sensor
   name: Primary loop supply water temperature
   unit_native: degF
   unit_si: degC
@@ -137,7 +137,7 @@ points:
 - column: CWL_PRI_RW_TEMP
   point_id: chw-plant-1.pri_return_temp
   asset_id: chw-plant-1
-  brick_class: brick:Return_Water_Temperature_Sensor
+  brick_class: brick:Chilled_Water_Return_Temperature_Sensor
   name: Primary loop return water temperature
   unit_native: degF
   unit_si: degC
@@ -164,7 +164,7 @@ points:
 - column: CDWL_SW_TEMP
   point_id: chw-plant-1.cdw_supply_temp
   asset_id: chw-plant-1
-  brick_class: brick:Water_Temperature_Sensor
+  brick_class: brick:Supply_Condenser_Water_Temperature_Sensor
   name: Condenser loop supply water temperature
   unit_native: degF
   unit_si: degC
@@ -173,7 +173,7 @@ points:
 - column: CDWL_RW_TEMP
   point_id: chw-plant-1.cdw_return_temp
   asset_id: chw-plant-1
-  brick_class: brick:Return_Water_Temperature_Sensor
+  brick_class: brick:Return_Condenser_Water_Temperature_Sensor
   name: Condenser loop return water temperature
   unit_native: degF
   unit_si: degC
@@ -182,7 +182,7 @@ points:
 - column: CDWL_CW_FLOW
   point_id: chw-plant-1.cdw_flow
   asset_id: chw-plant-1
-  brick_class: brick:Water_Flow_Sensor
+  brick_class: brick:Condenser_Water_Flow_Sensor
   name: Condenser loop water flow
   unit_native: gallon/minute
   unit_si: meter**3/second
@@ -606,8 +606,8 @@ points:
 - column: CT_SW_TEMP_1
   point_id: ct-1.supply_temp
   asset_id: ct-1
-  brick_class: brick:Water_Temperature_Sensor
-  name: Cooling tower 1 leaving water temperature
+  brick_class: brick:Supply_Condenser_Water_Temperature_Sensor
+  name: Cooling tower 1 supply water temperature (cold water leaving the tower)
   unit_native: degF
   unit_si: degC
   resample: mean
@@ -615,8 +615,8 @@ points:
 - column: CT_RW_TEMP_1
   point_id: ct-1.return_temp
   asset_id: ct-1
-  brick_class: brick:Return_Water_Temperature_Sensor
-  name: Cooling tower 1 entering water temperature
+  brick_class: brick:Return_Condenser_Water_Temperature_Sensor
+  name: Cooling tower 1 return water temperature (warm water entering the tower)
   unit_native: degF
   unit_si: degC
   resample: mean
@@ -624,7 +624,7 @@ points:
 - column: CT_FLOW_1
   point_id: ct-1.flow
   asset_id: ct-1
-  brick_class: brick:Water_Flow_Sensor
+  brick_class: brick:Condenser_Water_Flow_Sensor
   name: Cooling tower 1 water flow
   unit_native: gallon/minute
   unit_si: meter**3/second
@@ -669,8 +669,8 @@ points:
 - column: CT_SW_TEMP_2
   point_id: ct-2.supply_temp
   asset_id: ct-2
-  brick_class: brick:Water_Temperature_Sensor
-  name: Cooling tower 2 leaving water temperature
+  brick_class: brick:Supply_Condenser_Water_Temperature_Sensor
+  name: Cooling tower 2 supply water temperature (cold water leaving the tower)
   unit_native: degF
   unit_si: degC
   resample: mean
@@ -678,8 +678,8 @@ points:
 - column: CT_RW_TEMP_2
   point_id: ct-2.return_temp
   asset_id: ct-2
-  brick_class: brick:Return_Water_Temperature_Sensor
-  name: Cooling tower 2 entering water temperature
+  brick_class: brick:Return_Condenser_Water_Temperature_Sensor
+  name: Cooling tower 2 return water temperature (warm water entering the tower)
   unit_native: degF
   unit_si: degC
   resample: mean
@@ -687,7 +687,7 @@ points:
 - column: CT_FLOW_2
   point_id: ct-2.flow
   asset_id: ct-2
-  brick_class: brick:Water_Flow_Sensor
+  brick_class: brick:Condenser_Water_Flow_Sensor
   name: Cooling tower 2 water flow
   unit_native: gallon/minute
   unit_si: meter**3/second
@@ -732,8 +732,8 @@ points:
 - column: CT_SW_TEMP_3
   point_id: ct-3.supply_temp
   asset_id: ct-3
-  brick_class: brick:Water_Temperature_Sensor
-  name: Cooling tower 3 leaving water temperature
+  brick_class: brick:Supply_Condenser_Water_Temperature_Sensor
+  name: Cooling tower 3 supply water temperature (cold water leaving the tower)
   unit_native: degF
   unit_si: degC
   resample: mean
@@ -741,8 +741,8 @@ points:
 - column: CT_RW_TEMP_3
   point_id: ct-3.return_temp
   asset_id: ct-3
-  brick_class: brick:Return_Water_Temperature_Sensor
-  name: Cooling tower 3 entering water temperature
+  brick_class: brick:Return_Condenser_Water_Temperature_Sensor
+  name: Cooling tower 3 return water temperature (warm water entering the tower)
   unit_native: degF
   unit_si: degC
   resample: mean
@@ -750,7 +750,7 @@ points:
 - column: CT_FLOW_3
   point_id: ct-3.flow
   asset_id: ct-3
-  brick_class: brick:Water_Flow_Sensor
+  brick_class: brick:Condenser_Water_Flow_Sensor
   name: Cooling tower 3 water flow
   unit_native: gallon/minute
   unit_si: meter**3/second

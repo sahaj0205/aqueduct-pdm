@@ -75,28 +75,31 @@ points:
   asset_id: ahu-1
   brick_class: brick:Supply_Air_Flow_Sensor
   name: Supply air volumetric flow
-  unit_native: foot**3/minute
+  unit_native: foot**3/hour
   unit_si: meter**3/second
   resample: mean
-  note: magnitude ~13x the documented design airflow; unit is suspect, see docs
+  note: >-
+    DEFECT: LBNL documents this as CFM but the values are 60x too large to be CFM. As CFM the coil load averages 686 tons over cooling hours on a five-zone air handler, and the supply fan draws 0.3% of the power needed to move that air. Read as cubic feet per HOUR it is 9,523 CFM and 11.4 tons, and the fan is within 6x. Loaded as ft3/hour; see docs/IMPLEMENTATION_NOTES.md 2.3a.
 - column: RA_CFM
   point_id: ahu-1.ra_flow
   asset_id: ahu-1
   brick_class: brick:Return_Air_Flow_Sensor
   name: Return air volumetric flow
-  unit_native: foot**3/minute
+  unit_native: foot**3/hour
   unit_si: meter**3/second
   resample: mean
-  note: negative for 28% of the year in the fault-free run; real defect, not float noise
+  note: >-
+    DEFECT: same 60x discrepancy as SA_CFM, loaded as ft3/hour. Tracks SA_CFM to three significant figures, so the simulation models no exfiltration and return equals supply.
 - column: OA_CFM
   point_id: ahu-1.oa_flow
   asset_id: ahu-1
   brick_class: brick:Outside_Air_Flow_Sensor
   name: Outdoor air volumetric flow
-  unit_native: foot**3/minute
+  unit_native: foot**3/hour
   unit_si: meter**3/second
   resample: mean
-  note: constant 357730.44 all year in every run; unusable as a signal
+  note: >-
+    DEFECT: same 60x discrepancy as SA_CFM, loaded as ft3/hour. WORSE: this column is a CONSTANT 357,730.44 for all 525,540 minutes of the year while the outdoor air damper swings 0 to 1, so it is not a measurement of outdoor airflow at all -- it looks like a design minimum-outdoor-air figure (5,962 CFM once scaled). Do not use it as a sensor reading; MixedAirBalance deliberately uses damper position instead.
 - column: SA_SP
   point_id: ahu-1.sa_static_p
   asset_id: ahu-1

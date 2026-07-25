@@ -1792,3 +1792,165 @@ START HERE: `model/graph.py` — read `asset_edges` and `node_to_asset_id`
 together; recovering which database asset a graph node belongs to, and then
 counting hops through equipment the database does not model, is the whole of what
 turns the semantic model into a table SQL can use.
+
+---
+
+## Checkpoint 2.3a — Data cleanup and full reload before the trajectory work
+
+Not a numbered checkpoint in the task. Requested directly, to clear the known
+defects before the trajectory synthesiser and the rule engine are built on top of
+them, and paid for with a full reload rather than carried forward.
+
+### WHAT WE DID
+
+Three things, all about making the stored data mean what it says.
+
+Fourteen readings were labelled with an equipment type that was real but too
+vague to be useful — the equivalent of filing a chilled water supply temperature
+as simply "a water temperature". They are now labelled specifically. This
+matters because the rule engine finds the readings it needs by asking for them by
+type, so a reading filed under a vague type is invisible to it: a search for
+chilled water supply temperature would have missed the primary loop entirely, and
+one for condenser water flow would have missed all three cooling towers.
+
+The air handler's three airflow readings were 60 times too large. As stored they
+implied the unit was removing 686 tons of heat — enough for a small district
+plant — from a machine serving five office zones, while its fan drew three
+tenths of one percent of the power needed to move that much air. Corrected, the
+same data says 9,523 cubic feet per minute and 11.4 tons, which is an ordinary
+office air handler. Anything built on the old numbers would have been quietly and
+badly wrong.
+
+Finally the whole database was emptied and rebuilt from the source files, so
+nothing that had been loaded under the old labels or the old units survives
+anywhere.
+
+### HOW IT WORKS
+
+`ingestion/manifests/chiller.yaml` :: the fourteen specific water classes
+- WHY IT EXISTS: The manifest is what a load reads, so a correction has to live
+  here or it is undone by the next reload.
+- WHAT IT DOES: Replaces the generic water temperature, return water temperature
+  and water flow types on fourteen readings with the specific types Brick
+  defines: chilled water supply and return for the primary loop, supply and
+  return condenser water for the plant-level and tower-level pairs, and condenser
+  water flow for the plant and all three towers.
+- CHOICES: Every one of the seven replacement types was checked against the
+  published Brick 1.3 ontology before use, not assumed to exist.
+- CHOICES: Each assignment was decided from the July data rather than from the
+  column name — which is the only reliable method here, given that this project
+  has already found two pairs in this dataset labelled backwards.
+- CHOICES: A naming rule, written down because otherwise this recurs. Water
+  temperatures are named and typed from the LOOP's point of view: supply is
+  always the cold water going to the load, return is always the warm water coming
+  back. The plant-level readings and the tower readings already agreed on that
+  reading, so it costs nothing to adopt.
+- ⚠ JUDGEMENT CALL: The one exception is the chiller's own condenser pair, which
+  stays on entering and leaving from checkpoint 2.2. It would have been more
+  uniform to move it onto supply and return like everything else, but there the
+  loop's convention and the machine's own convention genuinely disagree — the
+  chiller supplies warm water to the tower while the tower supplies cool water to
+  the chiller — and entering and leaving are the only names that cannot be read
+  two ways.
+- ⚠ JUDGEMENT CALL: For the same reason I did NOT rename the cooling tower point
+  ids to entering and leaving, even though their descriptions use those words.
+  The tower's supply reading and the plant's supply reading are both the cold
+  side, so they already agree; renaming one of them would have broken an
+  agreement that currently holds.
+
+`ingestion/manifests/sdahu.yaml` :: the airflow unit correction
+- WHY IT EXISTS: Three readings were being converted with the wrong unit, so
+  every stored value was 60 times too large.
+- WHAT IT DOES: Changes the declared source unit on supply, return and outdoor
+  airflow from cubic feet per minute to cubic feet per hour. Nothing else
+  changes; the conversion machinery already handles the new unit, and the ratio
+  between the two is exactly 60.
+- CHOICES: This contradicts the LBNL documentation, which was checked rather
+  than guessed at: the published table states the unit as CFM outright. The
+  documentation is being overruled on physical grounds, and the grounds are
+  recorded on the reading itself. Read as CFM, the coil load averages 686 tons
+  over cooling hours for a five-zone air handler and the supply fan draws 0.3% of
+  the power needed to move that air. Read as cubic feet per hour, it is 9,523 CFM
+  and 11.4 tons, and the fan is within a factor of six. This is the third place
+  the LBNL documentation has been found to disagree with the LBNL data.
+- CHOICES: The remaining factor of six on fan power is recorded as unresolved
+  rather than explained away. It may be simulation crudeness — the supply fan
+  speed is a hard constant 0.9 for all 525,540 minutes of the year, which is not
+  physical either — but it is not proven, and a fan rule in a later task should
+  not trust the power channel without checking it.
+- CHOICES: A separate and worse defect on the outdoor airflow reading is recorded
+  in the same place: it is a constant 357,730.44 for the entire year while the
+  outdoor air damper swings from fully shut to fully open. It is therefore not a
+  measurement of outdoor airflow at all, and looks like a design minimum
+  ventilation figure. It is flagged as not usable as a sensor reading. This
+  retroactively vindicates the choice made in 2.2 to build the mixed air balance
+  on damper position rather than on measured flows — a flow-based version of that
+  constraint would have been built on a constant.
+
+`model/loader.py` :: fourteen more entries in `NODE_CLASS_REPAIRS`
+- WHY IT EXISTS: The graph has to be corrected in step with the manifest and the
+  database. Three copies of the same fact exist and a rule that reads one while
+  the data comes from another is wrong in a way nothing reports.
+- WHAT IT DOES: Adds the same fourteen corrections to the per-node class map, so
+  the model loaded from the published Turtle carries the specific types too.
+- CHOICES: The naming rule and its single exception are written into the comment
+  above the entries, next to the code that applies it, rather than only in these
+  notes.
+
+`.env.example` :: `ADMIN_DATABASE_URL`
+- WHY IT EXISTS: Checkpoint 2.4 has to write the fault labels it injects into the
+  ground-truth schema, and the role every other part of the system connects as
+  cannot see that schema at all — which is the property the whole accuracy claim
+  depends on. A second, privileged connection string is needed, and it needs to
+  be obviously separate.
+- WHAT IT DOES: Adds a privileged connection URL for the superuser role, with a
+  comment stating that exactly one thing may use it — the scenario generator that
+  records what fault it injected and when — and that nothing which detects,
+  scores, baselines, predicts or diagnoses may touch it.
+- CHOICES: A separate variable rather than reusing the existing unrestricted
+  `DATABASE_URL`, so that any code reaching for the privileged path has to name
+  it explicitly and a breach of the separation shows up in a diff as a changed
+  identifier rather than as an ordinary connection.
+
+`scripts/fix_point_labels.sql` :: now superseded for fresh databases
+- CHANGED FROM BEFORE: Still correct and still idempotent, but no longer needed
+  after this reload — the manifests now produce the corrected state directly, and
+  the truncate-and-reload path bypasses it entirely. Kept because it documents
+  what was wrong and how it was proven, and because it is the only way to correct
+  a database that cannot afford a reload.
+
+### MEASURED RESULT
+
+- Full reload from empty: 18 trajectories, 116,039,232 rows, 8 assets, 107
+  points, in 36.5 minutes. Every trajectory reported 0 rows replaced, which is
+  the check that the tables really were empty first rather than being overwritten
+  in place.
+- Air flows corrected by exactly 60. Supply air peak is now 8.887 m3/s, which is
+  18,830 CFM, against 533.2 m3/s before. Peak coil load is 43.5 tons and the mean
+  over cooling hours is 46.3 kW, which is an ordinary five-zone air handler,
+  against 686 tons before.
+- The outdoor airflow reading confirms itself as a constant rather than a
+  measurement: its peak and its mean over the whole year are both 2.814 m3/s to
+  three decimal places.
+- No point in the database carries an invalid Brick class or a generic one: 0
+  and 0 out of 107. The same holds for the manifests and for the graph.
+- All 107 points agree on their class across the model, the manifests and the
+  table. 45 class repairs are now applied to the graph as it loads, up from 3
+  after checkpoint 2.1.
+- The checkpoint 2.2 label corrections survived the reload, which is what proves
+  they live in the manifests and not only in the migration script: secondary
+  supply is 7.14 degC against return at 11.97, and chiller 1 condenser leaving is
+  29.84 against entering at 27.44.
+- All three constraint residuals are identical to before the reload -- -0.369 K,
+  +0.456 K and -99.0 kW. This is the check that a unit fix on three airflow
+  readings changed nothing else, since no constraint uses those readings.
+- The hard gate from checkpoint 2.2 still passes: 17 assets upstream of the
+  cooling coil, including all three chillers.
+- app.asset_edges was rebuilt by the load as intended, 25 rows, and its checksum
+  c9b39280a9edb49c93c1bf26ea70f8de is unchanged from before the reload -- the
+  topology does not depend on the data.
+- Database is 21 GB, from 2,375 MB immediately after the truncate.
+
+START HERE: `ingestion/manifests/sdahu.yaml` — the note on `ahu-1.sa_flow`
+records the one place in this project where the LBNL documentation was
+deliberately overruled, and the physical argument for doing it.

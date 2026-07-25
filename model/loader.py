@@ -132,6 +132,32 @@ NODE_CLASS_REPAIRS: dict[tuple[str, str], URIRef] = {
     # matches the AHU's own air temperature to within 0.33 degF.
     ("chiller", "OA_TEMP"): BRICK["Outside_Air_Wet_Bulb_Temperature_Sensor"],
     ("chiller", "OA_TEMP_WB"): BRICK["Outside_Air_Temperature_Sensor"],
+    # Fourteen readings the source types with a class that is real but too vague
+    # to select on: a query for chilled water supply temperature would miss the
+    # primary loop, and one for condenser water flow would miss every tower.
+    #
+    # Naming rule applied here, and the only exception to it. Water temperatures
+    # are classed from the LOOP's point of view -- supply is the cold water going
+    # to the load, return is the warm water coming back -- because that reading
+    # agrees between the plant-level points and the towers. The chiller's own
+    # condenser pair above is the exception, classed entering and leaving,
+    # because there the loop convention and the machine's own convention
+    # disagree and Brick offers unambiguous alternatives. Every assignment below
+    # was checked against the July data, not inferred from the column name.
+    ("chiller", "CWL_PRI_SW_TEMP"): BRICK["Chilled_Water_Supply_Temperature_Sensor"],
+    ("chiller", "CWL_PRI_RW_TEMP"): BRICK["Chilled_Water_Return_Temperature_Sensor"],
+    ("chiller", "CDWL_SW_TEMP"): BRICK["Supply_Condenser_Water_Temperature_Sensor"],
+    ("chiller", "CDWL_RW_TEMP"): BRICK["Return_Condenser_Water_Temperature_Sensor"],
+    ("chiller", "CDWL_CW_FLOW"): BRICK["Condenser_Water_Flow_Sensor"],
+    ("chiller", "CT_SW_TEMP_1"): BRICK["Supply_Condenser_Water_Temperature_Sensor"],
+    ("chiller", "CT_SW_TEMP_2"): BRICK["Supply_Condenser_Water_Temperature_Sensor"],
+    ("chiller", "CT_SW_TEMP_3"): BRICK["Supply_Condenser_Water_Temperature_Sensor"],
+    ("chiller", "CT_RW_TEMP_1"): BRICK["Return_Condenser_Water_Temperature_Sensor"],
+    ("chiller", "CT_RW_TEMP_2"): BRICK["Return_Condenser_Water_Temperature_Sensor"],
+    ("chiller", "CT_RW_TEMP_3"): BRICK["Return_Condenser_Water_Temperature_Sensor"],
+    ("chiller", "CT_FLOW_1"): BRICK["Condenser_Water_Flow_Sensor"],
+    ("chiller", "CT_FLOW_2"): BRICK["Condenser_Water_Flow_Sensor"],
+    ("chiller", "CT_FLOW_3"): BRICK["Condenser_Water_Flow_Sensor"],
 }
 
 
