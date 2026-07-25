@@ -1111,3 +1111,442 @@ reported. Four trivial helpers skipped.
 START HERE: `model/loader.py` — read `load_merged_graph` first; the two
 functions it calls are the whole of what makes two conflicting files into one
 usable graph.
+
+---
+
+## Checkpoint 2.2 — Extension vocabulary, constraints, and the CHW loop edge
+
+### WHAT WE DID
+
+The two machines are now connected. Before this the air handler and the chiller
+plant were two separate descriptions with nothing joining them, so a question
+like "the coil cannot reach its target air temperature — is the chiller at
+fault?" had no path to an answer; the trail stopped at the edge of the air
+handler. There is now a chilled water loop between them, and behind it a
+condenser water loop from the cooling towers to the chillers, so starting at the
+cooling coil and walking backwards along the direction water flows reaches all
+three chillers, all five chilled water pumps, all three cooling towers and their
+pumps — seventeen assets, across two systems the published data never linked.
+
+The graph also now records things Brick has no way to say. Each machine carries
+how much it matters, what it costs to fix, what it costs to replace, and how many
+people it serves, which is what lets the system later rank two simultaneous
+problems instead of just listing them. And five physical conservation
+relations are recorded — statements that must be true if the equipment and its
+sensors are both honest, each naming the readings that take part and carrying an
+arithmetic expression whose value is zero when the relation holds. Those
+expressions are the raw material of fault detection: a persistently non-zero
+value means either the physics is being violated or an instrument is lying, and
+telling those two apart is the whole job.
+
+Writing them required measuring what the relations actually do on healthy data,
+and two of the three do not come out at zero. That is recorded next to each one
+rather than hidden, because a detector that expects zero from them would report
+faults continuously.
+
+### HOW IT WORKS
+
+Ordered by data flow: vocabulary, then the constraints built on it, then the
+join, then per-asset values, then the loader changes that pull it together and
+the gate that proves it worked.
+
+`model/extensions.ttl` :: the `mvn:` vocabulary
+- WHY IT EXISTS: Brick describes what equipment exists and how it is wired. It
+  has no way to say what a machine is worth, how many people depend on it, or
+  which physical law relates a group of its readings. Without those the system
+  can detect that something is wrong but cannot say which wrong thing to fix
+  first, and cannot check physics at all.
+- WHAT IT DOES: Declares seven terms. Four are per-asset numbers: criticality
+  tier, replacement cost, repair cost, occupants served. One is per-point: the
+  design value, meaning what a reading is supposed to be when everything is
+  right. The last two are the constraint machinery — a link from a constraint to
+  each reading that participates in it, and the arithmetic expression itself.
+  Each carries a comment explaining what breaks downstream without it.
+- CHOICES: Criticality tier is documented as 1 = failure interrupts occupants
+  immediately, 2 = degrades performance and is tolerable for days, 3 = nuisance.
+  That matches the 1-to-3 range the database already constrains the column to, so
+  the graph and the table cannot disagree.
+
+`model/extensions.ttl` :: the residual expression variable convention
+- WHY IT EXISTS: An expression is useless unless something can turn its variable
+  names into actual columns of stored measurements. This is the rule that does
+  that, and it is written down in the file rather than living in the evaluator.
+- WHAT IT DOES: Variables are written `system.NAME`, for example
+  `sdahu.MA_TEMP`. The system prefix is mandatory because both source systems
+  define a reading called `OA_TEMP` and they are not the same instrument. The
+  name after the dot is simultaneously the entity's name in the Brick model, the
+  column name in the source CSV, and the `column` key in the ingestion manifests
+  — so the manifests written back in checkpoint 1.5 already map every variable to
+  a row of the points table. No new lookup table was needed.
+- CHOICES: Operators restricted to the four arithmetic ones and parentheses. No
+  functions and no conditionals, on the grounds that a relation needing either is
+  a relation that belongs in code where it can be read and reviewed, not hidden
+  in a string inside a data file.
+- ⚠ JUDGEMENT CALL: You did not specify the variable form. The alternative was
+  to write database point ids directly, like `ahu-1.ma_temp`, which removes the
+  resolution step entirely. Rejected because those ids contain hyphens, so they
+  cannot be parsed as names without a quoting convention, and because the graph
+  should be able to state a physical relation without knowing how the data
+  happens to be stored. A separate consequence, verified rather than assumed: all
+  30 constraint participants across the five constraints resolve through the
+  manifests to rows that exist in the points table.
+
+`model/extensions.ttl` :: `mvn:MixedAirBalance`
+- WHY IT EXISTS: The first and cleanest physics check on the air side. Air
+  leaving the mixing box is outdoor air and return air blended together, so its
+  temperature has to sit between the two at the point set by how much of each is
+  present. Three separate faults disturb it, which is what makes it valuable and
+  also why the graph is needed to tell them apart.
+- WHAT IT DOES: Takes the outdoor air damper position as the blend fraction,
+  computes what the mixed temperature should therefore be, and subtracts that
+  from the measured mixed temperature. Result is in kelvin, zero when the mixing
+  is consistent. Fires on a stuck outdoor air damper, on mixed air sensor drift,
+  and on outdoor air sensor drift — and a damper fault also disturbs the coil
+  downstream while a sensor fault does not, which is the discrimination the
+  traversal queries exist to support.
+- CHOICES: Damper position is used directly as a fraction, not divided by 100.
+  Checked against the data first: both the damper and the valve are stored on a 0
+  to 1 scale, not 0 to 100. Had that been assumed rather than checked, every
+  residual would have been out by a factor of a hundred and the constraint would
+  have looked catastrophically violated at all times.
+- CHOICES: Measured on fault-free July data with the supply fan running, 4560
+  samples: mean -0.369 K, standard deviation 0.377 K. The small negative bias is
+  expected and is recorded in the file — damper position is a nonlinear stand-in
+  for the actual outdoor air mass fraction, so a straight-line blend understates
+  outdoor air at mid-travel.
+- ⚠ JUDGEMENT CALL: The measured air flows were available and would give a
+  physically exact blend fraction instead of the damper-position approximation.
+  I used damper position because you named it as a participant. This turned out
+  to be the safer choice for an unrelated reason found while checking the data:
+  the air flow columns are not trustworthy (see the defect list below), so a
+  flow-based expression would have been built on bad numbers.
+
+`model/extensions.ttl` :: `mvn:CoilEnergyBalance`
+- WHY IT EXISTS: The constraint that spans both systems, and therefore the
+  reason the chilled water loop edge has to exist at all. Its water temperature
+  input comes from the chiller plant, not the air handler.
+- WHAT IT DOES: A coil cannot cool air below the temperature of the water
+  entering it, and how close it gets to that limit should track how far the
+  chilled water valve is open. So it compares the actual air temperature drop
+  across the coil against the fraction of the maximum possible drop that the
+  valve is commanding. Result in kelvin. Measured fault-free: mean +0.456 K,
+  standard deviation 1.165 K over the same 4560 samples.
+- CHOICES: Two limitations are written into the file rather than left to be
+  discovered. First, coil water flow is not measured anywhere in the air handler
+  dataset, so a true two-sided balance — heat leaving the air equals heat entering
+  the water — cannot be written at all; the chilled water return temperature is
+  therefore a declared participant that does not appear in the expression, and
+  that mismatch is verified as the only one of its kind across all five
+  constraints. Second, the two source datasets are independent simulations with
+  unrelated load profiles, coupled only through sharing the same Chicago weather
+  file, so the water in this expression is not physically the water that cooled
+  this air. The residual is approximate as a number. The graph edge underneath it
+  is not approximate, and that edge is what carries root cause across the systems.
+
+`model/extensions.ttl` :: `mvn:ChillerEnergyBalance_1`, `_2`, `_3`
+- WHY IT EXISTS: Conservation of energy across a chiller: everything the
+  compressor puts in and everything the chilled water gives up has to leave
+  through the condenser. It is the check that catches condenser fouling and
+  refrigerant loss, which are two of the six scenarios the next checkpoint
+  builds.
+- WHAT IT DOES: Each instance computes heat rejected at the condenser, subtracts
+  heat absorbed from the chilled water, then subtracts electrical power drawn.
+  Both heat terms are a water flow multiplied by a temperature difference and by
+  4.17 million, which is the heat capacity of a cubic metre of water per kelvin —
+  997 kilograms per cubic metre times 4184 joules per kilogram per kelvin —
+  because both flows are stored as cubic metres per second. Result in watts.
+- CHOICES: The subtraction order for the condenser pair was determined from the
+  data, not from the class names. At the chiller-level points the one named
+  "supply condenser water" is the warmer of the pair, averaging 29.84 against
+  27.44 degrees, which is the opposite sense to the plant-level pair describing
+  the same loop. Assuming the names were right made the entire residual negative.
+- ⚠ JUDGEMENT CALL: Three instances, one per chiller, where you named one
+  constraint. The three machines are identical, each has its own sensors and
+  stages independently, so a single instance bound to chiller 1 would leave
+  chillers 2 and 3 with no energy balance at all. The alternative — one instance
+  with a templated expression applied by class — would have meant inventing
+  templating machinery in the graph that nothing else needs.
+- CHOICES: Measured fault-free on chiller 1, July, running only, 5403 samples:
+  mean -99.0 kW, standard deviation 66.3 kW. **The balance does not close.**
+  Backing compressor work out of the two thermal terms implies about 112 kW where
+  the power channel reports 355 kW — a coefficient of performance of 6.1 against
+  the 1.9 the reported power implies, and 6.1 is the plausible figure for a
+  water-cooled chiller. So the reported power and the thermal measurements
+  disagree in the source simulation itself. The residual still moves with fouling
+  and refrigerant loss so it is usable as a trend, but its absolute value is not
+  a physical energy imbalance and must never be thresholded at zero. This is
+  recorded on the constraint.
+
+`model/building_extensions.ttl` :: the water-side flow path
+- WHY IT EXISTS: The hard requirement of this checkpoint. Nothing in the
+  published data connects the two systems, and — separately — the chiller plant
+  file contains no flow direction whatsoever: 0 flow statements out of its 191.
+  So the entire water topology is authored here. Without it, walking upstream
+  from the cooling coil returns nothing and cross-asset diagnosis is impossible
+  by construction.
+- WHAT IT DOES: Creates two loop nodes and 22 statements. Three chillers and five
+  chilled water pumps feed the chilled water loop; the chilled water loop feeds
+  the air handler's cooling coil — that single statement is what makes the two
+  systems one graph. Three cooling towers, three condenser pumps and the diverting
+  valve feed the condenser water loop, and the condenser water loop feeds the
+  three chillers. Both loops are also declared parts of the plant subsystems that
+  already existed, so they hang off the existing structure rather than floating.
+  The resulting chain is cooling tower to condenser loop to chiller to chilled
+  water loop to cooling coil.
+- CHOICES: A loop node rather than direct chiller-to-coil statements. Three
+  chillers and five pumps all feed one coil, so a shared node makes that a
+  six-into-one fan-in instead of fifteen separate edges, and the loop is genuinely
+  the thing they share.
+- ⚠ JUDGEMENT CALL: Each loop is modelled in one direction only, so the graph is
+  acyclic. A real water loop is a closed circuit and modelling it as one would be
+  more faithful — but it would make every asset upstream of every other asset,
+  and root cause traversal would return the entire plant for any symptom. The
+  direction chosen is the one along which faults propagate: towers affect
+  chillers, chillers affect the coil.
+- ⚠ JUDGEMENT CALL: The condenser water loop was not asked for. Only the chilled
+  water edge was specified. I added it because the chiller plant file has no flow
+  direction at all, so without it the plant has no internal topology, the
+  condenser fouling scenario in the next checkpoint has no path from tower to
+  chiller, and the traversal queries in 2.3 would return almost nothing for any
+  plant asset. It is 11 of the 22 authored statements and removable on its own.
+- CHOICES: The condenser loop node is typed as a generic water loop, not as a
+  condenser water loop. Checked against the published Brick 1.3 ontology: there
+  is no condenser water loop class — Brick defines loop, water loop, chilled water
+  loop, hot water loop, domestic water loop and air loop, and the condenser case
+  is simply absent. The generic class is the most specific one that actually
+  exists.
+
+`model/building_extensions.ttl` :: asset attributes
+- WHY IT EXISTS: Gives the advisory and remaining-life layers what they need to
+  answer the only question a building owner actually asks — is it cheaper to fix
+  this now or run it to failure — and to rank two simultaneous problems.
+- WHAT IT DOES: Sets criticality tier, replacement cost, repair cost and
+  occupants served on the air handler, the three chillers and the three cooling
+  towers, and tier plus occupants on the plant as a whole. Chillers and the air
+  handler are tier 1; towers are tier 2 because a fouled tower costs energy and
+  capacity but cooling continues, which is the boundary between the tiers.
+- CHOICES: Capacities are measured, not assumed. Each chiller's peak evaporator
+  load across the fault-free year is 476 kW, which is 135 tons of refrigeration
+  (the unit chillers are sold in, being the rate that melts a ton of ice in a
+  day). Plant peak is 903 kW, 257 tons. Costs are then derived at roughly $1,200
+  per ton installed for a water-cooled chiller and $400 per ton for a tower.
+- CHOICES: **Every cost figure is an estimate and is labelled as one in the
+  file.** They are the right order of magnitude and no better. Each is a single
+  edit and nothing computes them.
+- CHOICES: The plant deliberately carries no replacement cost. A plant is not
+  bought or replaced as a unit, its machines are, and a number there would let
+  the remaining-life layer double-count it against the chillers and towers.
+- CHOICES: All three chillers carry the full occupant count each, even though
+  three machines against a 257-ton peak means losing one interrupts nobody.
+  Whether redundancy should discount criticality depends on which machines were
+  staged on at the time of the fault, which is a fact about an event and not about
+  the machine, so it is left to the advisory layer rather than baked in here.
+- CHOICES: Recorded on the plant node: 257 tons of installed plant would normally
+  serve a building many times larger than a five-zone air handler. The two source
+  datasets were simulated independently and were never sized against each other.
+
+`model/building_extensions.ttl` :: point design values
+- WHY IT EXISTS: Gives the baseline layer a fixed reference that does not come
+  from observed data, so "normal" is not defined entirely by whatever the
+  equipment happened to be doing — which matters because some of the loaded data
+  is already faulted.
+- WHAT IT DOES: Sets 14 design values, all read off the fault-free run so any of
+  them can be checked with one query, all in the SI unit the measurement is
+  stored in. Where the source setpoint is constant across the whole year, that
+  constant is the design value exactly: supply air temperature 12.88 degrees,
+  duct static pressure 400.4 pascals, secondary loop differential pressure. Where
+  the setpoint follows a reset schedule, the design value is the demanding end of
+  that schedule, because that is what the equipment was sized for.
+- CHOICES: The demanding end is the cold end for chilled water — 6.67 degrees,
+  the coldest water the plant is ever asked for — and the hot end for the cooling
+  towers, 29.44 degrees, because a tower's hardest day is the hottest and most
+  humid one when it can only just reach that temperature. Opposite directions for
+  the same kind of quantity, so this is stated in the file rather than left to be
+  inferred.
+- CHOICES: Design cooling load is set to the annual peak of 903 kW because it is
+  needed as the denominator of part-load ratio — how hard the plant is working as
+  a fraction of what it can do — which the baseline layer needs since a chiller's
+  efficiency depends on part-load ratio more than on anything else.
+- CHOICES: Full-load compressor power is the observed annual peak standing in for
+  a nameplate rating, and is flagged in the file as weaker than the
+  setpoint-derived values: if the chiller never reached full load in the simulated
+  year, it is an underestimate.
+
+`model/building_extensions.ttl` :: recorded source defects
+- WHY IT EXISTS: Two pairs of columns carry the opposite sense to the equipment
+  class they are labelled with. Anyone writing a rule against them needs to know,
+  and the place they will look is the model.
+- WHAT IT DOES: Attaches a comment to each affected entity stating the inversion
+  and the evidence for it. Neither is corrected, because correcting them means
+  re-mapping the ingestion manifests and reloading the data, which is outside this
+  checkpoint.
+
+`model/loader.py` :: `load_merged_graph(with_extensions=True)`
+- CHANGED FROM BEFORE: It merged the two published files and stopped. It now also
+  loads both extension files afterwards and registers their prefixes, so one call
+  returns the complete model. The new flag exists so the published data can still
+  be loaded alone, which is what produces the zero that proves the two systems
+  arrive disconnected.
+
+`model/loader.py` :: `upstream_of(graph, start)` and `UPSTREAM_SPARQL`
+- WHY IT EXISTS: Runs the checkpoint's gate, and is the shape of the traversal
+  that cross-asset diagnosis will use.
+- WHAT IT DOES: Runs a query that walks flow statements backwards from a starting
+  entity, any number of hops, and returns everything it reaches with each one's
+  class.
+- CHOICES: Written as an inverse property path rather than by asking for the
+  reverse relation directly. Brick does declare the reverse relation as the formal
+  inverse of the forward one — confirmed by reading the published ontology, which
+  states exactly that — but we do not load the ontology and the query engine does
+  no logical inference, so asking for it by name returns nothing. Writing the
+  inverse as a path is the same thing semantically and needs no reasoner.
+
+`model/loader.py` :: `cross_system_triples(graph)`
+- CHANGED FROM BEFORE: It looked at every statement whose two ends were in
+  different systems. Now restricted to the three structural relations — feeds,
+  part-of, has-point — because constraints link to readings in both systems by
+  design, and 30 of those crossings would have buried the 22 that are actually the
+  topology. It also now recognises the two namespaces added in this checkpoint.
+
+`model/loader.py` :: `main()` gate and constraint report
+- CHANGED FROM BEFORE: Two blocks added. The gate block runs the upstream
+  traversal from the cooling coil, prints every asset reached with its class,
+  counts how many chillers are among them, and prints PASS or FAIL. The constraint
+  block lists each constraint with how many readings it binds and its expression,
+  so the whole physics layer is visible from one command.
+
+### MEASURED RESULT
+
+- Merged graph 438 triples, up from 272. 151 typed entities. 22 authored
+  topology statements, 2 new equipment nodes, 5 constraints binding 30 readings,
+  8 assets carrying attributes, 14 design values.
+- **Gate PASS.** From the air handler's cooling coil, walking flow backwards
+  reaches 17 assets, including all three chillers by class, and all three cooling
+  towers four hops away.
+- The published data alone yields 0 cross-system statements, and the chiller
+  plant file contains 0 flow statements out of 191 triples.
+- All 30 constraint participants resolve, through the ingestion manifests, to
+  rows that exist in the points table. All 14 design values likewise. One
+  declared participant is deliberately absent from its expression and it is the
+  documented one.
+- Fault-free residuals, July 2018: mixed air balance mean -0.369 K (sd 0.377);
+  coil balance mean +0.456 K (sd 1.165); chiller 1 energy balance mean -99.0 kW
+  (sd 66.3). The third does not close, for reasons in the source data.
+- Classes validated against the published Brick 1.3 ontology. 52 of 54 used
+  classes are real. This also confirms both spelling repairs made in 2.1 were
+  correct: the miscased forms do not exist in Brick and the corrected forms do,
+  and it confirms the reverse-flow relation is formally declared as the inverse
+  of the forward one.
+
+### CORRECTION APPLIED WITHIN 2.2 — point labelling fixed at the data layer
+
+The first pass through this checkpoint recorded two labelling defects as comments
+and compensated for them inside the residual expressions. That was rejected on
+review, for a good reason: a compensation only works for as long as everyone
+remembers it is there, and there was nothing to stop a rule written in Task 3
+from reading the same points and getting the sign wrong. The defects are now
+corrected at the data layer instead, in all three places that had to agree.
+
+Investigating properly also changed the diagnosis. Only one of the two pairs was
+actually swapped.
+
+**The secondary loop pair genuinely was swapped.** The source column named
+`CWL_SEC_SW_TEMP` — supply — averages 11.97 degC while `CWL_SEC_RW_TEMP` —
+return — averages 7.14. A secondary loop delivers cold water to its loads, so its
+supply cannot be the warmer of the pair. What settles it is the primary loop,
+which is labelled correctly at 7.19 degC supply and 9.54 degC return: a secondary
+loop is fed from the primary supply, so secondary supply has to be about 7.19,
+which is exactly what the column named "return" holds. Fixed by crossing the
+mapping in the manifest and exchanging the data already loaded, so both point ids
+now hold what their names claim.
+
+**The chiller condenser pair was not swapped.** Its point names already read
+"entering" and "leaving" and already matched the data. The defect was narrower:
+the word "supply" in the identifier `cdw_supply_temp` means the opposite thing one
+level up, where the plant-level pair uses supply for the cool water the towers
+send to the chillers. One word, two senses, inside one model — which is how the
+original misreading happened. Rather than pick a winner, both identifiers moved to
+Brick's own entering and leaving classes, which are defined explicitly and cannot
+be read two ways.
+
+`ingestion/manifests/chiller.yaml` :: the crossed pair and the renamed pair
+- WHY IT EXISTS: The manifest is what a load reads, so a fresh database has to
+  come out correct without anyone running a repair afterwards.
+- WHAT IT DOES: The two secondary loop entries now take their data from each
+  other's source column, with a comment block above them stating the evidence.
+  The six chiller condenser entries have new point ids ending in
+  `cdw_leaving_temp` and `cdw_entering_temp`. Eighteen points also got corrected
+  classes.
+- CHOICES: The crossing is done by swapping the `column` key rather than the
+  `point_id`, so each point's id, name and class stay together as one block and
+  the change is two lines rather than six.
+
+`scripts/fix_point_labels.sql` :: the migration
+- WHY IT EXISTS: The database already held 116 million rows and reloading to fix
+  labels would have meant re-reading 15 GB of CSV for a change that alters no
+  value. This corrects the existing database in place.
+- WHAT IT DOES: Three steps. Step one exchanges the two secondary loop point ids
+  across 2,522,592 rows. Step two creates the six new condenser point rows, moves
+  7,567,776 rows onto them, then deletes the old rows. Step three corrects the
+  classes that are not Brick classes. It ends by re-checking each correction and
+  printing the totals.
+- CHOICES: Every step is guarded so the script can be run twice safely. This
+  matters most for the swap, because a swap applied twice is a swap undone — so
+  rather than assume, it reads one summer day first and acts only while supply is
+  still the warmer of the two.
+- CHOICES: The condenser fix is a rename to new identifiers, not an exchange
+  between existing ones, so there is never a moment when two points share a name
+  and no temporary placeholder is needed.
+- CHOICES: New point rows are inserted before any measurement is moved onto them,
+  and old rows are deleted only after confirming nothing still references them,
+  because the measurements table has a foreign key to the points table.
+
+`model/loader.py` :: `NODE_CLASS_REPAIRS`
+- WHY IT EXISTS: The graph had to be corrected alongside the manifest and the
+  database, or a rule selecting points by class from the model would disagree with
+  the data it then reads. The existing repair map could not express these, because
+  it maps one class to another and here the right answer depends on the individual
+  node.
+- WHAT IT DOES: Maps a source system and entity name to the class that entity
+  should carry. Twelve entries: the secondary loop pair, the six condenser
+  readings, the two setpoints that shared one class across two different fluids,
+  and the outdoor air pair. Applied after the class-wide repairs so a node listed
+  in both gets the per-node answer.
+- CHOICES: Raises rather than continuing if an entry names a node that is not in
+  the graph. A repair that silently matches nothing is worse than no repair,
+  because it reads as though the defect has been handled.
+- CHOICES: Keyed by system and name rather than name alone, because both source
+  systems have an entity called `OA_TEMP` and they are different instruments.
+
+`model/extensions.ttl` :: residual expressions rewritten to point ids
+- CHANGED FROM BEFORE: Variables were the Brick model's local names, which are
+  the LBNL source column names — `chiller.CHL_SWCD_TEMP_1`. They are now database
+  point ids in braces — `{chiller-1.cdw_leaving_temp}`. The reason is the whole
+  point of this correction: four of those column names state the opposite of what
+  the column contains, so an expression written in them looks as though its signs
+  are reversed even when it is right, and the only way to check it was to hold the
+  exceptions in your head. Written in corrected point ids, the condenser term
+  reads "leaving minus entering" and the evaporator term reads "return minus
+  supply" — warm minus cool in both cases, checkable by reading. The braces are
+  needed because point ids contain hyphens and dots.
+- CHOICES: `mvn:constrainedBy` still names Brick model nodes, because relating
+  physical entities is what the graph is for. The two naming systems are kept in
+  step by the manifests and checked mechanically.
+
+**Measured after the correction:**
+- 10,090,368 rows relabelled in 7 minutes. No CSV re-read, no value recomputed.
+- Secondary loop: supply now 7.14 degC and return 11.97 degC on the probe day,
+  the right way round. Chiller 1 condenser: leaving 29.84, entering 27.44.
+- Totals unchanged at 107 points and 116,039,232 measurements. Zero stale
+  identifiers left in either table.
+- All three residuals are numerically identical to before the correction —
+  -0.369 K, +0.456 K, -99.0 kW — which is the check that this changed labels and
+  nothing else.
+- 31 class repairs now applied to the graph, up from 3. Every class used in the
+  graph, in the manifests and in the database exists in Brick 1.3, and all 107
+  points agree on their class across the model, the manifest and the table.
+
+START HERE: `model/building_extensions.ttl` — section 1 is the twenty-two
+authored statements that turn two disconnected files into a graph you can trace
+a fault across, and everything else in this checkpoint either supports them or
+measures them.

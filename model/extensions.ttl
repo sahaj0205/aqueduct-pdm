@@ -1,0 +1,265 @@
+#
+# mvn: -- the Aqueduct extension vocabulary.
+#
+# Brick describes what equipment exists and how it is connected. It does not
+# describe what a machine is worth, how many people it serves, or which physical
+# conservation law relates a group of its readings. This file adds those, and
+# the constraint instances that bind them to the two LBNL systems.
+#
+# Two things live here:
+#   1. the vocabulary  -- mvn: properties and the mvn:Constraint class
+#   2. the constraints -- one instance per physical relation, each naming the
+#                         points that participate and the expression whose value
+#                         is zero when the relation holds
+#
+# Per-asset values (criticality, cost, occupants, design values) are in
+# building_extensions.ttl, not here.
+#
+
+@prefix mvn:     <https://aqueduct-pdm.local/mvn#> .
+@prefix brick:   <https://brickschema.org/schema/Brick#> .
+@prefix sdahu:   <https://aqueduct-pdm.local/sdahu#> .
+@prefix chiller: <https://aqueduct-pdm.local/chiller#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+
+#
+# ---------------------------------------------------------------------------
+# 1. VOCABULARY
+# ---------------------------------------------------------------------------
+#
+
+mvn:criticalityTier a owl:DatatypeProperty ;
+    rdfs:label "criticality tier" ;
+    rdfs:comment """How much it matters that this asset keeps working.
+1 = failure interrupts occupant comfort or another asset immediately.
+2 = failure degrades performance and is tolerable for days.
+3 = failure is a nuisance.
+Matches the criticality_tier column on app.assets, which constrains it to 1-3.
+Used to rank advisories when several assets are degrading at once.""" ;
+    rdfs:range xsd:integer .
+
+mvn:replacementCostUSD a owl:DatatypeProperty ;
+    rdfs:label "replacement cost (USD)" ;
+    rdfs:comment """Installed cost to replace the asset outright. The
+remaining-life layer needs it to answer the only question a building owner
+actually asks: is it cheaper to repair this now or run it to failure.""" ;
+    rdfs:range xsd:decimal .
+
+mvn:repairCostUSD a owl:DatatypeProperty ;
+    rdfs:label "repair cost (USD)" ;
+    rdfs:comment """Typical cost of the corrective action for a fault on this
+asset -- a tube clean, a valve rebuild, a refrigerant recharge. Compared against
+replacement cost and against the energy cost of running degraded.""" ;
+    rdfs:range xsd:decimal .
+
+mvn:occupantsServed a owl:DatatypeProperty ;
+    rdfs:label "occupants served" ;
+    rdfs:comment """How many people lose comfort if this asset stops. Weights
+criticality independently of cost: a cheap asset serving 200 people can outrank
+an expensive one serving nobody.""" ;
+    rdfs:range xsd:integer .
+
+mvn:designValue a owl:DatatypeProperty ;
+    rdfs:label "design value" ;
+    rdfs:comment """The value this point is designed to hold or reach, in the SI
+unit the measurement is stored in. Gives the baseline layer a fixed reference
+that does not depend on observed data, so "normal" is not defined purely by
+whatever the equipment happened to be doing. Every value asserted in this
+project is derived from the source data and each one records how.""" ;
+    rdfs:range xsd:decimal .
+
+mvn:Constraint a owl:Class ;
+    rdfs:label "physical constraint" ;
+    rdfs:comment """A conservation relation that must hold among a group of
+readings if the equipment and its sensors are both behaving. Residuals from
+these constraints are the raw material of fault detection: a persistent non-zero
+residual means either the physics is being violated or a sensor is lying, and
+which of the two is the discrimination the rule engine has to make.""" .
+
+mvn:constrainedBy a owl:ObjectProperty ;
+    rdfs:label "constrained by" ;
+    rdfs:comment """Links a constraint to each point that participates in it.
+Traversed in both directions: given a constraint, fetch its inputs; given a
+point that looks wrong, find every relation it takes part in and therefore every
+other reading that could be the real culprit.""" ;
+    rdfs:domain mvn:Constraint ;
+    rdfs:range brick:Point .
+
+mvn:residualExpression a owl:DatatypeProperty ;
+    rdfs:label "residual expression" ;
+    rdfs:comment """Arithmetic expression, evaluated per timestamp, whose value
+is zero when the constraint holds.
+
+VARIABLE FORM: a database point_id in braces, for example {ahu-1.ma_temp} or
+{chiller-1.cdw_leaving_temp}. The braces exist because point ids contain hyphens
+and dots and so cannot be bare identifiers. Every variable is therefore a direct
+key into app.measurements with nothing to resolve.
+
+The alternative was to name the Brick model's own local names, which are the LBNL
+source column names -- sdahu.MA_TEMP, chiller.CHL_SWCD_TEMP_1. Rejected because
+four of those column names state the opposite of what the column contains, so an
+expression written in them reads as though it has the sign backwards even when it
+is right. The point ids were corrected to match their contents, so an expression
+written in point ids can be checked by reading it. Nobody has to remember a
+per-column exception.
+
+mvn:constrainedBy still names the Brick model nodes, because that is what the
+graph is for. The two are kept in step by the ingestion manifests, where each
+point's `column` key is its Brick local name and its `point_id` is its database
+key, and every constraint is checked against both.
+
+OPERATORS: + - * / and parentheses only. Literals are SI, matching how
+app.measurements stores values. No functions, no conditionals -- an expression
+that needs either is a sign the relation belongs in code, not in the graph.
+
+A residual is not expected to be exactly zero on healthy equipment. Sensor
+calibration alone puts a bias on every one of these. The measured fault-free
+mean and spread of each residual is recorded in its rdfs:comment below, and the
+rule engine must compare against a condition-normalised baseline rather than
+against zero.""" ;
+    rdfs:domain mvn:Constraint ;
+    rdfs:range xsd:string .
+
+#
+# ---------------------------------------------------------------------------
+# 2. CONSTRAINT INSTANCES
+# ---------------------------------------------------------------------------
+#
+
+# --- air side -------------------------------------------------------------
+
+mvn:MixedAirBalance a mvn:Constraint ;
+    rdfs:label "Mixed air temperature balance" ;
+    rdfs:comment """Air leaving the mixing box is outdoor air and return air
+blended together, so its temperature must sit between the two, at the point
+determined by how much of each is present. The outdoor air damper position is
+used as the blend fraction.
+
+Residual unit: kelvin (a temperature difference).
+Measured on fault-free data, July 2018, supply fan running, 4560 samples:
+mean -0.369 K, sd 0.377 K, range -1.564 to +8.215 K. The small negative bias is
+expected -- damper position is a nonlinear proxy for the outdoor air mass
+fraction, so the linear blend understates outdoor air at mid-travel. The wide
+positive tail is start-up transients, when the mixing box has not yet settled.
+
+Fires on: outdoor air damper stuck, mixed air sensor drift, outdoor air sensor
+drift. Distinguishing those three is exactly what the graph is for -- a damper
+fault also disturbs the coil, a sensor fault does not.""" ;
+    mvn:constrainedBy sdahu:MA_TEMP,
+        sdahu:OA_TEMP,
+        sdahu:RA_TEMP,
+        sdahu:OA_DMPR ;
+    mvn:residualExpression """{ahu-1.ma_temp} - ({ahu-1.oa_damper} * {ahu-1.oa_temp} + (1 - {ahu-1.oa_damper}) * {ahu-1.ra_temp})""" .
+
+mvn:CoilEnergyBalance a mvn:Constraint ;
+    rdfs:label "Cooling coil energy balance" ;
+    rdfs:comment """The coil cannot cool air below the temperature of the water
+entering it, and how far toward that limit it gets should track how far the
+chilled water valve is open. So the actual air temperature drop across the coil
+is compared with the fraction of the maximum achievable drop that the valve is
+commanding.
+
+Residual unit: kelvin.
+Measured on fault-free data, July 2018, supply fan running, 4560 samples:
+mean +0.456 K, sd 1.165 K, range -3.891 to +5.993 K.
+
+This is the constraint that spans both systems, and it is the reason the chilled
+water loop edge exists: the water temperature term comes from the chiller plant,
+not the air handler. Note which node supplies it: the entering water is
+CWL_SEC_RW_TEMP, the node whose LBNL name says "return", because that column holds
+the cold supply. The point id it maps to, chw-plant-1.sec_supply_temp, has been
+corrected to say so, which is why the expression above reads the right way round.
+
+Two limitations, both recorded rather than hidden. First,
+coil water flow is not measured anywhere in the AHU dataset, so a true two-sided
+energy balance -- heat out of the air equals heat into the water -- cannot be
+written; the return water temperature is therefore a declared participant but
+does not appear in the expression. Second, the two LBNL systems are independent
+simulations with unrelated load profiles, coupled only through shared Chicago
+weather, so the water temperature in this expression is not physically the water
+that cooled this air. The residual is therefore approximate as a number. The
+graph edge it depends on is not approximate: it is what lets a coil symptom be
+traced to a chiller cause.
+
+Fires on: cooling valve leaking, cooling valve stuck, supply air sensor drift,
+and -- through the chiller plant -- loss of chilled water temperature.""" ;
+    mvn:constrainedBy sdahu:SA_TEMP,
+        sdahu:MA_TEMP,
+        sdahu:CHWC_VLV,
+        chiller:CWL_SEC_RW_TEMP,
+        chiller:CWL_SEC_SW_TEMP ;
+    mvn:residualExpression """({ahu-1.ma_temp} - {ahu-1.sa_temp}) - {ahu-1.chw_valve} * ({ahu-1.ma_temp} - {chw-plant-1.sec_supply_temp})""" .
+
+# --- water side -----------------------------------------------------------
+#
+# One instance per chiller. The three machines are identical, have their own
+# sensors, and stage independently, so a single instance bound to chiller 1
+# would leave chillers 2 and 3 with no energy balance at all.
+#
+# All three expressions have the same shape:
+#
+#   heat rejected at the condenser
+#     - heat absorbed at the evaporator
+#     - electrical power drawn
+#
+# which is conservation of energy across the machine: everything the compressor
+# does and everything the chilled water gives up has to leave through the
+# condenser. Residual unit: watts.
+#
+# The constant 4.17e6 is the volumetric heat capacity of water in J/(m3 K) --
+# 997 kg/m3 times 4184 J/(kg K) -- because both flows are stored as m3/s.
+#
+# Sign note. The condenser term is leaving minus entering, warm minus cool, which
+# is what makes it a heat rejection rather than its negative. That is readable
+# directly from the expression only because the point ids were renamed: the source
+# columns are CHL_SWCD_TEMP for the warm side and CHL_RWCD_TEMP for the cool side,
+# which is the opposite sense to the plant-level pair CDWL_SW_TEMP / CDWL_RW_TEMP
+# describing the same loop. One word, two meanings, in one model. The ids now say
+# entering and leaving, which Brick defines and which cannot be read two ways, so
+# nobody has to hold the exception in their head while checking the arithmetic.
+# Verified against the data: leaving averages 29.84 C, entering 27.44 C.
+#
+# Measured on fault-free data, July 2018, chiller 1, running only, 5403 samples:
+# mean -99.0 kW, sd 66.3 kW, range -517.5 to +271.0 kW. The balance does not
+# close. Backing compressor work out of the two thermal terms implies about
+# 112 kW where the power channel reports 355 kW, a coefficient of performance of
+# 6.1 against the 1.9 the reported power gives -- 6.1 is the plausible figure for
+# a water-cooled chiller. So the reported power and the thermal terms disagree in
+# the source simulation. This residual is usable as a trend, because fouling and
+# refrigerant loss both move it, but its absolute value is not a physical energy
+# imbalance and must never be thresholded at zero.
+
+mvn:ChillerEnergyBalance_1 a mvn:Constraint ;
+    rdfs:label "Chiller 1 energy balance" ;
+    mvn:constrainedBy chiller:CHL_CW_FLOW_1,
+        chiller:CHL_RW_TEMP_1,
+        chiller:CHL_SW_TEMP_1,
+        chiller:CHL_CD_FLOW_1,
+        chiller:CHL_SWCD_TEMP_1,
+        chiller:CHL_RWCD_TEMP_1,
+        chiller:CHL_POW_1 ;
+    mvn:residualExpression """({chiller-1.cdw_flow} * 4.17e6 * ({chiller-1.cdw_leaving_temp} - {chiller-1.cdw_entering_temp})) - ({chiller-1.chw_flow} * 4.17e6 * ({chiller-1.chw_return_temp} - {chiller-1.chw_supply_temp})) - {chiller-1.power}""" .
+
+mvn:ChillerEnergyBalance_2 a mvn:Constraint ;
+    rdfs:label "Chiller 2 energy balance" ;
+    mvn:constrainedBy chiller:CHL_CW_FLOW_2,
+        chiller:CHL_RW_TEMP_2,
+        chiller:CHL_SW_TEMP_2,
+        chiller:CHL_CD_FLOW_2,
+        chiller:CHL_SWCD_TEMP_2,
+        chiller:CHL_RWCD_TEMP_2,
+        chiller:CHL_POW_2 ;
+    mvn:residualExpression """({chiller-2.cdw_flow} * 4.17e6 * ({chiller-2.cdw_leaving_temp} - {chiller-2.cdw_entering_temp})) - ({chiller-2.chw_flow} * 4.17e6 * ({chiller-2.chw_return_temp} - {chiller-2.chw_supply_temp})) - {chiller-2.power}""" .
+
+mvn:ChillerEnergyBalance_3 a mvn:Constraint ;
+    rdfs:label "Chiller 3 energy balance" ;
+    mvn:constrainedBy chiller:CHL_CW_FLOW_3,
+        chiller:CHL_RW_TEMP_3,
+        chiller:CHL_SW_TEMP_3,
+        chiller:CHL_CD_FLOW_3,
+        chiller:CHL_SWCD_TEMP_3,
+        chiller:CHL_RWCD_TEMP_3,
+        chiller:CHL_POW_3 ;
+    mvn:residualExpression """({chiller-3.cdw_flow} * 4.17e6 * ({chiller-3.cdw_leaving_temp} - {chiller-3.cdw_entering_temp})) - ({chiller-3.chw_flow} * 4.17e6 * ({chiller-3.chw_return_temp} - {chiller-3.chw_supply_temp})) - {chiller-3.power}""" .

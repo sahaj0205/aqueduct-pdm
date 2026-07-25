@@ -146,7 +146,7 @@ points:
 - column: SF_WAT
   point_id: ahu-1.sf_power
   asset_id: ahu-1
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Supply fan power
   unit_native: watt
   unit_si: watt
@@ -182,7 +182,7 @@ points:
 - column: RF_WAT
   point_id: ahu-1.rf_power
   asset_id: ahu-1
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Return fan power
   unit_native: watt
   unit_si: watt

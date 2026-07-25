@@ -1,0 +1,302 @@
+#
+# Per-asset facts about THIS building, plus the triples that join the two LBNL
+# systems into one connected graph.
+#
+# Section 1 is the join. LBNL publishes the air handler and the chiller plant as
+# two separate files with no statement connecting them and, inside the chiller
+# plant file, no flow direction at all -- 0 brick:feeds triples in 191. Every
+# edge in section 1 is authored here. Without them, upstream traversal from the
+# air handler's cooling coil returns nothing and cross-asset root cause analysis
+# is impossible.
+#
+# Sections 2 and 3 are the mvn: values the vocabulary in extensions.ttl declares.
+#
+
+@prefix mvn:     <https://aqueduct-pdm.local/mvn#> .
+@prefix site:    <https://aqueduct-pdm.local/site#> .
+@prefix brick:   <https://brickschema.org/schema/Brick#> .
+@prefix sdahu:   <https://aqueduct-pdm.local/sdahu#> .
+@prefix chiller: <https://aqueduct-pdm.local/chiller#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+
+#
+# ---------------------------------------------------------------------------
+# 1. THE WATER-SIDE FLOW PATH  (all authored -- none of this is from LBNL)
+# ---------------------------------------------------------------------------
+#
+# Direction convention: A brick:feeds B means what A does affects B. Traversal
+# in the opposite direction -- from a symptom to its possible causes -- is the
+# inverse, brick:isFedBy, written ^brick:feeds in the queries.
+#
+# The full authored chain, and the whole point of this file:
+#
+#   Cooling_Tower_n -> CDW_Loop -> Chiller_n -> CHW_Loop -> Cooling_Coil
+#
+# so a fouled cooling tower is upstream of the air handler's coil, four hops
+# away, across two systems that LBNL never connected. The chain is deliberately
+# acyclic. A real water loop is a closed circuit, and modelling it as one would
+# make every asset upstream of every other and root cause analysis meaningless,
+# so each loop is modelled in the single direction along which a fault
+# propagates.
+#
+
+site:CHW_Loop a brick:Chilled_Water_Loop ;
+    rdfs:label "Building chilled water loop" ;
+    rdfs:comment """The chilled water circuit between the chiller plant and the
+air handler's cooling coil. Exists as a node rather than a direct chiller-to-coil
+edge because three chillers and five pumps all feed one coil: a node makes that
+a five-plus-one edge fan-in instead of fifteen edges, and it is the thing that is
+actually shared.""" .
+
+chiller:Chiller_1 brick:feeds site:CHW_Loop .
+chiller:Chiller_2 brick:feeds site:CHW_Loop .
+chiller:Chiller_3 brick:feeds site:CHW_Loop .
+
+chiller:Primary_Chilled_Water_Loop_Pump_1 brick:feeds site:CHW_Loop .
+chiller:Primary_Chilled_Water_Loop_Pump_2 brick:feeds site:CHW_Loop .
+chiller:Primary_Chilled_Water_Loop_Pump_3 brick:feeds site:CHW_Loop .
+chiller:Secondary_Chilled_Water_Loop_Pump_1 brick:feeds site:CHW_Loop .
+chiller:Secondary_Chilled_Water_Loop_Pump_2 brick:feeds site:CHW_Loop .
+
+# THE EDGE. This single triple is what makes the two systems one graph.
+site:CHW_Loop brick:feeds sdahu:Cooling_Coil .
+
+chiller:Chilled_Water_System brick:hasPart site:CHW_Loop .
+
+site:CDW_Loop a brick:Water_Loop ;
+    rdfs:label "Condenser water loop" ;
+    rdfs:comment """The condenser water circuit between the cooling towers and
+the chillers. Modelled tower-to-chiller because that is the direction faults
+travel: a fouled or fan-failed tower returns warmer water to the chiller, the
+chiller has to work against a higher condensing temperature, and its capacity and
+efficiency fall. This is the path the condenser fouling scenario depends on.
+
+Typed brick:Water_Loop, not brick:Condenser_Water_Loop, because Brick 1.3 has no
+such class -- it defines Loop, Water_Loop, Chilled_Water_Loop, Hot_Water_Loop,
+Domestic_Water_Loop and Air_Loop, and the condenser case is simply missing.
+Checked against the published ontology rather than assumed. Water_Loop is the
+most specific class that actually exists; the condenser-water meaning is carried
+by the label and by what this node connects to.""" .
+
+chiller:Cooling_Tower_1 brick:feeds site:CDW_Loop .
+chiller:Cooling_Tower_2 brick:feeds site:CDW_Loop .
+chiller:Cooling_Tower_3 brick:feeds site:CDW_Loop .
+chiller:Condenser_Water_Pump_1 brick:feeds site:CDW_Loop .
+chiller:Condenser_Water_Pump_2 brick:feeds site:CDW_Loop .
+chiller:Condenser_Water_Pump_3 brick:feeds site:CDW_Loop .
+chiller:Threeway_Valve brick:feeds site:CDW_Loop .
+
+site:CDW_Loop brick:feeds chiller:Chiller_1 .
+site:CDW_Loop brick:feeds chiller:Chiller_2 .
+site:CDW_Loop brick:feeds chiller:Chiller_3 .
+
+chiller:Condenser_Water_System brick:hasPart site:CDW_Loop .
+
+#
+# ---------------------------------------------------------------------------
+# 2. ASSET ATTRIBUTES
+# ---------------------------------------------------------------------------
+#
+# Capacities below are measured from the fault-free run, not assumed. Each
+# chiller's peak evaporator load over the year is 476 kW, which is 135 tons of
+# refrigeration (1 ton = 3.517 kW, the rate that melts a ton of ice in a day and
+# the unit chillers are sold in). Plant peak is 903 kW, 257 tons.
+#
+# ALL COST FIGURES ARE ESTIMATES AND NEED REPLACING WITH REAL QUOTES. They are
+# derived from installed cost per ton at 2024 US commercial rates: about
+# $1,200/ton for a water-cooled chiller, $400/ton for a cooling tower. They are
+# the right order of magnitude and no better than that. Every one is a single
+# edit here, and nothing computes them.
+#
+
+sdahu:AHU
+    mvn:criticalityTier 1 ;
+    mvn:replacementCostUSD 95000.00 ;
+    mvn:repairCostUSD 9000.00 ;
+    mvn:occupantsServed 200 ;
+    rdfs:comment """Tier 1: it is the only air handler in the modelled scope, so
+if it stops, all five zones lose conditioned air immediately with nothing to pick
+up the load. Occupants estimated at 40 per zone across the five zones it
+serves.""" .
+
+chiller:Simulated_Chiller_Plant
+    mvn:criticalityTier 1 ;
+    mvn:occupantsServed 200 ;
+    rdfs:comment """Deliberately carries no replacement cost: a plant is not
+purchased or replaced as a unit, its machines are, and putting a number here
+would let the remaining-life layer double-count it against the chillers and
+towers below. Occupants matches the air handler -- the modelled building is the
+same one. Note the mismatch this exposes between the two LBNL datasets: 257 tons
+of installed plant would normally serve a building many times larger than a
+five-zone air handler. The two systems were simulated independently and were
+never sized against each other.""" .
+
+chiller:Chiller_1
+    mvn:criticalityTier 1 ;
+    mvn:replacementCostUSD 165000.00 ;
+    mvn:repairCostUSD 18000.00 ;
+    mvn:occupantsServed 200 .
+
+chiller:Chiller_2
+    mvn:criticalityTier 1 ;
+    mvn:replacementCostUSD 165000.00 ;
+    mvn:repairCostUSD 18000.00 ;
+    mvn:occupantsServed 200 .
+
+chiller:Chiller_3
+    mvn:criticalityTier 1 ;
+    mvn:replacementCostUSD 165000.00 ;
+    mvn:repairCostUSD 18000.00 ;
+    mvn:occupantsServed 200 ;
+    rdfs:comment """All three chillers are tier 1 and carry the full occupant
+count each, even though three machines against a 257-ton peak means losing one
+does not by itself interrupt anyone. Whether redundancy should discount
+criticality is an advisory-layer decision that needs the staging state at the
+time of the fault, not a fact about the machine, so it is not baked in here.
+Repair cost is a condenser tube clean or a refrigerant recharge, roughly 11% of
+replacement.""" .
+
+chiller:Cooling_Tower_1
+    mvn:criticalityTier 2 ;
+    mvn:replacementCostUSD 55000.00 ;
+    mvn:repairCostUSD 6000.00 ;
+    mvn:occupantsServed 200 .
+
+chiller:Cooling_Tower_2
+    mvn:criticalityTier 2 ;
+    mvn:replacementCostUSD 55000.00 ;
+    mvn:repairCostUSD 6000.00 ;
+    mvn:occupantsServed 200 .
+
+chiller:Cooling_Tower_3
+    mvn:criticalityTier 2 ;
+    mvn:replacementCostUSD 55000.00 ;
+    mvn:repairCostUSD 6000.00 ;
+    mvn:occupantsServed 200 ;
+    rdfs:comment """Tier 2, not 1: a fouled tower makes the chillers work harder
+and costs energy and capacity, but cooling continues. It degrades rather than
+interrupts, which is the tier boundary. Fill replacement and a basin clean are
+the usual repairs.""" .
+
+#
+# ---------------------------------------------------------------------------
+# 3. POINT DESIGN VALUES
+# ---------------------------------------------------------------------------
+#
+# Every value here is read off the fault-free run rather than invented, so a
+# reviewer can check any of them with one query. Units are SI, matching
+# app.measurements. Where the source setpoint is constant all year, that constant
+# IS the design value. Where it follows a reset schedule, the design value is the
+# most demanding end of the schedule, because that is the condition the equipment
+# was sized for.
+#
+
+sdahu:SA_TEMP
+    mvn:designValue 12.88 ;
+    rdfs:comment """degC. The supply air temperature setpoint is a hard constant
+12.88 degC (55 degF) for all 105,036 samples of the fault-free year, so this is
+the design value exactly and not an approximation of one.""" .
+
+sdahu:SA_SP
+    mvn:designValue 400.4 ;
+    rdfs:comment """Pa. Duct static pressure setpoint, also constant across the
+whole fault-free year (1.607 inches of water). The measured pressure tracks it,
+which is how we know the fan control loop works and that the sensor is scaled
+consistently with the setpoint.""" .
+
+chiller:CWL_PRI_SW_TEMP
+    mvn:designValue 6.67 ;
+    rdfs:comment """degC. Primary chilled water supply temperature. The setpoint
+runs a reset schedule between 6.67 and 12.22 degC (44 to 54 degF); 6.67 is the
+design end -- the coldest water the plant is asked for, at peak load.""" .
+
+chiller:CHL_SW_TEMP_1 mvn:designValue 6.67 .
+chiller:CHL_SW_TEMP_2 mvn:designValue 6.67 .
+chiller:CHL_SW_TEMP_3 mvn:designValue 6.67 ;
+    rdfs:comment """degC. Each chiller's own leaving chilled water temperature,
+same design value as the loop it feeds.""" .
+
+chiller:CT_SW_TEMP_1 mvn:designValue 29.44 .
+chiller:CT_SW_TEMP_2 mvn:designValue 29.44 .
+chiller:CT_SW_TEMP_3 mvn:designValue 29.44 ;
+    rdfs:comment """degC. Condenser water temperature leaving the tower. The
+tower setpoint resets between 15.56 and 29.44 degC (60 to 85 degF); 29.44 is the
+design end here, which is the reverse of the chilled water case -- for a tower
+the demanding condition is the hottest, most humid day, when it can only just
+reach 85 degF. This is the reference the tower approach calculation needs (the
+approach being the gap between the water the tower produces and the wet bulb
+temperature, which is the coldest it could theoretically reach; a tower that
+fouls loses the ability to close that gap).""" .
+
+chiller:CWL_SEC_DP
+    mvn:designValue 239364.7 ;
+    rdfs:comment """Pa. Secondary loop differential pressure setpoint, constant
+all year. FLAGGED: 239 kPa is about 35 psi, which is high for a secondary chilled
+water loop where 10 to 20 psi is typical. The measured value tracks the setpoint
+closely (238-242 kPa), so the sensor and control loop are at least self
+consistent, but the native unit declared in the ingestion manifest (inches of
+water) has not been independently confirmed against the LBNL documentation.""" .
+
+chiller:CWL_SEC_LOAD
+    mvn:designValue 903127.0 ;
+    rdfs:comment """W. Design cooling load, taken as the annual peak of the
+secondary loop load in the fault-free run -- 903 kW, 257 tons. Needed as the
+denominator of part-load ratio (how hard the plant is working as a fraction of
+what it can do), which the baseline layer needs because a chiller's efficiency
+depends far more on part-load ratio than on anything else.""" .
+
+chiller:CHL_POW_1 mvn:designValue 229398.0 .
+chiller:CHL_POW_2 mvn:designValue 229398.0 .
+chiller:CHL_POW_3 mvn:designValue 229398.0 ;
+    rdfs:comment """W. Full-load compressor power, taken as the annual peak drawn
+in the fault-free run. This is an observed peak standing in for a nameplate
+rating, which is weaker than the setpoint-derived values above -- if the chiller
+never reached full load in the simulated year, it is an underestimate.""" .
+
+#
+# ---------------------------------------------------------------------------
+# 4. SOURCE MISLABELLING, AND WHAT WAS DONE ABOUT IT
+# ---------------------------------------------------------------------------
+#
+# Two groups of readings were labelled wrongly in the source. Both are now
+# corrected at the data layer rather than compensated for in each expression that
+# touches them, because a compensation only works while everyone remembers it is
+# there. Three places had to change together and all three now agree:
+#
+#   the graph      -- classes corrected in model/loader.py, NODE_CLASS_REPAIRS
+#   the manifests  -- source column to point_id mapping, ingestion/manifests/
+#   the database   -- scripts/fix_point_labels.sql, 10,090,368 rows relabelled
+#
+# The comments below stay on the nodes, because the LBNL source column names
+# themselves cannot be changed -- they are the identifiers the CSVs use, and they
+# remain misleading. Anyone reading the raw data needs this; anyone reading a
+# point id or a class no longer does.
+#
+
+chiller:CWL_SEC_SW_TEMP
+    rdfs:comment """SOURCE NAME IS WRONG, CORRECTED DOWNSTREAM. Named as a supply
+water temperature, but carries the WARM return side: mean 11.97 degC over July
+against 7.14 degC for CWL_SEC_RW_TEMP. Proof it is genuinely reversed rather than
+an unfamiliar convention: the primary loop is labelled correctly at 7.19 degC
+supply and 9.54 degC return, and a secondary loop is fed from the primary supply,
+so secondary supply has to be about 7.19 -- which is what CWL_SEC_RW_TEMP holds.
+Now typed brick:Chilled_Water_Return_Temperature_Sensor and mapped to point id
+chw-plant-1.sec_return_temp.""" .
+
+chiller:CWL_SEC_RW_TEMP
+    rdfs:comment """SOURCE NAME IS WRONG, CORRECTED DOWNSTREAM -- see
+CWL_SEC_SW_TEMP. Carries the cold water supplied to the loads. Now typed
+brick:Chilled_Water_Supply_Temperature_Sensor and mapped to point id
+chw-plant-1.sec_supply_temp, which is the node CoilEnergyBalance draws the coil's
+entering water temperature from.""" .
+
+chiller:CHL_SWCD_TEMP_1
+    rdfs:comment """SOURCE NAME IS AMBIGUOUS, NOT REVERSED. Carries the warm water
+leaving the condenser, 29.84 degC against 27.44 degC for CHL_RWCD_TEMP_1. That is
+correct from the chiller's own point of view -- it supplies that water to the
+tower -- but it is the opposite of the plant-level pair CDWL_SW_TEMP and
+CDWL_RW_TEMP describing the same loop, where supply is the cool water the towers
+send to the chillers (27.28 and 29.76 degC). One word, two senses, in one model.
+Resolved by moving the chiller-level pair to Brick's entering and leaving classes,
+which are defined explicitly and cannot be read two ways, and renaming the point
+ids to chiller-n.cdw_leaving_temp and chiller-n.cdw_entering_temp.""" .

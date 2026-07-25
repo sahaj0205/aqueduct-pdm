@@ -70,19 +70,29 @@ points:
   unit_si: watt
   resample: mean
   note: null
-- column: CWL_SEC_SW_TEMP
+# SWAPPED PAIR. The two source columns below are deliberately crossed relative
+# to their names: CWL_SEC_RW_TEMP feeds sec_supply_temp and CWL_SEC_SW_TEMP feeds
+# sec_return_temp. LBNL has this pair the wrong way round and the data proves it:
+# the column named SW (supply) averages 11.97 degC over July while RW (return)
+# averages 7.14 degC. A secondary loop supplies COLD water to its loads, so the
+# supply cannot be the warmer of the two. The decisive check is the primary loop,
+# which is labelled correctly at 7.19 degC supply and 9.54 degC return -- a
+# secondary loop is fed from the primary supply, so secondary supply must be
+# about 7.19, which is what the column named RW actually holds. Crossing the
+# mapping here means every point_id downstream means what it says.
+- column: CWL_SEC_RW_TEMP
   point_id: chw-plant-1.sec_supply_temp
   asset_id: chw-plant-1
-  brick_class: brick:Water_Temperature_Sensor
+  brick_class: brick:Chilled_Water_Supply_Temperature_Sensor
   name: Secondary loop supply water temperature
   unit_native: degF
   unit_si: degC
   resample: mean
-  note: null
-- column: CWL_SEC_RW_TEMP
+  note: Fed by source column CWL_SEC_RW_TEMP -- LBNL swaps this pair, see above.
+- column: CWL_SEC_SW_TEMP
   point_id: chw-plant-1.sec_return_temp
   asset_id: chw-plant-1
-  brick_class: brick:Return_Water_Temperature_Sensor
+  brick_class: brick:Chilled_Water_Return_Temperature_Sensor
   name: Secondary loop return water temperature
   unit_native: degF
   unit_si: degC
@@ -136,7 +146,7 @@ points:
 - column: CWL_PRI_SW_TEMPSPT
   point_id: chw-plant-1.pri_supply_temp_spt
   asset_id: chw-plant-1
-  brick_class: brick:Supply_Water_Temperature_Setpoint
+  brick_class: brick:Supply_Chilled_Water_Temperature_Setpoint
   name: Primary loop supply water temperature setpoint
   unit_native: degF
   unit_si: degC
@@ -181,7 +191,7 @@ points:
 - column: CT_SW_TEMPSPT
   point_id: chw-plant-1.ct_supply_temp_spt
   asset_id: chw-plant-1
-  brick_class: brick:Supply_Water_Temperature_Setpoint
+  brick_class: brick:Supply_Condenser_Water_Temperature_Setpoint
   name: Cooling tower supply water temperature setpoint
   unit_native: degF
   unit_si: degC
@@ -218,7 +228,7 @@ points:
 - column: CDWL_PM_POW_1
   point_id: chw-plant-1.cdw_pump_1_power
   asset_id: chw-plant-1
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Condenser water pump 1 power
   unit_native: kilowatt
   unit_si: watt
@@ -227,7 +237,7 @@ points:
 - column: CDWL_PM_POW_2
   point_id: chw-plant-1.cdw_pump_2_power
   asset_id: chw-plant-1
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Condenser water pump 2 power
   unit_native: kilowatt
   unit_si: watt
@@ -236,7 +246,7 @@ points:
 - column: CDWL_PM_POW_3
   point_id: chw-plant-1.cdw_pump_3_power
   asset_id: chw-plant-1
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Condenser water pump 3 power
   unit_native: kilowatt
   unit_si: watt
@@ -245,7 +255,7 @@ points:
 - column: CWL_PRI_PM_POW_1
   point_id: chw-plant-1.pri_pump_1_power
   asset_id: chw-plant-1
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Primary chilled water pump 1 power
   unit_native: kilowatt
   unit_si: watt
@@ -254,7 +264,7 @@ points:
 - column: CWL_PRI_PM_POW_2
   point_id: chw-plant-1.pri_pump_2_power
   asset_id: chw-plant-1
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Primary chilled water pump 2 power
   unit_native: kilowatt
   unit_si: watt
@@ -263,7 +273,7 @@ points:
 - column: CWL_PRI_PM_POW_3
   point_id: chw-plant-1.pri_pump_3_power
   asset_id: chw-plant-1
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Primary chilled water pump 3 power
   unit_native: kilowatt
   unit_si: watt
@@ -272,7 +282,7 @@ points:
 - column: CWL_SEC_PM_POW_1
   point_id: chw-plant-1.sec_pump_1_power
   asset_id: chw-plant-1
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Secondary chilled water pump 1 power
   unit_native: kilowatt
   unit_si: watt
@@ -299,7 +309,7 @@ points:
 - column: CWL_SEC_PM_POW_2
   point_id: chw-plant-1.sec_pump_2_power
   asset_id: chw-plant-1
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Secondary chilled water pump 2 power
   unit_native: kilowatt
   unit_si: watt
@@ -369,18 +379,18 @@ points:
   resample: mean
   note: null
 - column: CHL_SWCD_TEMP_1
-  point_id: chiller-1.cdw_supply_temp
+  point_id: chiller-1.cdw_leaving_temp
   asset_id: chiller-1
-  brick_class: brick:Supply_Condenser_Water_Temperature_Sensor
+  brick_class: brick:Leaving_Condenser_Water_Temperature_Sensor
   name: Chiller 1 condenser water leaving temperature
   unit_native: degF
   unit_si: degC
   resample: mean
   note: null
 - column: CHL_RWCD_TEMP_1
-  point_id: chiller-1.cdw_return_temp
+  point_id: chiller-1.cdw_entering_temp
   asset_id: chiller-1
-  brick_class: brick:Return_Condenser_Water_Temperature_Sensor
+  brick_class: brick:Entering_Condenser_Water_Temperature_Sensor
   name: Chiller 1 condenser water entering temperature
   unit_native: degF
   unit_si: degC
@@ -398,7 +408,7 @@ points:
 - column: CHL_POW_1
   point_id: chiller-1.power
   asset_id: chiller-1
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Chiller 1 power
   unit_native: kilowatt
   unit_si: watt
@@ -450,18 +460,18 @@ points:
   resample: mean
   note: null
 - column: CHL_SWCD_TEMP_2
-  point_id: chiller-2.cdw_supply_temp
+  point_id: chiller-2.cdw_leaving_temp
   asset_id: chiller-2
-  brick_class: brick:Supply_Condenser_Water_Temperature_Sensor
+  brick_class: brick:Leaving_Condenser_Water_Temperature_Sensor
   name: Chiller 2 condenser water leaving temperature
   unit_native: degF
   unit_si: degC
   resample: mean
   note: null
 - column: CHL_RWCD_TEMP_2
-  point_id: chiller-2.cdw_return_temp
+  point_id: chiller-2.cdw_entering_temp
   asset_id: chiller-2
-  brick_class: brick:Return_Condenser_Water_Temperature_Sensor
+  brick_class: brick:Entering_Condenser_Water_Temperature_Sensor
   name: Chiller 2 condenser water entering temperature
   unit_native: degF
   unit_si: degC
@@ -479,7 +489,7 @@ points:
 - column: CHL_POW_2
   point_id: chiller-2.power
   asset_id: chiller-2
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Chiller 2 power
   unit_native: kilowatt
   unit_si: watt
@@ -531,18 +541,18 @@ points:
   resample: mean
   note: null
 - column: CHL_SWCD_TEMP_3
-  point_id: chiller-3.cdw_supply_temp
+  point_id: chiller-3.cdw_leaving_temp
   asset_id: chiller-3
-  brick_class: brick:Supply_Condenser_Water_Temperature_Sensor
+  brick_class: brick:Leaving_Condenser_Water_Temperature_Sensor
   name: Chiller 3 condenser water leaving temperature
   unit_native: degF
   unit_si: degC
   resample: mean
   note: null
 - column: CHL_RWCD_TEMP_3
-  point_id: chiller-3.cdw_return_temp
+  point_id: chiller-3.cdw_entering_temp
   asset_id: chiller-3
-  brick_class: brick:Return_Condenser_Water_Temperature_Sensor
+  brick_class: brick:Entering_Condenser_Water_Temperature_Sensor
   name: Chiller 3 condenser water entering temperature
   unit_native: degF
   unit_si: degC
@@ -560,7 +570,7 @@ points:
 - column: CHL_POW_3
   point_id: chiller-3.power
   asset_id: chiller-3
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Chiller 3 power
   unit_native: kilowatt
   unit_si: watt
@@ -623,7 +633,7 @@ points:
 - column: CT_POW_1
   point_id: ct-1.fan_power
   asset_id: ct-1
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Cooling tower 1 fan power
   unit_native: kilowatt
   unit_si: watt
@@ -686,7 +696,7 @@ points:
 - column: CT_POW_2
   point_id: ct-2.fan_power
   asset_id: ct-2
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Cooling tower 2 fan power
   unit_native: kilowatt
   unit_si: watt
@@ -749,7 +759,7 @@ points:
 - column: CT_POW_3
   point_id: ct-3.fan_power
   asset_id: ct-3
-  brick_class: brick:Electrical_Power_Sensor
+  brick_class: brick:Electric_Power_Sensor
   name: Cooling tower 3 fan power
   unit_native: kilowatt
   unit_si: watt
