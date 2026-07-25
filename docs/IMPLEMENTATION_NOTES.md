@@ -2489,3 +2489,241 @@ Fixing it means a manifest change and a reload, so it is left for direction.
 START HERE: `analytics/quality/scoring.py` — `score_point_run` and `_staleness`
 are the whole checkpoint; everything above them feeds those two and everything
 below stores what they produce.
+
+## Checkpoint 3.2 — Rule registry and mode detection
+
+### WHAT WE DID
+
+The platform now has a place to put fault rules, and it knows which rules belong
+to which machine without being told. A rule is written against a KIND of
+equipment rather than against a particular one, and the system works out for
+itself that a rule about air handlers applies to this building's air handler.
+Adding a fourth kind of machine later means describing it in the model and
+writing its rules; no dispatching code changes, which is the difference between
+a second equipment class costing a day and a third costing a week.
+
+It also has a safety interlock. A rule cannot read a measurement the quality
+layer marked untrustworthy -- not "should not", cannot, because the only route
+to a reading refuses to hand one over. When that happens the rule reports that
+nobody knows rather than that the machine is fine, and it names the sensor that
+blocked it. That is the mechanism that stops a dead sensor being written up as a
+broken chiller.
+
+Finally it can tell what the air handler is trying to do at any moment: asleep,
+calling for heat, cooling with fresh air alone, or running the chiller with or
+without help from the outside air. Almost every air-side fault only means
+something in some of those states -- a wide-open cooling valve is ordinary in
+August and alarming on a mild morning -- so knowing the state is what will keep
+the rules in the next checkpoint from crying wolf at every changeover.
+
+### HOW IT WORKS
+
+`model/brick_taxonomy.ttl`
+  WHY IT EXISTS: Dispatch has to know that a rule written for one name applies to
+    equipment recorded under another. The published LBNL models say this machine
+    is a brick:AHU; a rule may reasonably be written against
+    brick:Air_Handling_Unit. Nothing in the LBNL files relates those two names,
+    because instance data never carries the vocabulary that defines it.
+  WHAT IT DOES: Holds Brick 1.3's own class hierarchy -- 1,628 statements of the
+    form "this class is a kind of that one" and "these two names mean the same
+    thing" -- and is merged into the graph alongside our own files.
+  CHOICES: Only the hierarchy is vendored, not the whole ontology. The published
+    file is 52,113 statements, of which the shapes, tags, units, definitions and
+    validation rules are 97% and none of them are used here. Loading all of it
+    costs 2.07 s against 0.09 s for the hierarchy alone, on a graph the rule
+    engine reloads often. It is generated, not hand-picked: every subclass and
+    equivalence edge between two Brick classes is present, so no future rule can
+    reference a relation that was quietly dropped. The file header records the
+    source URL, the fetch date and the md5 of what was downloaded.
+
+`model/loader.py :: load_merged_graph`
+  CHANGED FROM BEFORE: Now also merges the taxonomy above, controlled by a new
+    argument that defaults to on. The graph grows from 442 statements to 2,070.
+    The argument exists so that counting or inspecting the building itself is
+    still possible -- with the taxonomy loaded, Brick's vocabulary outnumbers the
+    actual building four to one, and every census would be swamped by it.
+
+`analytics/rules/registry.py :: rule`
+  WHY IT EXISTS: This is the registration point the whole checkpoint is about. It
+    is what makes a rule a statement about a kind of equipment rather than about
+    a named machine.
+  WHAT IT DOES: A decorator that records a rule's identifier, the Brick class it
+    applies to, the operating modes it is valid in, the minimum trust score its
+    inputs need, and how long its condition must hold before being reported. It
+    refuses a duplicate identifier and refuses a quality bar outside 0 to 100.
+  CHOICES: The operating modes are stored as opaque strings. The registry
+    deliberately knows nothing about what an air handler's modes are, which is
+    exactly what lets the same registry hold chiller rules that have no concept
+    of an economizer. persistence_minutes is recorded but not acted on here;
+    holding a condition open across time is transient suppression, which belongs
+    with the APAR rules in the next checkpoint, and this is where they will read
+    it from.
+
+`analytics/rules/registry.py :: class_closure`
+  WHY IT EXISTS: The actual matching. Given the class of a machine, it produces
+    every class that machine can be said to be.
+  WHAT IT DOES: Starts at the machine's own class and walks outward -- upward
+    through "is a kind of" links, and sideways in BOTH directions through "means
+    the same as" links -- collecting everything it reaches. For this building's
+    air handler that yields AHU, Air_Handler_Unit, Air_Handling_Unit, Equipment,
+    HVAC_Equipment and Entity. A rule matches if the class it was registered
+    against is anywhere in that set.
+  CHOICES: Equivalence is followed in both directions because it is symmetric by
+    definition but Brick only writes it down once -- the file states that
+    Air_Handling_Unit is equivalent to AHU and never the reverse -- and the graph
+    library does no reasoning of its own. Following it one way would mean an
+    asset typed AHU never matched a rule written for Air_Handling_Unit, which is
+    precisely the case the demonstration exercises. Breadth-first, skipping
+    anything already seen, so the cycles that equivalence pairs inevitably create
+    terminate.
+
+`analytics/rules/registry.py :: rules_for_class`
+  WHY IT EXISTS: The dispatch itself, and the thing the checkpoint requires to
+    contain no equipment-specific logic.
+  WHAT IT DOES: Works out the class ancestry of the asset, then returns every
+    registered rule whose declared class appears in it. There is no lookup table
+    and no mention of air handlers or chillers anywhere in it.
+
+`analytics/rules/registry.py :: asset_class_from_graph`
+  WHY IT EXISTS: The database and the semantic model each independently record
+    what kind of thing every machine is. If they disagree, one is wrong, and
+    dispatching on either without checking would silently apply the wrong rules.
+  WHAT IT DOES: Looks up every graph node belonging to an asset, collects the
+    classes those nodes carry, and confirms the database's class is among them,
+    raising if not. The test is that SOME node belonging to the asset carries the
+    class rather than all of them, because the graph models one air handler as
+    many nodes -- coil, fan, two dampers, five zones.
+
+`analytics/rules/registry.py :: RuleContext`
+  WHY IT EXISTS: The quality gate. This is the single most important object in
+    the file, because it makes the gate impossible to forget rather than merely
+    mandatory.
+  WHAT IT DOES: It is the only route from a rule to a measurement. A rule asks
+    for a reading by point identifier and by the role it plays in the rule; the
+    context looks it up, and if the score is below the rule's bar it records the
+    offending reading and aborts the rule rather than returning the number. Every
+    successful read is also recorded, so the evidence behind an outcome is
+    assembled automatically instead of relying on the rule author to attach it.
+  CHOICES: Aborting is done by raising, so there is no return value a careless
+    rule could ignore. The blocked reading is recorded BEFORE aborting, so the
+    outcome can name the sensor that stopped the rule instead of just reporting
+    that something was untrusted.
+
+`analytics/rules/registry.py :: RuleStatus`
+  WHY IT EXISTS: A rule that did not fire and a rule that could not run are
+    completely different statements and must never collapse into one boolean.
+  WHAT IT DOES: Five outcomes: fired, did not fire, could not be trusted, had no
+    reading at all, and does not apply in this operating mode. The first says the
+    equipment looks fine; the third says nobody knows. A building full of dead
+    sensors would otherwise report a clean bill of health.
+
+`analytics/rules/registry.py :: evaluate_rule`
+  WHY IT EXISTS: Ties the pieces together for one rule against one machine at one
+    instant.
+  WHAT IT DOES: Checks the operating mode first and skips the rule if it does not
+    apply. Otherwise builds the context, runs the rule body, and catches the two
+    ways a rule can be stopped by its inputs. Whatever comes back is wrapped
+    together with the readings the rule actually consulted, its severity
+    contribution and its cost estimate.
+
+`analytics/rules/registry.py :: CostUnit and CostEstimate`
+  WHY IT EXISTS: Every rule has to say what its fault is costing, or the advisory
+    layer cannot rank two faults against each other.
+  WHAT IT DOES: Carries an amount, one of three units -- electrical energy, water,
+    or comfort measured as degrees away from setpoint multiplied by hours -- and a
+    plain-language sentence saying how the number was arrived at.
+  CHOICES: Three units rather than one currency. Converting to money needs
+    tariffs, which belong in the advisory layer; doing it here would bury the
+    reasoning behind a number nobody can check.
+
+`analytics/rules/readings.py :: load_asset_readings` and `readings_at`
+  WHY IT EXISTS: Rules need both halves of a reading -- the value and its trust
+    score -- and they are two columns of the same row.
+  WHAT IT DOES: Pulls one machine's measurements over a window into two aligned
+    tables, one of values and one of scores, then hands a rule exactly one row of
+    them at a time. What a rule can see is one instant and nothing either side of
+    it.
+
+`analytics/rules/mode.py :: classify_frame`
+  WHY IT EXISTS: Which rules may run depends on what the air handler is trying to
+    do. Getting this wrong sends every downstream rule down the wrong branch.
+  WHAT IT DOES: Classifies every instant into one of five modes by asking, in
+    order: is anyone in and is the fan running; is the cooling valve shut and the
+    air arriving at the coil colder than the supply setpoint (heating); is the
+    valve shut at all (free cooling); is the outdoor damper open beyond its
+    minimum (mechanical cooling with economizer); otherwise mechanical cooling on
+    minimum fresh air. A sixth value, unknown, is returned when any signal is
+    missing or scores below the trust bar.
+  CHOICES: The minimum outdoor air damper position is 0.10, read off the data
+    rather than assumed -- across the occupied hours of the fault-free year the
+    damper sits at exactly 0.10 for 33,615 samples, with the next most common
+    position two orders of magnitude rarer. It is a hard control floor. The
+    economizer test sits 0.02 above it to clear the handful of samples that
+    jitter to 0.11 and 0.12 without swallowing genuine economizer action, which
+    runs all the way to 1.0. The heating test uses a 0.5 degC deadband, because
+    the economizer holds mixed air within tenths of a degree of the setpoint and
+    without a deadband the mode would chatter on every crossing. Vectorised
+    rather than looped because a year at the five-minute cadence is 105,108
+    instants and the mode must be known at every one before a rule can run.
+  ⚠ JUDGEMENT CALL: This air handler has no heating coil -- the LBNL unit is
+    instrumented with a chilled water valve and nothing else, and the terminal
+    reheat that actually adds heat is not instrumented either. So heating is
+    inferred as a DEMAND rather than observed as an action: the coil is shut and
+    the air reaching it is already below the supply setpoint, so the setpoint can
+    only be met if something downstream adds heat. The alternative was to declare
+    heating unobservable and never return it, which would have left one of the
+    five modes the checkpoint names permanently empty and given the APAR heating
+    rules nothing to gate on.
+  ⚠ JUDGEMENT CALL: A shut coil with the damper on its floor and no heating
+    demand is reported as free cooling. It is really a unit coasting inside its
+    deadband with no cooling of any kind happening, and free cooling is the
+    closest of the five names because the honest statement is that no mechanical
+    cooling is in use. It is 107 samples in a year, 0.2% of occupied time.
+
+`scripts/plot_mode.py`
+  WHY IT EXISTS: A mode that flickers breaks every rule above it, and flicker is
+    invisible in a summary statistic.
+  WHAT IT DOES: Draws the classified mode as a band of colour over a week, with
+    the temperatures and the two actuator positions underneath, and prints the
+    mode shares plus every transition with its timestamp. Anchors the window to
+    the building's local midnight rather than to UTC, otherwise the plot starts
+    at six in the evening and every occupied block straddles a day boundary.
+
+### MEASURED RESULT
+
+- Dispatch, resolved purely by class: the air handler picks up the rule
+  registered against brick:Air_Handling_Unit despite being typed brick:AHU; all
+  three chillers pick up the chiller rule; the plant and the three cooling towers
+  correctly match nothing, because no rule was registered for them.
+- The class ancestry that makes that work: AHU, Air_Handler_Unit,
+  Air_Handling_Unit, Class, Entity, Equipment, HVAC_Equipment.
+- Quality gate, same instant and same values, only the score changed:
+  at quality 100 the rule fires and reports supply air 20.90 degC against a
+  12.88 degC setpoint; at quality 12 it returns insufficient_data_quality, does
+  not fire, and names ahu-1.sa_temp as the reason.
+- Mode over the fault-free year: unoccupied 44.79%, mechanical cooling without
+  economizer 32.06%, free cooling 16.33%, mechanical cooling with economizer
+  4.31%, heating 0.32%, unknown 2.19%.
+- Transitions: 3.7 per day in a spring week, 3.9 per day in a winter week. Both
+  weeks show the same physically sensible shape -- the unit wakes on schedule,
+  passes briefly through heating during cold-morning startup, moves to free
+  cooling as the return air warms the mixing box, and reaches for mechanical
+  cooling only when the outside air stops being enough.
+
+### AN INTERACTION WORTH KNOWING ABOUT BEFORE 3.3
+
+The mode is unknown for 2.19% of the year, and 1.98 of those 2.19 points are the
+outdoor air damper being scored below the trust bar by the quality layer -- it
+flags the damper as flatlined for about 7.2 days of the year because it sits
+perfectly still on its 0.10 floor for long stretches while the fan runs.
+
+That is not obviously a false positive. A damper that has not moved in a day
+while the unit runs is exactly what a stuck damper looks like, and a stuck
+outdoor air damper is one of the six faults this project injects. But it means
+the rules cannot run during those periods, and the fault they would be looking
+for is the one that produced the flag. Checkpoint 3.3 has to decide whether a
+damper-stuck rule reads the damper position through the normal quality gate at
+all, or whether a stuck reading is its evidence rather than its obstacle.
+
+START HERE: `analytics/rules/registry.py` — `class_closure` and `RuleContext` are
+the two ideas in this checkpoint; everything else is scaffolding around them.

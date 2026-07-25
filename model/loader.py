@@ -48,6 +48,14 @@ SOURCE_PREFIX = "bldg"
 # and use absolute URIs, so they need none of the relocation the LBNL files do.
 EXTENSION_FILES = ("extensions.ttl", "building_extensions.ttl")
 
+# Brick's own class hierarchy, extracted from the published 1.3 ontology. Loaded
+# alongside our own files because the rule registry dispatches on Brick class and
+# cannot do that from instance data alone: the LBNL models say an asset is a
+# brick:AHU, and nothing in them says that brick:Air_Handling_Unit means the same
+# thing or that brick:RTU is a kind of it. See the header of the file itself for
+# provenance and for why only the taxonomy is vendored.
+TAXONOMY_FILE = "brick_taxonomy.ttl"
+
 # The three Brick predicates that describe topology rather than metadata. Used
 # to decide which statements count as connecting two parts of the building.
 TOPOLOGY_PREDICATES = (BRICK["feeds"], BRICK["hasPart"], BRICK["hasPoint"])
@@ -313,12 +321,19 @@ def _parse_extension(name: str) -> Graph:
 
 def load_merged_graph(
     with_extensions: bool = True,
+    with_taxonomy: bool = True,
 ) -> tuple[Graph, list[tuple[URIRef, URIRef, URIRef]]]:
     """The one graph every downstream layer queries.
 
     Returns the merged graph and the list of class-spelling repairs applied.
     Pass with_extensions=False to see the LBNL data alone, which is what proves
     the two published systems are disconnected without our additions.
+
+    with_taxonomy adds Brick's own subclass and equivalence edges. It is on by
+    default because the rule registry needs them to match a rule written against
+    brick:Air_Handling_Unit to an asset the LBNL model types as brick:AHU. Turn
+    it off to count or inspect only the instance data, since the taxonomy is
+    otherwise the overwhelming majority of the triples in the graph.
     """
     merged = Graph()
     merged.bind("brick", BRICK)
@@ -337,6 +352,10 @@ def load_merged_graph(
         for name in EXTENSION_FILES:
             for triple in _parse_extension(name):
                 merged.add(triple)
+
+    if with_taxonomy:
+        for triple in _parse_extension(TAXONOMY_FILE):
+            merged.add(triple)
 
     return merged, repairs
 

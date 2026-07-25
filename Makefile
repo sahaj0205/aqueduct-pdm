@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality api web
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot api web
 
 # Resolve and install the Python environment into .venv
 install:
@@ -59,6 +59,18 @@ plots:
 # other part of the detection path.
 quality:
 	uv run python -m analytics.quality.scoring
+
+# Show the rule registry resolving rules to assets purely by Brick class, and
+# the quality gate refusing to let a rule fire on an untrusted reading. Registers
+# throwaway rules; the real ones arrive with the APAR set.
+rules-demo:
+	uv run python -m analytics.rules.registry
+
+# Plot the detected AHU operating mode against the signals it came from. Defaults
+# to a shoulder-season week, which is when the economizer actually has decisions
+# to make. Pass --from and --days for any other window.
+mode-plot:
+	uv run python scripts/plot_mode.py
 
 # Serve the API on :8000
 api:
