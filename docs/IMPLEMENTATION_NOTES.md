@@ -7154,3 +7154,123 @@ all 32 polyline endpoints land on a component.
 
 START HERE: `docs/plots/plant_schematic.svg` — open it. It is the rendered output of
 `web/src/components/PlantSchematic.tsx` against live data, written by the verification.
+
+
+## Checkpoint 6.7 — Decision log for cross-asset diagnosis
+
+### WHAT WE DID
+
+The decision log now covers all nine choices that shaped this build, and the two
+entries written at the end of the previous session have been brought up to date with
+what building the interface revealed about them. Nothing in this checkpoint changes how
+the system behaves; it changes what a reader can reconstruct about why it behaves that
+way. That matters here more than usual, because two of the three entries touched record
+the same pattern: the argument for a decision changed after the decision was made, and
+in both cases it changed because something was put on a screen next to something else
+and the two disagreed.
+
+### HOW IT WORKS
+
+`AI_LOG.md :: D-09 — Cross-asset consequential faults are demoted, never hidden`
+  WHY IT EXISTS: The one policy in this project that removes information from an
+    operator's view, or rather deliberately declines to. Once a symptom can be traced
+    upstream, the platform has to decide whether it may delete a measured finding on
+    the strength of an inference, and that is a decision about trust rather than about
+    code.
+  WHAT IT DOES: Records four options — suppress, demote and link, flag without
+    reranking, or merge the pair into one advisory — and why the second was taken. The
+    core of it is an asymmetry: demoting wrongly produces a badly ordered queue, which
+    an operator notices and works around; suppressing wrongly makes a genuine fault
+    absent, and the operator learns this by the equipment failing. After that they read
+    the raw alarm list and every layer in this project is worth nothing, because nobody
+    is reading its output. The upside of suppression over demotion is one dimmed row of
+    screen space.
+  CHOICES: The entry is explicit that the POLICY was specified in the prompt and not
+    chosen by me, and equally explicit about what was mine: the demotion arithmetic, the
+    clamp that guarantees the ordering a multiplier alone cannot, the chain recursion,
+    the two-tier queue that keeps demoted unpriced advisories ranked on severity rather
+    than dropping them to zero, the admission rule on the plausibility map that stops
+    demotion happening promiscuously, and the decision to light only the blamed chiller
+    on the schematic. Also mine is the verification design: the negative case was built
+    first, because a demotion feature that never declines to demote is
+    indistinguishable from one that demotes everything.
+  ⚠ JUDGEMENT CALL: The Outcome records that the inference is WRONG on this dataset and
+    treats that as the most useful result in Task 6 rather than a failure to be
+    explained away. The traversal, the mechanism and the timing all worked; checkpoint
+    5.4 independently says the air handler fault is a drifting thermometer and the
+    chiller has nothing to do with it. Two faults on connected machines in the same
+    weeks were a coincidence, which is what they usually are. Because the advisory is
+    demoted rather than suppressed it is still on screen, still carrying the SENSOR
+    badge and the 94-percent single-sensor reconciliation that contradicts the
+    attribution, and an operator can overrule it in one glance. I arrived at the
+    argument for this decision from the wrong side — not by reasoning about trust in the
+    abstract, but by watching the feature be wrong on the first real case it was given.
+  CHANGED FROM BEFORE: One numeric claim was corrected during the write-up. The first
+    draft said the advisory was "demoted from priority 1.000 to position six of seven",
+    which silently mixed two different rankings — checkpoint 6.1 demotes on severity
+    because the cost of inaction did not exist yet, and the finished dashboard demotes
+    on economic priority. On the dashboard `apar-20` is unpriced, because a saturated
+    valve wastes no measurable energy and has no threshold to cross, so it is ranked
+    among the unpriced rows on severity and lands seventh of seven. The entry now states
+    both rankings and says which is which: two demotions by two different mechanisms,
+    both landing it under the chiller, neither removing it.
+
+`AI_LOG.md :: D-07 Outcome — updated after Task 6`
+  WHY IT EXISTS: D-07 declined a deep sequence model in favour of a Wiener process with
+    a closed-form first-passage law. Task 5's outcome already recorded that the argument
+    had shifted: the value of an interpretable model turned out to be that its drift is
+    a quantity you can test against zero, which is what the refusal layer needs.
+  WHAT IT DOES: Adds the two things building the interface revealed. The payoff is that
+    a parametric model has something you can DRAW — the fan chart plots the interval
+    against the date each prediction was made, and on the coil valve leak it closes from
+    3,479 days to 59 across 84 successive estimates as the sample count goes 14 to 53.
+    A deep model can emit a date and a spread but cannot show a belief tightening,
+    because there is no belief in it, only an output.
+  ⚠ JUDGEMENT CALL: The entry also records a cost I did not anticipate, and it is a cost
+    OF the decision rather than a limitation elsewhere. Interpretability means the
+    platform publishes two numbers derived from the same daily indicator through
+    different smoothing — a health score from an isotonic clamp and an interval from a
+    running maximum — and on the fan indicator they contradicted each other flatly:
+    health 63 of 100 beside a median time to failure of zero days. That was worth 68,400
+    USD of expected replacement cost and put the least degraded mode in the building at
+    the top of the queue. So choosing a model with parameters bought a quantity to refuse
+    on, and then made a second refusal necessary by having two published quantities at
+    all. A model with no interpretable state would have had neither problem and neither
+    defence — it would simply have been believed.
+
+`AI_LOG.md :: D-08 Outcome — updated after Task 6`
+  WHY IT EXISTS: D-08 chose constraint isolation over a learned classifier for telling a
+    lying sensor from a worn machine.
+  WHAT IT DOES: Records what the discrimination is worth in dispatch terms and a scope
+    error it exposed. The worth: the intervention library is keyed on the fault AND the
+    fault class, so `apar-20` resolves to a 1.5-hour calibration at 262.50 USD or a
+    6-hour coil survey at 830.00 USD — same rule id, same evidence, 3.2 times the cost
+    and a different trade dispatched. That is a table row rather than a branch in code,
+    so a site with different labour rates changes the number without touching the
+    discrimination.
+  ⚠ JUDGEMENT CALL: The scope error is the more instructive half and it was mine. The
+    isolation sweep answers per ASSET per window; I handed that verdict to every advisory
+    on the asset, which labelled the supply fan's bearing wear a SENSOR fault because the
+    thermometer on the same machine is drifting. The corrected reading is now recorded as
+    part of the decision rather than as a bug fix elsewhere: a rule firing takes the
+    asset's class, a failure mode is equipment by construction, unless the mode's own
+    indicator is computed from the very measurement the sweep accuses — which is not
+    hypothetical, because the coil leak-by indicator IS the supply air temperature
+    residual. Stated plainly: the verdict is about the asset's violated relations, not
+    about every fault open on the asset, and I had been over-reading it.
+
+### The verification, in one paragraph
+
+Nine entries, every one carrying all six required subsections — Forcing question,
+Options, Rationale, Mine vs delegated, Confidence, Outcome — and two carrying an
+Overrode section. No Outcome is blank or a stub: they run from 2,402 to 5,441
+characters, with D-07 at 5,441 and D-08 at 4,806 after this session's extensions and
+D-09 at 3,145. D-09 lists four named options. Every figure in the three sections written
+here traces to measured output: the 3,479-to-59-day close over 84 estimates, the 14-to-53
+sample growth, the 262.50 against 830.00 USD dispatch costs, the 5.8-day evidence age,
+the 94-percent single-sensor reconciliation, the four-day gap between the last chiller
+reading and the first sustained saturated valve, and one of three chiller pipes lit.
+
+START HERE: `AI_LOG.md` — the Outcome of D-09. It is the only place in the log that
+records a feature being WRONG on the first real case it was given, and the decision
+being vindicated by that rather than despite it.

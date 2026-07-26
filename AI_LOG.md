@@ -1107,6 +1107,42 @@ while the coil valve is commanded shut, and P90 sits far out in the tail of a ra
 only two standard deviations clear of zero. A model that becomes less certain when
 the machine stops getting worse is behaving correctly. It was not tuned to pass.
 
+**Updated after Task 6.** Two things, one of which is the reason to have made this
+decision at all and one of which is a cost I did not anticipate.
+
+The payoff is that an interpretable parametric model has something you can DRAW. The
+fan chart in checkpoint 6.5 plots the P10-to-P90 interval against the date each
+prediction was made, and on the coil valve leak it closes from 3,479 days to 59 across
+84 successive estimates as the post-onset sample count goes from 14 to 53. That picture
+is the whole argument for predictive maintenance in one image: early on the system says
+"somewhere in the next ten years", which is visibly useless, and eight weeks later it
+says "11 to 34 days". A deep sequence model has no comparable object. It can emit a
+predicted date and, with effort, a spread; it cannot show you a belief tightening,
+because there is no belief in it — only an output. Everything that makes this chart
+legible comes from the fact that the model's uncertainty is a parameter with a
+posterior, and the same is true of the readout beside it: 84 estimates, widest 3,479
+days, narrowest 23, closed by 97 percent, sample count 14 to 53, monotone no.
+
+The unanticipated cost is that interpretability created a NEW failure mode as well as
+the ability to catch one. Because the model has parameters, the platform publishes two
+different numbers derived from the same daily indicator — a health score computed from
+an isotonic clamp, and a first-passage interval computed from a trailing median held at
+its running maximum. On a clean indicator they agree. On the air handler's fan indicator
+they contradicted each other flatly: health 63 of 100, meaning most of a life left,
+beside a median time to failure of zero days. Both were the system's own published
+numbers and neither was arithmetically wrong; the indicator reads 3.4 to 7.5 watts on 30
+of the last 34 days against an 88.9 watt threshold, with isolated single-day excursions
+to 245, 406 and 178.6, and the two smoothings disagree about whether those count.
+
+That contradiction was worth 68,400 USD of expected replacement cost and put the LEAST
+degraded mode in the building at the top of the priority queue. It is now caught by a
+third refusal, in the advisory layer, which withholds a prediction its own health score
+refutes and prints which two numbers disagreed. So the shape of this decision's outcome
+has extended once more: choosing a model with parameters bought a quantity to refuse on,
+and then bought a second refusal made necessary by having two published quantities at
+all. A model with no interpretable state would have had neither problem and neither
+defence — it would simply have been believed.
+
 ---
 
 ## D-08 — Constraint isolation for sensor versus equipment discrimination
@@ -1308,3 +1344,207 @@ demonstrated and "all four are reliable" is not. And the whole layer depends on
 having a fault-free window at the same time of year to compare against; where the
 calendar does not supply one, as on the late-winter damper run, the constraint
 evidence has to be discounted and the output says so.
+
+**Updated after Task 6.** The classification became money, and in becoming money it
+exposed a scope error in how I was applying it.
+
+The money first, because it is the answer to "why does this matter". Checkpoint 6.2 keys
+the intervention library on the fault AND the fault class, so the same reported symptom
+resolves to two different jobs. `apar-20` — a cooling coil valve that has run fully open
+and stayed there — classified as a sensor fault is `calibrate-supply-air-sensor`: 1.5
+technician-hours with a reference probe, 262.50 USD all in. Classified as an equipment
+fault it is `inspect-coil-capacity`: 6.0 hours of coil survey, 830.00 USD. Same rule id,
+same evidence, 3.2 times the cost and a different trade dispatched. That ratio is what
+this decision is worth per occurrence, and it is a row in a table rather than a branch in
+code, so a site with different labour rates changes the number without touching the
+discrimination.
+
+The scope error is the more instructive half. The isolation sweep answers per ASSET per
+window: it sweeps the physical relations and reports what is wrong with the machine. I
+handed that verdict to every advisory on the asset, which on the 2038 air handler run
+labelled the supply fan's bearing wear a SENSOR fault — because the supply air
+thermometer on the same machine is drifting. The two faults have nothing to do with each
+other, and the label would have sent somebody with a calibration kit to a worn bearing.
+
+The fix sharpens what this decision actually claims. A rule firing takes the asset's
+class, because a rule reports a symptom and "why" is exactly the question the sweep
+answers. A failure mode is equipment degradation by construction, because the health
+layer measured a physical quantity trending toward a threshold and a changepoint detector
+confirmed the onset — that is a statement about the machine, not about an instrument.
+UNLESS the mode's own indicator is computed from the very measurement the sweep accuses,
+in which case the trend may be an artefact of the lying instrument and the mode inherits
+the sensor verdict. That last clause is not hypothetical: the cooling coil leak-by
+indicator is the supply air temperature residual, which is precisely the drifting point,
+so on that run the leak-by trend genuinely is suspect and now says so.
+
+Stated plainly: the constraint isolation verdict is about the asset's violated relations,
+not about every fault open on the asset. I had been over-reading it, and the
+over-reading was invisible until advisories put a class badge on every row.
+
+---
+
+## D-09 — Cross-asset consequential faults are demoted, never hidden
+
+**Forcing question**
+
+Once the platform can trace a symptom upstream, it faces a choice it cannot avoid.
+The chiller is fouled; the air handler's coil consequently cannot reach its supply
+air setpoint; two advisories exist and one of them is arguably not a fault at all.
+Sending a technician to the air handler wastes the visit — they will find a coil
+doing everything it was asked. So the obvious move is to suppress the downstream
+advisory and show only the machine that needs attention.
+
+The question is whether the platform is allowed to remove a finding from an
+operator's queue on the strength of an inference. Not on the strength of a
+measurement — the air handler's symptom is measured, it is real, the valve genuinely
+is saturated — but on the strength of a claim that something else explains it. That
+claim rests on a graph edge somebody authored and a mechanism somebody wrote down.
+Both are fallible in ways the operator can check and the platform cannot.
+
+**Options**
+
+1. **Suppress the downstream advisory.** Cleanest queue. One machine named, one
+   visit dispatched, no ambiguity for the operator to resolve. This is what most
+   alarm-reduction features in building automation actually do, and it is why
+   operators distrust them.
+
+2. **Demote it, link it, keep it visible.** Chosen. The advisory stays in the queue,
+   ranked below its own cause, dimmed and indented, carrying the name of the machine
+   held responsible and the mechanism claimed. Costs a line of screen space.
+
+3. **Flag it, leave the ranking alone.** Mark it consequential but let it compete on
+   its own priority. Honest, and useless: on this dataset the symptom's severity is
+   1.00 and it would sit at the top of the queue above the chiller that explains it,
+   which is exactly the failure the traversal was built to prevent.
+
+4. **Merge the two into one advisory naming both machines.** Attractive, and wrong
+   for a reason that took a while to see: a merged advisory cannot be disagreed with
+   in halves. If the link is wrong the operator has to reject the whole thing,
+   including the correctly detected downstream symptom, and has nowhere to put the
+   observation that the coil really is misbehaving.
+
+**Rationale**
+
+Suppression fails on a trust argument, not a technical one, and the argument is
+asymmetric in a way worth spelling out.
+
+If the platform demotes correctly, the cost is one dimmed row an operator's eye
+skips. If it suppresses correctly, the benefit is that same row not being there. The
+upside of suppression over demotion is therefore approximately nothing.
+
+If the platform demotes wrongly, the operator sees a real fault ranked lower than it
+deserves, notices, and works it anyway — the queue was ordered badly and nothing was
+lost. If it suppresses wrongly, a genuine fault is gone. Not deprioritised: absent.
+And the operator finds out by the equipment failing, at which point they learn that
+this system removes things from their queue based on guesses. After that they read
+the raw alarm list, and every layer in this project — quality scoring, physics rules,
+condition-normalised baselines, health, remaining life, discrimination, cross-asset
+reasoning — is worth nothing, because nobody is reading its output.
+
+So the asymmetry is: demotion risks a badly ordered queue, suppression risks the
+operator's belief that the queue is complete. The second is the only thing this
+platform actually has.
+
+There is a narrower engineering reason too. The demotion is arithmetic — 40 percent
+of the advisory's own priority, then forced at least 5 percent below its cause's, with
+chains resolved so a two-step attribution cannot leave the last symptom outranking
+the middle link. Two mechanisms rather than one, because a multiplier alone cannot
+guarantee the ordering: a severe symptom fed by a mild cause can still come out on
+top of it, and "ranked below its cause" is the property the whole layer exists to
+provide. Arithmetic can be inspected and tuned. Suppression is a boolean, and a
+boolean has no dial to turn when it turns out to be wrong 30 percent of the time.
+
+**Mine vs delegated**
+
+The prompt specified this one. It named "demote, do not hide" and gave the reason —
+suppressing entirely destroys trust when the inference is wrong. I did not choose the
+policy.
+
+What is mine is the mechanism and the honesty about it. The multiplier value, the
+clamp against the cause, the chain recursion, the two-tier queue that keeps demoted
+unpriced advisories ranked on severity rather than dropping them to zero, the visual
+treatment that dims and indents without removing any field, and the decision to have
+the plant schematic light only the blamed chiller rather than the whole plant — all
+mine. So is the admission rule on the plausibility map, which is the thing that stops
+demotion happening promiscuously: a cause must be a fault that degrades the MEDIUM the
+downstream asset consumes. Without that the map becomes a list of opinions about which
+faults feel related, and then demotion starts hiding things on no evidence at all.
+
+Also mine is the verification design. I built the negative case first — a window where
+topology and timing both permit a link and the mechanism refuses it — because a
+demotion feature that never declines to demote is indistinguishable from one that
+demotes everything.
+
+**Confidence**
+
+High on the policy, and I would have chosen it unprompted for the trust argument
+above. Medium on the numbers: 0.4 and the 5 percent margin are placements, not fitted
+values, chosen so a demoted symptom still outranks routine work while no longer
+competing with its cause. They need exposure to real operators to settle.
+
+Low on one thing, stated because it is the weakest part of the layer: the plausibility
+map has six rows and they are all the same physical chain. Its discriminating power is
+demonstrated on one negative case and one positive case. A map this small cannot be
+said to generalise, and the honest claim is that the MECHANISM generalises — topology
+from the graph, mechanism from a declared table, timing from openness and freshness —
+not that the table is complete.
+
+**Outcome**
+
+**The inference is wrong on this dataset, and that is the most useful result in Task 6.**
+
+The composed situation puts chiller-1's real detected condenser fouling upstream of
+the air handler's real saturated cooling valve. The traversal finds it at two hops
+across the chilled water loop, the mechanism matches, the timing holds at 5.8 days of
+evidence age, and `apar-20` is duly marked consequential and demoted — from the top of
+the queue on its own severity of 1.00 to the last row of seven on the dashboard.
+Everything worked.
+
+And checkpoint 5.4 independently classifies that same air handler fault as a SENSOR
+fault: the supply air thermometer is drifting high and the controller is saturating
+the valve chasing a temperature that is not real. The chiller has nothing to do with
+it. Two faults on connected machines in the same weeks were a coincidence, which is
+what they usually are.
+
+So the queue has blamed a chiller for a thermometer — and because the advisory is
+demoted rather than suppressed, it is still on screen, still carrying its SENSOR
+badge, still carrying the 94-percent single-sensor reconciliation on `ahu-1.sa_temp`
+that contradicts the attribution, and an operator can overrule it in one glance. Had
+it been suppressed, a drifting sensor would have vanished behind a chiller, and the
+only evidence remaining on screen would have been the chiller's. I arrived at the
+argument for this decision from the wrong side: not by reasoning about trust in the
+abstract, but by watching the feature be wrong on the first real case it was given.
+
+Measured, for the record:
+
+    situation 1, real data      5 advisories, 0 attributed — the map refuses although
+                                topology and timing both permit the link, because the
+                                open chiller fault is efficiency loss, which costs
+                                power rather than capacity and cannot warm the water
+    situation 2, real data      4 advisories, 0 attributed
+    situation 3, same window
+      as 1 plus one fault       apar-20 demoted 1.000 -> 0.152, position 1 -> 4,
+                                linked to chiller-1 at 2 hops, still in a queue of 6
+
+Those three lines are checkpoint 6.1's ranking, which orders on severity because the
+cost of inaction did not exist yet. On the finished dashboard the same advisory is
+demoted differently and further: its cost of inaction cannot be computed at all — a
+saturated valve wastes no measurable energy and has no failure threshold to cross — so
+it is unpriced, ranked among the unpriced rows on severity, below its own cause and
+below the one other unpriced row, seventh of seven. Two demotions by two different
+mechanisms, both landing it under the chiller, neither removing it.
+
+The schematic makes the same point visually and adds one thing the queue cannot: with
+the path lit, the chiller and the air handler are visibly joined by a pipe, so an
+operator can see the claim being made rather than reading it. Exactly one of three
+chiller-to-loop pipes lights, because the diagnosis named one machine and lighting the
+plant would say something the diagnosis did not.
+
+Two limits carried forward. The dataset cannot produce this scenario unassisted — the
+two LBNL systems are independent simulations, so no air handler run is fed by a starved
+chiller, and every chiller run ends four days before the saturated valve first
+sustains; situation 3 moves one real fault's dates by two whole years and says so in
+the module docstring, the report and the dashboard. And `app.advisories.status` has
+three values with nothing in the project moving a row off `open`, so an operator can
+demote-and-see but cannot yet acknowledge or close. A queue with no way to retire an
+item is not finished being a queue.
