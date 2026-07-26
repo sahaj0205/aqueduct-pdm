@@ -657,3 +657,231 @@ the honest cost of a rule set that trades sensitivity for silence, and they are
 the argument for the layers that come next: the residuals in 3.5 caught the
 sensor drift directly that the rules only saw second-hand, and the condition-
 normalised baselines in Task 4 are what the two remaining misses need.
+
+**Updated after Task 4.**
+
+The forward claim in the paragraph above — that the condition-normalised
+baselines were what the two remaining misses needed — was half right, and the
+half that failed is the more interesting one.
+
+*The coil valve leak is now caught.* The APAR rule reached 22% of its detection
+threshold and stayed silent. The baseline-driven indicator reaches its full
+threshold, takes air-handler health from 100 to 43, and estimates the onset at
+2036-03-19 against a true injection of 2036-03-17. Two days.
+
+*The stuck outdoor air damper is still missed.* Health ends at 95 out of 100, and
+the coil indicator moves to −17.6% of threshold — away from failure, not toward
+it. The structural reason recorded above survives normalisation unchanged: the
+operating mode is inferred from the same damper that is broken, so the fault
+routes evaluation away from itself. A baseline cannot fix a fault that hides
+inside one of its own drivers, and no amount of condition-matching will, because
+the condition is what is lying.
+
+*The mechanism generalised further than the Confidence section committed to.*
+That section claimed only that a third equipment class would not require touching
+dispatch. What actually happened is that two entirely new LAYERS were built —
+condition-normalised baselines and per-mode degradation indicators — and each of
+them independently needed the same question answered, "which machines does this
+apply to". Both answered it by calling the same closure:
+
+    analytics/baselines/fit.py :: specs_for(brick_class)
+    analytics/health/modes.py  :: modes_for_class(modes, brick_class)
+
+Task 4 added 2,996 lines across 11 files, every one of them an insertion.
+`registry.py`, `evaluate.py`, `apar.py` and `chiller.py` changed zero lines
+between them. The claim being tested was about a third machine; what it survived
+was two new layers.
+
+*And the taxonomy closure earned its keep a second time, by failing loudly enough
+to notice.* Checkpoint 4.2's first version of the baseline catalogue used plain
+string equality on the Brick class. It fitted both chillers correctly and
+silently fitted NOTHING for the air handler, with no error, because `app.assets`
+records that machine as `brick:AHU` while the catalogue was written against
+`brick:Air_Handling_Unit` — classes Brick declares equivalent in one direction
+only, and which rdflib does not reason over. The closure walk built in 3.2 is what
+makes those two the same thing, and a project that had keyed on strings would have
+shipped two missing baselines.
+
+
+## D-06 — Condition-normalised baselines over static thresholds
+
+**Forcing question**
+
+Every layer above detection has to answer one question: is this number bad? The
+obvious answer is a limit per sensor — supply air above this, fan power above
+that — and it is the answer most building analytics ships with. It does not work
+here, and the reason is not subtle: in HVAC almost every quantity worth watching
+moves far more with operating conditions than with equipment health. A supply fan
+drawing 900 watts is alarming at half airflow and unremarkable at full airflow.
+The same chiller in the same condition draws 1.2 kW per ton on a mild morning and
+1.9 on a hot afternoon.
+
+So a static limit does not fire when the asset is unhealthy. It fires when
+conditions are unusual, which is a different event that happens far more often.
+That is the documented mechanism behind false-positive fatigue in building fault
+detection, and the failure is social rather than technical: a team fed a dozen
+alerts a day, most of them explained by the weather, stops reading the alerts.
+After that the system's accuracy is irrelevant, because nobody is listening to
+it. A detector nobody trusts is worth less than no detector, because it cost
+money and it occupies the place where a working one would go.
+
+This had to be settled before the health index, not after. Health is defined as
+distance to a failure threshold. If the threshold sits on a raw signal, then the
+health number inherits every weather swing, and so does the remaining-life
+estimate fitted to it.
+
+**Options**
+
+1. **Static limits per point.** A minimum and maximum per sensor, checked on every
+   reading. Free to implement — the columns already exist in `app.points` — and
+   trivially explainable to an operator. Conditions on nothing, so it cannot
+   distinguish a hot afternoon from a failing compressor even in principle.
+
+2. **Condition-normalised baselines in physics form, fitted per commissioning
+   window.** *Chosen.* For each modelled point, learn what a healthy asset does as
+   a function of what is being asked of it, using the terms of the equation the
+   equipment actually obeys, fitted on three weeks the operator declares healthy.
+   Watch the leftover. Roughly a day of work and five model forms.
+
+3. **Learned black-box models per point.** Regress each point on every other
+   available point with a gradient-boosted or neural model. Would very likely fit
+   better in-sample than a four-parameter physics form. Buys nothing that can be
+   checked against physics, and adds a dependency the project does not have.
+
+**Rationale**
+
+The measurement that settles option 1 is not a judgement call. Fan electrical
+power regressed on airflow alone explains between 14.6% and 55.4% of its variance
+depending on the window, and the fitted cubic coefficient comes out NEGATIVE,
+which is physically impossible — more air for less power. The same fan under the
+fan-similarity law, conditioned on shaft speed as well as flow, reaches R² 0.977
+to 0.989 with a residual spread of 21 to 26 watts. A static limit is strictly
+worse than the 15% model, because it conditions on nothing at all.
+
+Put concretely: supply fan power spans 0 to 1,622 watts across a perfectly
+healthy run. There is no fixed limit inside that band that does not fire on
+ordinary operation, and none above it that ever fires. No value works. After
+normalisation the same healthy run's residual moves 0.824 watts across 120 days,
+which is 0.03 of its own standard deviation.
+
+The false-positive claim is not hypothetical either. The nine rules in Task 3
+already compare against condition-matched baselines rather than fixed limits, and
+across 1,090 fault-free asset-days they produced zero false positives. Extending
+the same principle to the health index, both clean runs finish at 97 and 98 out
+of 100.
+
+A fourth option was considered and rejected inside option 2: fitting one baseline
+globally over all clean data rather than one per run. It fails for a specific
+reason. The runs sit in different seasons and different simulated eras, so a
+global fit would leave a systematic per-run offset in the residual, and the
+residual would then partly encode WHICH RUN a reading came from. Fitting per run
+means each starts from its own zero, so a residual that grows is the machine
+moving away from where it was three weeks ago.
+
+On option 3, the argument for physics form is not elegance, it is that
+interpretable coefficients are a cross-check you can actually run. In the two
+winter windows the cooling coil model's fitted fan temperature rise came out at
+0.51 and 0.56 K. Measuring supply minus mixed air directly with the valve
+commanded shut — a completely independent route through the data — gives 0.50 and
+0.55 K for the same two windows. Two methods agreeing to a hundredth of a kelvin
+is how you find out a model is describing the right physics rather than merely
+interpolating. A black box offers no equivalent test. The check is only available
+in winter: in the summer windows the valve is almost never shut, the term is
+weakly identified, and it fits at 0.06 K — which is itself worth knowing, and is
+the kind of thing an uninterpretable model cannot tell you.
+
+Extrapolation decided it. In the stuck-damper run, 32.5% of mixed air
+temperatures fall outside the range the baseline was fitted on, because the fault
+itself is what moves them there. The effectiveness-NTU form survives that: the
+driving temperature difference enters multiplicatively, so the model cannot
+predict cooling when there is nothing to cool with, and its error stays bounded.
+An unconstrained learned model has no such guarantee at precisely the moment it
+matters most, which is during the fault. Every baseline here carries between one
+and ten parameters, fitted on 524 to 3,780 samples depending on how much of the
+window the model's own gating admits, and each parameter names something — coil
+authority, flow dilution, fan temperature rise.
+
+**Mine vs delegated**
+
+*Mine.* Requiring physics-form regression with few, interpretable coefficients
+and sane extrapolation, rather than accepting whatever fits best. Requiring the
+baselines be fitted on a declared healthy window at the start of each run rather
+than once globally. Requiring that the air-handler results come out bit-identical
+across the 4.2 generalisation, which is what made that refactor verifiable rather
+than merely plausible. Requiring every failure threshold to carry a written
+physical or economic justification, as a mandatory column and not a convention.
+Requiring health be the minimum across failure modes and never the mean.
+Requiring onset confirmation as a hard precondition for projecting any trend.
+Authorising the substitution of measurable indicators where the named instrument
+does not exist, and requiring the one with no substitute be recorded as absent
+rather than proxied.
+
+*Delegated.* The fan-similarity form, once the specified f(airflow) was measured
+and shown not to fit. The effectiveness-NTU parameterisation and the decision to
+regress on coil duty rather than on the controlled supply air temperature. The
+constant chilled-water substitution and the sensitivity sweep that justified it.
+The generic ModelForm seam and the per-asset templating. The CUSUM design and its
+textbook parameter values. The isotonic implementation and the maintenance
+segmentation. The indicator expression language and its whitelist. The discovery
+that the coil-effectiveness baseline structurally cannot see the coil leak, and
+the separate shut-valve baseline that can.
+
+**Confidence**
+
+High that normalisation beats static limits on this equipment. The gap is 0.15
+against 0.99 in explained variance on the same rows, and a healthy run's residual
+drifts 0.03 of a standard deviation over four months. This is not a close call
+and it did not need a judgement.
+
+Moderate on the commissioning-window approach specifically, and the reason is
+recorded in the Outcome below rather than glossed. Twenty-one days in May applied
+through September is where the only false alarms in Task 4 came from.
+
+Low on the monotone clamp where excursions are intermittent rather than
+progressive. The clamp is correct under its own assumption and the assumption is
+sometimes false.
+
+**Outcome**
+
+**The decision was right, and it relocated the false-positive problem rather than
+solving it.**
+
+What worked, measured. Both clean runs end at 97 and 98 out of 100 health. All
+four progressive scenarios decline monotonically, and one of them — the coil
+valve leak — is a fault the rule engine had missed and this layer catches, taking
+health from 100 to 43 with the onset estimated two days after injection. The
+held-out cooling tower fault moves chiller health by 5 points and no seeded
+failure mode claims it, which is what a held-out fault should do to a system that
+was not told about it. Across every asset and run, the roll-up equals the minimum
+of its modes on every single day, and no per-mode health series ever increases.
+
+What did not work, stated as plainly. The onset detector fires twice on the CLEAN
+chiller — chiller-1's efficiency mode on 2039-06-28 and chiller-2's on
+2039-06-01, at 3.07 and 4.12 times the decision interval, so not marginal noise.
+The cause is not the detector. It is that the chiller efficiency baseline is
+fitted on 21 days in May and applied through September, so seasonal conditions
+drift outside the fitted envelope and leave a small SYSTEMATIC residual — and a
+small sustained shift is exactly what a cumulative-sum detector is built to find.
+
+That is the honest shape of this decision's result. A static threshold fires when
+conditions are unusual. A condition-normalised baseline fires when conditions are
+outside the window it was fitted on. The second is a much smaller and a bounded
+set — 2 false onsets against a raw signal that would have alarmed continuously —
+but it is not zero, and the mechanism is the same mechanism wearing a different
+coat. The fix is a longer or seasonally refitted commissioning window, which this
+dataset cannot supply because each run is only 120 days long. The thresholds were
+not adjusted to hide it.
+
+Two mistakes were made inside this decision and both were caught by measurement
+rather than by review, which is worth recording because both would have produced
+confident wrong numbers. The first normalisation scale used a median absolute
+deviation, for consistency with the constraint residuals in 3.5; because these
+error distributions mix a very accurate steady regime with a poor post-start one,
+measured kurtosis 30 to 250 against 3 for a normal distribution, it reported a
+spread of 0.55 watts where the standard deviation reported 24, and put the clean
+run's 95th percentile at 53.9 sigma. On the fit-error standard deviation the same
+run sits at 1.23. The second: health was first scored against an absolute zero
+rather than against the commissioned value, which is correct for residual-based
+indicators and wrong for directly measured ones — chilled water at full
+compressor command sits 0.2 K above setpoint on a healthy machine, and that alone
+started the clean chiller at 90 and ended it at 68 with nothing whatsoever wrong.

@@ -4610,3 +4610,159 @@ decision rather than a discovery.
 
 START HERE: `analytics/health/index.py` — mode_health is five lines and the
 ordering of those five lines is the whole checkpoint.
+
+## Checkpoint 4.5 — Decision log
+
+### WHAT WE DID
+
+The decision log now records why this project learns what normal looks like
+instead of setting fixed limits, and it records what that choice actually cost and
+where it fell short. It also closes out the previous entry with what Task 4
+revealed about it — including one prediction that entry made which turned out to be
+only half right.
+
+Nothing here is code. It exists because the reason for a design choice is not
+recoverable from the code that implements it, and because the two entries most
+worth reading are the ones that record a decision failing to do everything it was
+supposed to.
+
+### HOW IT WORKS
+
+    AI_LOG.md :: D-05 Outcome, updated after Task 4
+      WHY IT EXISTS: The outcome written at checkpoint 3.6 ended on a forward
+        claim -- that the condition-normalised baselines coming in Task 4 were
+        what the rule engine's two remaining misses needed. Task 4 has now
+        happened, so the claim is either right or it is not, and leaving it
+        unresolved would be the one thing a decision log must not do.
+      WHAT IT DOES: Records that the claim was half right. The cooling coil valve
+        leak IS now caught -- the rule reached 22 percent of its threshold and
+        stayed silent, the baseline-driven indicator reaches its full threshold and
+        takes health from 100 to 43, with onset estimated two days after the true
+        injection. The stuck outdoor air damper is STILL missed, health ending at
+        95 and its coil indicator moving to -17.6 percent of threshold, which is
+        away from failure rather than toward it.
+      CHOICES: The reason for the surviving miss is stated as a general principle
+        rather than as a local excuse: a baseline cannot fix a fault that hides
+        inside one of its own drivers, because the condition being matched on is
+        the thing that is lying. The operating mode is inferred from the same
+        damper that is broken.
+      CHOICES: The entry's Confidence section had committed only to "a third
+        equipment class will not require touching dispatch". The update records
+        that what the claim actually survived was larger: two entirely new LAYERS,
+        each of which independently needed to answer "which machines does this
+        apply to", and both answered it by calling the same closure. 2,996 lines
+        added across 11 files, every one an insertion; registry.py, evaluate.py,
+        apar.py and chiller.py changed zero lines between them.
+      CHOICES: Also records the near-miss that justified the taxonomy closure a
+        second time. Checkpoint 4.2's first catalogue used string equality on the
+        Brick class, fitted both chillers correctly, and silently fitted nothing
+        at all for the air handler, because the database says brick:AHU while the
+        catalogue said brick:Air_Handling_Unit -- classes Brick declares
+        equivalent in one direction only. No error, just two missing baselines.
+
+    AI_LOG.md :: D-06 Forcing question
+      WHY IT EXISTS: Frames the decision against the failure it exists to avoid.
+      WHAT IT DOES: States the mechanism of false-positive fatigue rather than
+        gesturing at it. A static limit does not fire when the asset is unhealthy;
+        it fires when conditions are unusual, which is a different event that
+        happens far more often. The failure is then social rather than technical:
+        a team fed a dozen weather-explained alerts a day stops reading the
+        alerts, after which the system's accuracy is irrelevant because nobody is
+        listening. A detector nobody trusts is worth less than no detector,
+        because it cost money and occupies the place a working one would go.
+      CHOICES: Records why it had to be settled before the health index rather
+        than after: health is defined as distance to a threshold, so a threshold
+        on a raw signal makes the health number -- and the remaining-life estimate
+        fitted to it -- inherit every weather swing.
+
+    AI_LOG.md :: D-06 Options
+      WHAT IT DOES: Three named options with their real costs. Static limits per
+        point, free and already supported by columns in app.points, conditioning
+        on nothing. Condition-normalised physics-form baselines fitted per
+        commissioning window, chosen, about a day of work and five model forms.
+        Learned black-box models per point, which would very likely fit better
+        in-sample and buy nothing checkable against physics.
+
+    AI_LOG.md :: D-06 Rationale
+      WHAT IT DOES: Settles option 1 with a measurement rather than an argument.
+        Fan power on airflow alone explains 14.6 to 55.4 percent of variance
+        depending on window, with a NEGATIVE fitted cubic coefficient, which
+        means more air for less power and is impossible. Conditioned on shaft
+        speed as well, R-squared 0.977 to 0.989 at 21 to 26 watts. A static limit
+        is strictly worse than the 15 percent model because it conditions on
+        nothing at all.
+      CHOICES: The clinching form of the argument is that no value works, not that
+        the wrong value was chosen. Fan power spans 0 to 1,622 watts across a
+        healthy run: every limit inside that band fires on ordinary operation and
+        every limit above it never fires. After normalisation the same healthy run
+        drifts 0.824 watts in 120 days, 0.03 of its own standard deviation.
+      CHOICES: Records a fourth option rejected inside the chosen one -- fitting
+        one baseline globally instead of one per run -- and why: the runs sit in
+        different seasons and eras, so a global fit leaves a systematic per-run
+        offset and the residual then partly encodes which run a reading came from.
+      CHOICES: The case against the black box is extrapolation, not elegance. In
+        the stuck-damper run 32.5 percent of mixed air temperatures fall outside
+        the fitted range because the fault is what moves them there; the
+        effectiveness form stays bounded because the driving temperature
+        difference enters multiplicatively, so it cannot predict cooling with
+        nothing to cool with. An unconstrained learned model has no such guarantee
+        at exactly the moment it matters most, which is during the fault.
+      ⚠ JUDGEMENT CALL: The interpretability cross-check is stated with its scope
+        rather than as a blanket claim. The fitted fan temperature rise matches a
+        direct independent measurement to a hundredth of a kelvin -- 0.51 against
+        0.50, 0.56 against 0.55 -- but only in the two WINTER windows. In summer
+        the valve is almost never shut, the term is weakly identified, and it fits
+        at 0.06 K. My first draft quoted the agreement without the qualifier,
+        which would have implied it held across all four windows.
+
+    AI_LOG.md :: D-06 Confidence
+      WHAT IT DOES: Splits into three levels rather than one. High that
+        normalisation beats static limits on this equipment, because 0.15 against
+        0.99 on the same rows is not a close call. Moderate on the commissioning
+        window specifically, since 21 days in May applied through September is
+        where the only false alarms in Task 4 came from. Low on the monotone clamp
+        where excursions are intermittent rather than progressive.
+
+    AI_LOG.md :: D-06 Outcome
+      WHY IT EXISTS: The measured result, including the part that did not work.
+      WHAT IT DOES: Leads with "the decision was right, and it relocated the
+        false-positive problem rather than solving it", then supports both halves.
+        Working: both clean runs end at 97 and 98, all four progressive scenarios
+        decline, the coil leak the rules missed is caught, the held-out tower fault
+        moves health 5 points and no seeded mode claims it, the roll-up equals the
+        minimum of its modes on every day, no per-mode series ever rises. Not
+        working: the onset detector fires twice on the clean chiller at 3.07 and
+        4.12 times its decision interval.
+      CHOICES: States the relocation as the general finding, because it is the one
+        a reader should carry forward. A static threshold fires when conditions are
+        unusual; a condition-normalised baseline fires when conditions are outside
+        the window it was fitted on. The second set is much smaller and bounded --
+        2 false onsets against a raw signal that would have alarmed continuously --
+        but it is the same mechanism wearing a different coat, and the fix is a
+        longer or seasonally refitted commissioning window that 120-day runs cannot
+        supply.
+      CHOICES: Records both mistakes made inside this decision, because both would
+        have shipped confident wrong numbers and both were caught by measurement
+        rather than review. The median-absolute-deviation normalisation scale that
+        put a clean run at 53.9 sigma, and health scored against absolute zero
+        rather than the commissioned value, which alone started the clean chiller
+        at 90 and ended it at 68 with nothing wrong.
+
+### MEASURED RESULT
+
+    6 entries; Forcing question 6, Options 6, Rationale 6, Mine vs delegated 6,
+    Confidence 6, Outcome 6, Overrode 1
+
+- No outcome is blank or a stub. Shortest is D-03 at 2,402 characters.
+- D-05's outcome grew from 1,700 to 3,947 characters with the Task 4 update, and
+  the forward claim it previously ended on is now resolved: one of the two rule
+  misses fixed, one still open with the reason stated.
+- D-06 carries three named options, as required.
+- Two claims in the first draft of D-06 were tightened after checking them against
+  the actual runs: the fan-temperature-rise cross-check holds in the two winter
+  windows and not in summer, and the fit sample count is 524 to 3,780 rather than
+  "around 3,000".
+
+START HERE: `AI_LOG.md` — the Outcome of D-06. It is the only place in the log
+that records a decision working and relocating its own problem at the same time,
+which is the most useful thing Task 4 learned.
