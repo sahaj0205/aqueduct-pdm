@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation api web
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul api web
 
 # Resolve and install the Python environment into .venv
 install:
@@ -114,6 +114,13 @@ health:
 # app.failure_modes only; writes nothing.
 degradation:
 	uv run python scripts/run_degradation.py
+
+# Estimate remaining useful life for every mode on every run, recomputed at every
+# date from data available that date, store the full history in app.rul_estimates,
+# and score the median prediction against the answer key. Like `health`, the only
+# ground-truth read happens after every number it scores has been written.
+rul:
+	uv run python scripts/run_rul.py
 
 # Serve the API on :8000
 api:

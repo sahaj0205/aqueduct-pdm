@@ -89,6 +89,15 @@ PRIOR_EQUIVALENT_DAYS = 7.0
 # configurable sample minimum.
 MIN_INCREMENTS = 10
 
+# How many trailing days the reported current level is taken over. The level is
+# the median across this window, not the most recent value, because the most
+# recent value is the least reliable point in the whole series: the isotonic clamp
+# has no data after it to outvote it with, so a single excursion lands there at
+# full size. app.failure_modes summaries already use a trailing median for the
+# same reason. Seven days is long enough that one bad day cannot move it and short
+# enough that the level still tracks a fault developing over weeks.
+LEVEL_WINDOW_DAYS = 7
+
 # Floor on the fitted spread, so a mode whose clamped series is perfectly flat
 # cannot divide by zero on its way to an infinitely confident prediction.
 MIN_SIGMA = 1e-9
@@ -244,6 +253,20 @@ def increments(series: pd.Series) -> Increments | None:
         steps=np.diff(clean.to_numpy(dtype=float)),
         spans=spans,
     )
+
+
+def trailing_level(series: pd.Series) -> float:
+    """Where the indicator is now: the median over the trailing week.
+
+    A robust reading of the present state rather than the newest number. See
+    fit_degradation for why the newest number is the wrong one to use.
+    """
+    clean = series.dropna().sort_index()
+    if clean.empty:
+        return float("nan")
+    cutoff = clean.index[-1] - pd.Timedelta(days=LEVEL_WINDOW_DAYS)
+    window = clean[clean.index > cutoff]
+    return float((window if len(window) else clean.tail(1)).median())
 
 
 def moments(inc: Increments) -> tuple[float, float]:
@@ -610,15 +633,11 @@ class Degradation:
     fit: ProcessFit
     posterior: Posterior
     anchor: Anchor
+    level: float  # how far the indicator has travelled from its commissioned value
 
     @property
     def mode_id(self) -> str:
         return self.mode.mode_id
-
-    @property
-    def level(self) -> float:
-        """Where the indicator has got to, relative to its commissioned value."""
-        return self.fit.increments.x_last
 
     @property
     def remaining(self) -> float:
@@ -627,13 +646,35 @@ class Degradation:
 
 
 def fit_degradation(
-    observation: Observation, anchor: Anchor | None = None
+    observation: Observation,
+    anchor: Anchor | None = None,
+    level_floor: float | None = None,
 ) -> Degradation | None:
     """Fit and update in one step. None when there is nothing fittable yet.
 
     Pass the anchor from an earlier point in time to continue an existing belief;
     leave it out and one is created from this window, which is what happens at the
     first moment a fit becomes possible.
+
+    THE CURRENT LEVEL IS NOT THE LAST VALUE, and getting that wrong cost two
+    rounds of wrong answers here.
+
+    The monotone clamp upstream is a BATCH smoother: isotonic regression fits the
+    whole window at once and revises its own earlier points when new data arrives,
+    so the value it reports for the most recent day is not a non-decreasing
+    function of how much data it has been shown. Read one date at a time that gave
+    a mode whose distance to threshold went 28.1, then -46.6, then +30.1 over three
+    consecutive weeks -- a machine that failed and then unfailed. Holding the level
+    at its running maximum fixes the direction and breaks something else: the last
+    point of an isotonic fit is the least reliable point in it, because there is no
+    later data to outvote an excursion sitting there, so the running maximum
+    promptly locked in a 257 watt transient on a fan whose threshold is 89 and
+    declared it failed for the rest of the run.
+
+    So the level is the MEDIAN over the trailing LEVEL_WINDOW_DAYS of the clamped
+    series, and then held at its running maximum. The median cannot be moved by one
+    excursion; the running maximum keeps the premise of the clamp, which is that
+    degradation does not un-happen. Both are needed and neither is sufficient.
 
     Returns None only for the arithmetic reasons -- no confirmed onset, or too few
     post-onset steps for a rate and a spread to mean anything. It does NOT judge
@@ -647,6 +688,9 @@ def fit_degradation(
         return None
     fit = fit_process(inc, observation.mode.degradation_process)
     used = anchor or anchor_at(observation.mode, observation.onset, fit)
+    level = trailing_level(observation.post_onset)
+    if level_floor is not None:
+        level = max(level, level_floor)
     return Degradation(
         asset_id=observation.asset_id,
         mode=observation.mode,
@@ -655,6 +699,7 @@ def fit_degradation(
         fit=fit,
         posterior=update(fit, used),
         anchor=used,
+        level=level,
     )
 
 
@@ -675,10 +720,15 @@ def replay(
     more data than the one before it and strictly more accumulated precision, so
     the interval cannot widen.
 
+    The highest level reached so far is carried too, so the reported distance to
+    the threshold only ever closes. See fit_degradation for why that is necessary
+    and not merely tidy.
+
     Entries before degradation is confirmed come back as None, in order, so the
     caller can see when the model started having anything to say.
     """
     anchor: Anchor | None = None
+    level_floor: float | None = None
     out: list[Degradation | None] = []
     for as_of in as_ofs:
         observation = observe(
@@ -690,9 +740,11 @@ def replay(
             resets,
             onset=anchor.onset if anchor else None,
         )
-        entry = fit_degradation(observation, anchor)
-        if entry is not None and anchor is None:
-            anchor = entry.anchor
+        entry = fit_degradation(observation, anchor, level_floor)
+        if entry is not None:
+            if anchor is None:
+                anchor = entry.anchor
+            level_floor = entry.level
         out.append(entry)
     return out
 

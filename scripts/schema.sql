@@ -788,6 +788,80 @@ COMMENT ON COLUMN app.health_state.weakest_mode IS
 
 
 -- =====================================================================
+-- APP — remaining useful life
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS app.rul_estimates (
+    asset_id   TEXT              NOT NULL
+                                 REFERENCES app.assets(asset_id) ON DELETE CASCADE,
+    mode_id    TEXT              REFERENCES app.failure_modes(mode_id)
+                                 ON DELETE CASCADE,
+    as_of      TIMESTAMPTZ       NOT NULL,
+    p10        DOUBLE PRECISION,
+    p50        DOUBLE PRECISION,
+    p90        DOUBLE PRECISION,
+    n_samples  INTEGER           NOT NULL,
+    mu_hat     DOUBLE PRECISION  NOT NULL,
+    sigma_hat  DOUBLE PRECISION  NOT NULL,
+    UNIQUE NULLS NOT DISTINCT (asset_id, mode_id, as_of),
+    CHECK (p10 IS NULL OR p50 IS NULL OR p10 <= p50),
+    CHECK (p50 IS NULL OR p90 IS NULL OR p50 <= p90)
+);
+
+CREATE INDEX IF NOT EXISTS rul_estimates_asset_as_of_idx
+    ON app.rul_estimates (asset_id, as_of DESC);
+
+-- Deliberately NOT a hypertable, for the same reason app.health_state is not:
+-- one row per mode per asset per day is a few thousand rows in total, and weekly
+-- chunks would create more chunks than any chunk would hold rows.
+
+COMMENT ON TABLE app.rul_estimates IS
+    'One row per failure mode per asset per date, holding the whole distribution '
+    'over when that mode will reach its failure threshold. Every date is kept, not '
+    'just the latest, because the most convincing thing this system can show a '
+    'human is the prediction interval narrowing as evidence accumulates, and that '
+    'is only visible if every intermediate answer was written down.';
+
+COMMENT ON COLUMN app.rul_estimates.as_of IS
+    'The date the estimate was made, using only data up to that date. Replaying '
+    'the table in as_of order reproduces exactly what the system would have said '
+    'at each point during the run, including the parts it got wrong.';
+
+COMMENT ON COLUMN app.rul_estimates.p10 IS
+    'Days from as_of by which there is a 10 percent chance the threshold has been '
+    'crossed -- the pessimistic end. NULL means the model declines to bound it: '
+    'either the drift cannot be separated from zero, in which case there may be no '
+    'failure date at all, or the crossing is further off than the ten-year horizon '
+    'this system will look. A NULL here is an answer, not missing data.';
+
+COMMENT ON COLUMN app.rul_estimates.p50 IS
+    'Days from as_of to the even-odds crossing date. The number to plan around. '
+    'NULL on the same terms as p10.';
+
+COMMENT ON COLUMN app.rul_estimates.p90 IS
+    'Days from as_of by which there is a 90 percent chance of crossing -- the '
+    'optimistic end. This is the one that goes NULL first, because a drift only '
+    'marginally above zero leaves a real chance the machine never gets there.';
+
+COMMENT ON COLUMN app.rul_estimates.n_samples IS
+    'Post-onset daily increments the fit was based on. Kept next to the interval '
+    'because a narrow band from nine days is not the same claim as a narrow band '
+    'from ninety, and the refusal layer keys off this.';
+
+COMMENT ON COLUMN app.rul_estimates.mu_hat IS
+    'Posterior mean degradation rate, in the mode''s indicator unit per day. The '
+    'belief about the rate after updating, NOT the raw maximum-likelihood fit -- '
+    'this is the number the interval was actually computed from.';
+
+COMMENT ON COLUMN app.rul_estimates.sigma_hat IS
+    'The process spread the interval was computed with, in indicator units per '
+    'root day: how far a single day strays from the average rate. Fixed when '
+    'degradation was confirmed and floored at the spread the same indicator showed '
+    'during commissioning, because the monotone clamp upstream removes real '
+    'variance and an unfloored value makes this interval too narrow.';
+
+
+-- =====================================================================
 -- GROUNDTRUTH — the answer key
 -- =====================================================================
 

@@ -5068,3 +5068,243 @@ tower reads 0.10 and 0.16, and the stuck damper reads 0.11. That is the quantity
 START HERE: `analytics/rul/degradation.py` — `anchor_at`, and the docstring above
 `update_wiener`. Between them they hold the three wrong versions of this checkpoint
 and why the fourth one is right.
+
+---
+
+## Checkpoint 5.2 — RUL first-passage estimation
+
+### WHAT WE DID
+
+The system now produces a date. Not a health score, not a rate — an actual answer
+to "when will this need attention", expressed as a window rather than a single day,
+because a single day would be a lie. For each failure mode on each machine it says
+there is a ten percent chance of crossing the threshold by one date, an even chance
+by another, and a ninety percent chance by a third. Before this the system could
+say a machine was declining at some rate; it could not say when that rate runs out
+of room.
+
+The window is computed, not decorated. There is no step anywhere that produces a
+best guess and then pads it by some factor to look suitably humble — the width
+comes out of the same mathematics as the middle, by taking the uncertainty about
+the decline rate and asking what range of crossing dates it implies. One
+consequence is that when the system does not know, the window is enormous or has no
+upper end at all, and both of those happen in the results.
+
+Every answer at every date is kept, not just the latest. Replaying the table in
+date order shows exactly what the system would have said each day of the run,
+including the days it was wrong, which is the only honest way to demonstrate that
+the estimate improves as evidence arrives.
+
+### HOW IT WORKS
+
+`analytics/rul/estimator.py` :: `first_passage_cdf`
+- WHY IT EXISTS: The heart of the checkpoint. Everything else arranges inputs for
+  this and interprets its output.
+- WHAT IT DOES: Given how far the indicator still has to climb, a decline rate and
+  a day-to-day spread, returns the probability that the threshold has already been
+  touched by a given number of days. It is the closed-form first-passage law for
+  Brownian motion with drift, two normal terms added: the chance of simply being
+  past the threshold now, plus a correction for paths that crossed earlier and came
+  back below. No simulation, no numerical integration of a path.
+- CHOICES: The second term multiplies a growing exponential by a vanishing normal
+  tail, and computing those separately overflows on entirely ordinary inputs — a
+  rate of 0.3 across a distance of 3 with a spread of 0.7 already puts the exponent
+  near 4 and larger cases run away. Both are combined in log space so the product
+  is one exponential of a sum. Checked against the inverse Gaussian distribution in
+  scipy across four parameter sets spanning these modes: agreement to 5e-16.
+
+`analytics/rul/estimator.py` :: `reachability`
+- WHY IT EXISTS: This is the honest core of the whole checkpoint and it is why the
+  interval is allowed to have no upper end. A machine that is not declining is not
+  going to reach the threshold, and the model has to be able to say so.
+- WHAT IT DOES: Returns the probability the threshold is EVER touched. One when the
+  rate is positive: a random walk tilted upward reaches every level above it
+  eventually, with certainty. Less than one when the rate is negative or zero-ish,
+  falling off exponentially, so the distribution over crossing dates is DEFECTIVE —
+  the missing probability sits at infinity, meaning no crossing. The belief about
+  the rate from 5.1 is a normal distribution, so it always puts some weight on
+  non-positive rates, and the predictive answer inherits that missing mass. If the
+  ninetieth percentile falls inside it there is no ninetieth percentile, and the
+  estimate says so instead of producing a number.
+- CHOICES: Written as one clipped exponential rather than a branch on the sign of
+  the rate. Selecting between branches with numpy's `where` evaluates both, so the
+  positive-rate case still computed a growing exponential and overflowed; clipping
+  the exponent at zero gives exactly one there, which is the right answer anyway.
+- Verified against simulated random walks: for a distance of 1 with rate -0.02 and
+  spread 0.2 the closed form says 0.368 and 6,000 simulated thousand-day paths hit
+  34.5 percent of the time, the shortfall being paths that would cross after the
+  simulated horizon. Same direction and magnitude on two other parameter sets.
+
+`analytics/rul/estimator.py` :: `predictive_cdf` and `predictive_reachability`
+- WHY IT EXISTS: The step the checkpoint calls propagating the posterior. Without
+  it the interval would come only from day-to-day noise around a single assumed
+  rate, which is the smaller half of the uncertainty and would produce a
+  confidently narrow band.
+- WHAT IT DOES: Averages the first-passage law over the belief about the rate,
+  weighting each candidate rate by how plausible 5.1 thinks it is. Done by
+  Gauss-Hermite quadrature, which places 61 evaluation points exactly where a
+  normal distribution has its mass.
+- CHOICES: Quadrature rather than drawing random rates, for two reasons. It is
+  exact for smooth integrands against a normal weight, and the first-passage law is
+  smooth in the rate. More importantly it returns the identical answer every time
+  it runs — with sampling, the verification that the interval narrows could pass or
+  fail on the seed, and a monotonicity claim that depends on a random seed is not a
+  claim.
+
+`analytics/rul/estimator.py` :: `quantile`
+- WHY IT EXISTS: Converts the distribution into the three numbers a human reads.
+- WHAT IT DOES: The mixture probability rises with time, so the quantile is found
+  by bisection on it. Returns nothing at all in the two cases where the answer does
+  not exist, rather than inventing one: when the total chance of ever failing is
+  below the quantile asked for, and when the crossing is real but beyond the horizon
+  the model will look.
+- CHOICES: Ten years for that horizon. A chiller's service life is around
+  twenty-three years by ASHRAE's tables, so a crossing predicted past ten is
+  indistinguishable from "not in the foreseeable future" for anyone planning
+  maintenance, and reporting it as a number would imply a precision that is not
+  there.
+
+`analytics/rul/degradation.py` :: `trailing_level` and the level floor in
+`fit_degradation`
+- WHY IT EXISTS: The distance still to travel is what the first-passage law is
+  measured from, so an error here moves every date. Two rounds of wrong answers
+  came from getting it wrong.
+- WHAT IT DOES: The current level is the MEDIAN of the clamped indicator over the
+  trailing seven days, then held at its running maximum across dates.
+- ⚠ JUDGEMENT CALL: The obvious choice is the most recent clamped value, and it is
+  wrong twice over. The clamp upstream is isotonic regression, a BATCH smoother that
+  refits the whole window and revises its own earlier points when new data arrives,
+  so its latest value is not a non-decreasing function of how much data it has seen.
+  Read one date at a time that gave a mode whose distance to threshold went 28.1,
+  then -46.6, then +30.1 across three consecutive weeks — a machine that failed and
+  then unfailed. Holding the value at its running maximum fixes the direction and
+  breaks something else, because the last point of an isotonic fit is the least
+  reliable point in it: there is no later data to outvote an excursion sitting
+  there. The running maximum promptly locked in a 257 watt transient on a fan whose
+  threshold is 89 watts and called it failed for the rest of the run. The trailing
+  median cannot be moved by one excursion and the running maximum keeps the premise
+  that degradation does not un-happen; both are needed and neither is sufficient.
+  Seven days follows the existing convention in this project — the mode summaries in
+  4.3 already take a trailing median for the same stated reason. The alternative I
+  rejected was estimating the level from the fitted trend line instead of from
+  observation, which is smoother but means the prediction stops being anchored to
+  where the machine actually is.
+
+`analytics/rul/estimator.py` :: `estimate`
+- WHY IT EXISTS: Assembles one answer from one fitted mode.
+- WHAT IT DOES: Takes the rate and its uncertainty from the belief built in 5.1,
+  the spread from the anchor that belief was formed against, and the distance from
+  the level above, and returns the three quantiles plus the total chance of ever
+  reaching the threshold. Using the anchored spread rather than refitting one here
+  matters: the two halves of the interval cannot then disagree about how noisy the
+  machine is.
+
+`analytics/rul/estimator.py` :: `soonest`
+- WHY IT EXISTS: An asset needs one number, and it has to be the same weakest-link
+  rule the health index uses or the two layers will contradict each other.
+- WHAT IT DOES: Picks whichever mode reaches its threshold first. A mode with no
+  bounded date cannot be the soonest so it is skipped, but if every mode is
+  unbounded the answer is that the asset has no bounded failure date, which comes
+  back as nothing rather than as a large number.
+
+`scripts/schema.sql` :: `app.rul_estimates`
+- WHY IT EXISTS: The history is the demonstration. A single current estimate proves
+  nothing about whether the system is learning.
+- WHAT IT DOES: One row per mode per asset per date with the three quantiles, the
+  number of post-onset days behind them, the rate used and the spread used. The
+  quantile columns are NULLABLE and a NULL is an answer, not missing data: it means
+  the model declined to bound that end. Two check constraints enforce that the
+  quantiles are ordered where they exist.
+- CHOICES: Not a hypertable, same as the health table — 1,117 rows in total, and
+  weekly chunks would create more chunks than any chunk would hold rows.
+
+`analytics/rul/estimator.py` :: `write_estimates`
+- WHAT IT DOES: Deletes and rewrites this mode's rows over the window rather than
+  merging, like every derived table in this project, because a row left behind
+  describes a threshold or a baseline that may no longer exist.
+
+`scripts/run_rul.py` :: `main`
+- WHAT IT DOES: Walks every run day by day, and at each date refits and re-estimates
+  every applicable mode using only data up to that date, storing all of it. Then
+  prints the interval over the three weeks before the injected failure, the error in
+  the median against two different reference events, and the asset roll-up. The
+  ground-truth read is one function and runs only after every estimate has been
+  computed and written; the estimation itself runs as the unprivileged role, which
+  the database physically denies access to the answer key.
+
+`scripts/run_rul.py` :: `plot`
+- WHAT IT DOES: One panel per progressive scenario, with the shaded band from the
+  tenth to the ninetieth percentile, the median as a line, and a dashed diagonal
+  showing how long was actually left — a straight line falling to zero on the
+  injected failure date. A prediction that works has the band tracking that diagonal
+  and closing on it, which the condenser-fouling panel does visibly for three weeks.
+  Each panel is scaled to its own predictions; one shared limit either clips the slow
+  modes or flattens the fast ones onto the axis.
+
+Skipped as boilerplate: the `RulEstimate` dataclass and its derived properties,
+`daily_as_ofs`, and two formatting helpers in the script.
+
+### MEASURED RESULT
+
+1,117 estimates stored across 14 mode/asset/run combinations.
+
+**The median prediction, three weeks out, against the crossing it actually
+predicts.** Three modes both degraded genuinely and crossed their threshold inside
+a run, so for these the prediction can be checked against the event it was making
+a claim about:
+
+    chiller_bypass_valve_leakage  chiller-efficiency-loss     +2.0 days
+    chiller_bypass_valve_leakage  chiller-condenser-fouling   +3.9 days
+    chiller_condenser_fouling     chiller-efficiency-loss    +13.6 days
+
+Against the answer key's `t_failure` — a different event, the date the injected
+fault reached terminal severity — the same three read -21.2, -14.4 and -3.6 days.
+Both are reported because they are not the same question, and the second is the one
+the model was built to answer.
+
+**The interval width over the last three weeks: 6 of 7 shrink, 1 widens.** The
+widening is `coil-valve-leak-by`, and it is not a defect:
+
+    2036-04-10   n=17   left 2.536   P10 100.4   P50 241.5   P90 unbounded
+    2036-04-17   n=24   left 2.320   P10  85.1   P50 171.4   P90   1245.3
+    2036-04-24   n=30   left 2.320   P10  94.8   P50 197.3   P90   2042.2
+
+The distance left does not move at all across the second week. The daily history
+shows why: the rate sawtooths, jumping up when the indicator steps and decaying
+between steps, because this indicator only exists while the coil valve is commanded
+shut and therefore arrives as a staircase with gaps. Over 2036-04-11 to 04-22 the
+rate decays from 0.0201 to 0.0107 with no new rise, and the ninetieth percentile —
+which sits far out in the tail of a rate whose belief is only two standard
+deviations clear of zero — goes from 336 days to unbounded. The answer key confirms
+the mechanism is real: this fault reached terminal severity on 2036-05-01, so the
+ramp genuinely flattens during exactly this window. The model becoming less certain
+when the machine stops getting worse is correct behaviour, and forcing it to narrow
+would be forcing it to lie. Not tuned.
+
+**The estimator's arithmetic is verified independently of the data**: the closed
+form matches scipy's inverse Gaussian to 5e-16 on four parameter sets; the defective
+total probability matches simulated random walks; the mixture is monotone in time and
+tends to the total reachability; and quantiles vanish exactly as that total falls
+below them (at a rate of 0.005 with spread 0.004 the total is 0.929, so P10 and P50
+exist at 130 and 310 days and P90 does not).
+
+### WHAT 5.3 HAS TO FIX, AND THIS MAKES THE CASE FOR IT
+
+Two results here are wrong, and both are wrong in the same way — the arithmetic is
+right and the mode should never have been believed:
+
+- `fan-bearing-degradation` on the coil-leak run predicts a crossing 642.8 days
+  after the one it appears to have had, and worse, its own threshold reads as
+  already crossed, which makes the asset roll-up say the air handler has failed
+  today for a reason that has nothing to do with the injected fault. Checkpoint 5.1
+  already measured this mode's rate at 0.49 standard deviations from zero.
+- `clean_chiller` produces a median crossing 254 days out on a machine with nothing
+  wrong with it. Its rate is 0.08 standard deviations from zero.
+
+Neither is a defect in the estimator; both are it faithfully computing a
+consequence of a rate that cannot be told apart from no degradation at all. The
+significance test in 5.3 refuses on exactly that quantity, and these are the cases
+it exists for.
+
+START HERE: `analytics/rul/estimator.py` — `reachability`. Three lines, and the
+reason the interval is allowed to have no upper end is entirely in them.
