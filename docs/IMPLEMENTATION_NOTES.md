@@ -7947,3 +7947,123 @@ tower fault, matching checkpoint 3.4. `scripts/run_rootcause.py` still produces 
 three queues, with the traversal agreeing with `app.asset_edges` on all seven upstream
 machines and `ahu-1/apar-20` demoted from 1.000 to 0.152 under the chiller in situation 3.
 `uv run ruff check .` passes.
+
+
+## Checkpoint 7.3 — Architecture
+
+### What we did
+
+The project now has a document that explains how it is built and why it is built that way,
+aimed at somebody who has to judge the engineering rather than run it. It walks the eleven
+layers in the order data moves through them, and for every choice that mattered it names
+the alternative that was rejected and the reason. It states in one place what the system
+deliberately does not do, including the absence of a test suite, and it states the property
+the whole design was arranged around: that adding a new kind of equipment is a semantic
+model entry, a rule registration and a few database rows, with no change to the engines
+that detect, score or predict.
+
+Before this, that reasoning existed in three places and none of them was the right one. The
+long-form arguments were in the decision log, one entry per decision, too long to read as
+an overview. The layer-level reasoning was in module docstrings, only findable by opening
+the module. And the non-goals were nowhere at all — they had been decided repeatedly in
+conversation and never written down, which meant every gap in the system looked like an
+oversight rather than a choice. `ARCHITECTURE.md` is the map that sits above all three.
+
+### How it works
+
+`ARCHITECTURE.md` :: the layer walk
+  WHY IT EXISTS: The eleven layers are the spine of the project and each one's job is only
+    intelligible in terms of the layer above it. A reader who does not know that baselines
+    exist to turn "the number is high" into "the number is high for these conditions"
+    cannot judge anything downstream of them.
+  WHAT IT DOES: One subsection per layer — ingest, quality, semantic graph, rules,
+    baselines, health, remaining life, cross-asset diagnosis, advisories, API, UI, plus the
+    validation harness. Each says what the layer consumes, what it hands on, and carries
+    two to five REJECTED entries naming the alternative and why it lost.
+  CHOICES: Nine of the rejected alternatives are cited to the decision log by number rather
+    than restated, because the log holds the full argument with the options and the outcome
+    recorded after the fact. Roughly thirty more are given in full here because they have no
+    log entry — the sustain filter, the suppression windows, collapsing episodes into one
+    finding, minimum-across-modes rather than average, isotonic clamping rather than
+    per-point, storing both the raw and clamped indicator, the floored process variance,
+    priority as null rather than zero, serving only the hourly rollup, keeping display logic
+    out of components, and the harness's choice of denominator.
+  CHOICES: An ASCII data-flow block rather than a rendered diagram, so the document has no
+    build step and no external dependency.
+
+`ARCHITECTURE.md` :: the extensibility property
+  WHY IT EXISTS: The checkpoint requires it stated explicitly, and it is the strongest claim
+    the design makes: that this is a platform rather than two hard-coded machines.
+  WHAT IT DOES: States it as specified, then gives the concrete six-row table for adding a
+    boiler, marking each step as semantic model, code, or database rows. Then it says what
+    makes the claim true — that nothing in the health, prediction or diagnosis path branches
+    on equipment class, and that the only appearances of a Brick class name anywhere in
+    `analytics/` outside the rule modules are the keys of one dictionary and two docstrings.
+  ⚠ JUDGEMENT CALL: The checkpoint names three requirements — a Brick model entry, a rules
+    registration and a failure-mode config row. Checking it against the code found a fourth:
+    a new class that wants condition-normalised baselines also needs an entry in
+    `BASELINE_CATALOGUE`, which is a dict literal in `analytics/baselines/fit.py`. I stated
+    the property as specified and then added the fourth item and two qualifications — that
+    rules and baseline forms are genuinely code, declarative in shape but code, and that
+    this has been exercised across two equipment classes rather than twenty. Asserting the
+    three-item version unqualified would have been a claim a reviewer could falsify in five
+    minutes by grepping, which is a worse outcome than a longer sentence.
+  CHOICES: It also states the one-level-down case, which is stronger and is fully true:
+    adding a new failure mode to an existing class is a single database row and no code at
+    all, which is why `threshold_rationale` is a `NOT NULL` column with a minimum length.
+
+`ARCHITECTURE.md` :: what is deliberately not built
+  WHY IT EXISTS: An undocumented gap reads as an oversight. Eleven of them are choices.
+  WHAT IT DOES: Carries the mandated no-test-suite paragraph verbatim as a blockquote, then
+    an eleven-row table of non-goals each with its reason — water metering, air quality,
+    MQTT and Modbus, a physics simulator, work order lifecycle, additional dashboards,
+    natural-language query, floorplan and 3D, a frontend router, authentication, and
+    multi-building.
+  CHOICES: The no-test-suite paragraph is followed by a short honest note on what partly
+    stands in for it and what does not. Sixteen verification scripts run each layer over
+    real data and print the numbers its checkpoint claimed, and the harness scores accuracy
+    on every run — so a regression in accuracy is caught, and a regression in behaviour on a
+    fixed input is not. That is exactly the gap the mandated paragraph names.
+  CHOICES: Water is the entry worth reading. It is not absent because it was hard; it is
+    absent because neither dataset publishes a makeup water flow, so every water number
+    would have been an estimate presented as a measurement.
+
+`ARCHITECTURE.md` :: known defects
+  WHY IT EXISTS: A reader of the architecture should learn where it is weak from the
+    architecture, not by finding it later in the validation output.
+  WHAT IT DOES: Six defects, each with its measured size: the efficiency indicator's false
+    positive and its propagation through three layers, the interval coverage shortfall and
+    the part of it that is genuinely miscalibration, the chiller's relation set being too
+    thin to falsify a power-meter hypothesis, the plausibility map being one physical chain,
+    the impossibility of positively validating cross-asset causation on independent
+    simulations, and the one package boundary still crossed.
+
+### Two factual corrections made while writing it
+
+Both were caught by checking a claim against the code or the database rather than against
+an earlier document, which is the reason to write this kind of document at all.
+
+The semantic graph section first said the model was "two vendored LBNL .ttl files merged
+with a project extension namespace". Three things wrong: the LBNL models are not vendored,
+they are read from the downloaded dataset under `data/raw/ttl/`; there are two extension
+files, not one; and it omitted the file that actually matters most, Brick's own class
+hierarchy, which IS vendored into the repository and is what every class-closure dispatch
+in the system resolves through. A build that had to fetch an ontology would be a build that
+could fail offline, and that is why it is vendored.
+
+The remaining-life section first repeated a sentence from the decision log: that the
+interval "closes from 3,479 days to 59 across 84 successive estimates as the post-onset
+sample count goes from 14 to 53". Queried against `app.rul_estimates`, those numbers do not
+pair up. The first bounded estimate is 2,259 days at 14 samples, the widest is 3,479 days
+at 44 samples, and the last is 59 days at 53. So 3,479 does not belong with 14. The
+corrected sentence gives first-to-last, 2,259 to 59, which is a 97 percent close and is
+exactly what the frontend's own `percentClosed` computes — it is defined as one minus last
+over first — and states plainly that the interval is not monotone, widening at 44 samples
+before closing. The decision log's own readout line two sentences later already records
+"widest 3,479 days, narrowest 23, closed by 97 percent, sample count 14 to 53, monotone
+no", so the log is internally correct and only its prose sentence pairs the endpoints
+loosely. I have not rewritten the log entry, since that is not this checkpoint's scope, but
+it is worth knowing that the looser phrasing is there.
+
+START HERE: `ARCHITECTURE.md` — the extensibility section, because it is the only claim in
+the document that a reviewer can falsify by grepping, and it is stated so that they can.
