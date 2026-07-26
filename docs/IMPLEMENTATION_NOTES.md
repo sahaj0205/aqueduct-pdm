@@ -8067,3 +8067,118 @@ it is worth knowing that the looser phrasing is there.
 
 START HERE: `ARCHITECTURE.md` — the extensibility section, because it is the only claim in
 the document that a reviewer can falsify by grepping, and it is stated so that they can.
+
+
+## Checkpoint 7.4 — Domain notes
+
+### What we did
+
+The project now explains its own subject matter to somebody who does not have it. Everything
+in this repository rests on six pieces of physics — what an air handler is trying to do, what
+a chiller is trying to do, what free cooling is, what a fouling heat exchanger looks like in
+numbers, why chiller efficiency cannot be compared between two days, and what condenser
+fouling physically is — and until now every one of those was assumed. A reader could see that
+a threshold was 3.0 K and could not see why 3.0 K rather than 1 or 10.
+
+The second half is provenance. Every fault this project detects is now traced to the
+published source that defined it, in a table that also records where a source and this
+building disagree. That matters more than it sounds: two of the six declared failure modes
+produce no number in this building at all, one because the instrument does not exist and one
+because there is not enough healthy data to establish its baseline, and both were previously
+visible only to somebody who queried the database and noticed rows missing.
+
+### How it works
+
+`DOMAIN_NOTES.md` :: Part 1, the six explanations
+  WHY IT EXISTS: Every threshold, rule and residual in the codebase follows from these six
+    things. A reader who does not know that a fouled heat exchanger needs a bigger
+    temperature difference to move the same heat cannot judge any chiller number in the
+    project.
+  WHAT IT DOES: Each of the six gets a plain-language paragraph that assumes nothing, then a
+    technical paragraph that gives the actual mechanism, the actual units, and this
+    building's actual numbers.
+  CHOICES: The plain-first-then-technical split is literal — you can read the first paragraph
+    of each of the six, stop, and still follow the rest of the repository.
+  CHOICES: Every number quoted comes from the database or from a recorded threshold
+    justification rather than from general knowledge: the 1.3402 kW/ton commissioning
+    average, the 0.536 kW/ton threshold as 40 percent of it, the 592.4 W fan draw, the 0.42 K
+    baseline spread, the 20-ton evaluation floor discarding 3 percent of running samples,
+    the 5.0 m³/s airflow, the 107 points across 8 assets.
+  ⚠ JUDGEMENT CALL: The approach-temperature section spends more space on why this project
+    CANNOT compute approach temperature than on what it is. That is deliberate: approach is
+    the first thing a chiller diagnostic normally looks at, its absence here is the largest
+    concession the codebase makes to its data, and a reader who does not understand that
+    concession will read the chiller rules as amateurish rather than as constrained. The
+    algebra is given — one equation, two unknowns, and the water side supplies an identity
+    rather than a second equation — so the claim can be checked rather than taken.
+
+`DOMAIN_NOTES.md` :: Part 2, the citation table
+  WHY IT EXISTS: The checkpoint requires every failure mode mapped to its published source.
+  WHAT IT DOES: Four sources plus one guideline, each with what is taken from it and whether
+    it is public. Then three tables: the six degradation modes with threshold, taxonomy
+    source, the justification recorded in the database, and whether this data exercises it;
+    the nine rules with their source; and the six injected scenarios with the exact LBNL
+    filenames and severity counts each is built from.
+  CHOICES: RP-1043 is cited strictly as the taxonomy reference and that is stated in those
+    words, with the fact that it is not public and is purchasable from ASHRAE, and with the
+    explicit statement that no RP-1043 measurement appears anywhere in the repository and no
+    accuracy number is computed against it.
+  CHOICES: The APAR rules are listed with their original numbering — 6, 7, 16, 18, 20, 27 of
+    28 — restated as the assertion each makes rather than as the fault condition the code
+    stores, so a reader can see they are conservation statements. The other 22 are accounted
+    for: they need points this building does not publish or cover modes these runs do not
+    enter.
+  CHOICES: Two rows in the mode table are honest negatives rather than omissions.
+    `filter-loading` is marked NOT COMPUTABLE with the reason — no filter differential
+    pressure exists in either dataset and there is no filter in the simulation to load — and
+    `chiller-refrigerant-loss` is marked never exercised, because RP-1043 has the fault and
+    the LBNL data does not, and because its validity gate leaves too few samples in the
+    commissioning window to establish a baseline. Verified by running the health layer over
+    it directly: the indicator computes 5,698 points and `mode_health` returns None.
+  ⚠ JUDGEMENT CALL: `fan-bearing-degradation` is attributed to **this project** rather than
+    to a published source, because it is not in RP-1043's chiller taxonomy and it is not one
+    of LBNL's injected air-side faults. Its threshold is justified against a real standard —
+    the NEMA 1.15 service factor applied to this fan's own commissioned draw — but the mode
+    itself was declared here. Attributing it to LBNL because it happens to fire on LBNL data
+    would have been the easy and wrong thing.
+
+`DOMAIN_NOTES.md` :: the non-condensable gas section
+  WHY IT EXISTS: The checkpoint requires the sentence explicitly.
+  WHAT IT DOES: Carries it verbatim as a blockquote, then states three things that have to
+    sit next to it, matching what `analytics/rules/chiller.py` already records: that
+    non-condensable gas is in RP-1043's taxonomy and is in none of LBNL's 23 chiller fault
+    runs, so there is no run on which such a detector could be demonstrated either way; that
+    the fault this project actually holds out is cooling tower fouling, honoured literally
+    with zero rule firings on that run; and that the held-out fault was **not** detected,
+    because both findings on it also appear on a fault-free run on the same machines on the
+    same day of the year.
+  CHOICES: It closes with the physics of non-condensable gas anyway — air leaking into a
+    circuit running below atmospheric pressure, collecting in the condenser, blanketing
+    surface area and adding partial pressure — because the signature closely resembles
+    condenser fouling, and that resemblance is exactly why RP-1043 measured them separately
+    and why discriminating them is hard.
+
+`DOMAIN_NOTES.md` :: Part 3, the glossary
+  WHY IT EXISTS: The working agreement for this project requires every domain term defined
+    inline the first time it appears. Twenty-four of them appear across the documents and
+    code, so they are defined once in a table instead.
+  WHAT IT DOES: Covers approach temperature, changepoint detection, CHW and CDW, the
+    commissioning window, dry and wet bulb, economizer, EWMA, first-passage time, isotonic
+    regression, kW/ton, lift, LMTD, MERV, part-load ratio, residual, the four air
+    temperatures, static pressure, ton of refrigeration, VAV and the Wiener process.
+
+### One factual correction made while writing it
+
+The chiller section first said the plant "runs about 6.7 °C supply", taken from the minimum
+of the setpoint's range. Queried against the measurements, that is wrong: over a summer the
+plant's chilled water setpoint averages 9.31 °C and moves between 6.67 and 12.22, and
+chiller 1's actual supply averages 9.26 °C. It is a chilled water **reset** schedule, not a
+fixed setpoint — a warmer setpoint is cheaper to make, so the plant only asks for cold water
+when the load needs it. The corrected paragraph says so, and points out that this is exactly
+why the capacity rule compares supply temperature against the plant's current setpoint
+rather than against a constant. Getting this wrong in the other direction would have made
+the capacity rule look like an unnecessary complication.
+
+START HERE: `DOMAIN_NOTES.md` — the approach-temperature section. It is the one place where
+the physics a textbook would use and the physics this data permits come apart, and the rest
+of the chiller design only makes sense once that is understood.
