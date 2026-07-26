@@ -14,6 +14,9 @@ each run starts from its own zero, so a residual that grows is the equipment
 moving away from where it was three weeks ago, not the two runs having been
 simulated in different seasons.
 
+Which baselines an asset gets is decided by its Brick class, read from
+app.assets, so the loop below never names a piece of equipment.
+
 Run with `make baselines`.
 """
 
@@ -23,21 +26,23 @@ import argparse
 import logging
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import psycopg
 
 from analytics.baselines.fit import (
-    AHU_SPANS,
-    COMMISSIONING_DAYS,
+    RUNS,
     Baseline,
     BaselineError,
-    fit_ahu_baselines,
-    load_ahu_frame,
+    asset_classes,
+    commissioning_window,
+    fit_asset_baselines,
+    load_points,
+    points_needed,
     predict,
-    running,
+    specs_for,
 )
 from analytics.rules.readings import resolve_dsn
 
@@ -52,13 +57,14 @@ log = logging.getLogger("baselines")
 def compute(
     baseline: Baseline, values: pd.DataFrame, quality: pd.DataFrame
 ) -> pd.DataFrame:
-    """One baseline's residual at every instant the equipment was running.
+    """One baseline's residual at every instant its model is valid.
 
-    Instants where the fan is off are dropped rather than stored as zero. A
-    stopped fan has no expected power and a coil with no air over it has no
+    Instants where the equipment is off are dropped rather than stored as zero.
+    A stopped fan has no expected power and a coil with no air over it has no
     expected supply temperature; recording a residual for them would put a long
     run of manufactured zeros into the health index every night, which would
-    flatten any real trend it was meant to see.
+    flatten any real trend it was meant to see. The same applies to a chiller
+    idling below the load at which efficiency means anything.
 
     Input quality is the worst score among the observation and every driver, with
     the staleness dimension already discounted upstream. It is stored rather than
@@ -70,13 +76,10 @@ def compute(
     if missing:
         raise BaselineError(f"{baseline.baseline_id}: no readings for {missing}")
 
-    expected = predict(baseline, values)
+    expected, applies = predict(baseline, values)
     observed = values[baseline.target]
 
-    usable = running(values) & expected.notna() & observed.notna()
-    for point in needed:
-        usable &= values[point].notna()
-
+    usable = applies & expected.notna() & observed.notna()
     residual = observed - expected
     frame = pd.DataFrame(
         {
@@ -84,7 +87,9 @@ def compute(
             "observed": observed.to_numpy(),
             "expected": expected.to_numpy(),
             "residual": residual.to_numpy(),
-            "normalised": ((residual - baseline.centre) / baseline.residual_sd).to_numpy(),
+            "normalised": (
+                (residual - baseline.centre) / baseline.residual_sd
+            ).to_numpy(),
             "input_quality": quality[[c for c in needed if c in quality.columns]]
             .min(axis=1, skipna=False)
             .to_numpy(),
@@ -158,7 +163,7 @@ def _finite(value: float) -> float | None:
 
 def report(baseline: Baseline) -> None:
     log.info(
-        "  %-38s R2 %+.5f   residual sd %9.4f %-5s  centre %+8.4f  n=%5d",
+        "    %-40s R2 %+.5f   residual sd %9.4f %-5s  centre %+8.4f  n=%5d",
         baseline.baseline_id,
         baseline.r_squared,
         baseline.residual_sd,
@@ -166,55 +171,75 @@ def report(baseline: Baseline) -> None:
         baseline.centre,
         baseline.samples,
     )
-    log.info("      %s", baseline.describe())
+    log.info("        %s", baseline.describe())
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Fit air-handler baselines and store their residuals."
+        description="Fit equipment baselines and store their residuals."
     )
-    parser.add_argument("--span", help="only this scenario id")
+    parser.add_argument("--run", help="only this run label")
+    parser.add_argument("--asset", help="only this asset id")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 
-    spans = [s for s in AHU_SPANS if not args.span or s[0] == args.span]
-    if not spans:
-        sys.exit(f"no span named {args.span}")
+    runs = [r for r in RUNS if not args.run or r[0] == args.run]
+    if not runs:
+        sys.exit(f"no run named {args.run}")
 
     started = time.monotonic()
     total = 0
     with psycopg.connect(resolve_dsn()) as conn:
-        for label, raw_from, raw_to in spans:
+        classes = asset_classes(conn)
+        for label, assets, raw_from, raw_to in runs:
             t_from = datetime.fromisoformat(raw_from)
             t_to = datetime.fromisoformat(raw_to)
-            fit_to = t_from + timedelta(days=COMMISSIONING_DAYS)
-            log.info("\n%s\n%s   %s .. %s", "=" * 78, label, t_from.date(), t_to.date())
+            fit_from, fit_to = commissioning_window(t_from)
+            log.info("\n%s\n%s   %s .. %s   fitting on the first %s days",
+                     "=" * 78, label, t_from.date(), t_to.date(),
+                     (fit_to - fit_from).days)
 
-            values, quality = load_ahu_frame(conn, t_from, fit_to)
-            if values.empty:
-                log.info("  no readings in the commissioning window")
-                continue
-            log.info(
-                "  fitting on %s .. %s (%d days)",
-                t_from.date(), fit_to.date(), COMMISSIONING_DAYS,
-            )
-            baselines = fit_ahu_baselines(values, quality, t_from, fit_to)
-            for baseline in baselines:
-                report(baseline)
+            for asset_id in assets:
+                if args.asset and asset_id != args.asset:
+                    continue
+                brick_class = classes.get(asset_id)
+                if brick_class is None:
+                    log.info("  %s: not in app.assets", asset_id)
+                    continue
+                log.info("  %s  [%s]", asset_id, brick_class)
 
-            values, quality = load_ahu_frame(conn, t_from, t_to)
-            for baseline in baselines:
-                frame = compute(baseline, values, quality)
-                _removed, written = write_residuals(conn, baseline, frame, t_from, t_to)
-                conn.commit()
-                total += written
-                log.info(
-                    "  %-38s %7d rows   median %+9.4f   |normalised| p95 %6.2f",
-                    baseline.baseline_id,
-                    written,
-                    frame["residual"].median(),
-                    frame["normalised"].abs().quantile(0.95),
+                baselines, refused = fit_asset_baselines(
+                    conn, asset_id, brick_class, (fit_from, fit_to)
                 )
+                for message in refused:
+                    log.info("    REFUSED  %s", message)
+                for baseline in baselines:
+                    report(baseline)
+                if not baselines:
+                    continue
+
+                needed: list[str] = []
+                for spec in specs_for(brick_class):
+                    needed += points_needed(spec, asset_id)
+                values, quality = load_points(conn, needed, t_from, t_to)
+
+                for baseline in baselines:
+                    frame = compute(baseline, values, quality)
+                    _removed, written = write_residuals(
+                        conn, baseline, frame, t_from, t_to
+                    )
+                    conn.commit()
+                    total += written
+                    if written == 0:
+                        log.info("    %-40s no evaluable instants", baseline.baseline_id)
+                        continue
+                    log.info(
+                        "    %-40s %7d rows   median %+10.4f   |normalised| p95 %6.2f",
+                        baseline.baseline_id,
+                        written,
+                        frame["residual"].median(),
+                        frame["normalised"].abs().quantile(0.95),
+                    )
 
     log.info(
         "\n%s\nwrote %d residual rows in %.1f seconds",

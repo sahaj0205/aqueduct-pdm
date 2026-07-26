@@ -1,4 +1,4 @@
-"""Fit what a healthy air handler does, as a function of what is being asked of it.
+"""Fit what healthy equipment does, as a function of what is being asked of it.
 
 Static thresholds are the documented cause of false-positive fatigue in building
 fault detection. The reason is simple: almost every quantity worth watching moves
@@ -8,23 +8,27 @@ and a fixed limit fires on the hot afternoon rather than on the failing bearing.
 Fitting expected performance against the drivers and watching the leftover is what
 turns "the number is high" into "the number is high for these conditions".
 
-Two air-handler baselines are fitted here. Both are physics-form: the terms come
-from the equation the equipment actually obeys, not from throwing polynomials at
-the data, so the coefficients mean something and the model does not fly apart
-just outside the range it was fitted on.
+Every baseline here is physics-form: the terms come from the equation the
+equipment actually obeys, not from throwing polynomials at the data, so the
+coefficients mean something and the model does not fly apart just outside the
+range it was fitted on.
 
-THIS MODULE IS DELIBERATELY AIR-HANDLER-SPECIFIC. Checkpoint 4.2 generalises it.
+STRUCTURE. There is one fitter, fit_baseline, and it knows nothing about air
+handlers or chillers. What differs between assets is packed into a ModelForm --
+how to turn measured points into the quantities the physics is written in, what
+the design matrix looks like, and when the model is valid at all. Adding a new
+equipment class is a ModelForm and a BaselineSpec, not a change to the fitter.
 
 WHAT IT IS ALLOWED TO KNOW. The fit window is a commissioning window: three
 weeks of operation the operator asserts was healthy. That is an ordinary
 operational input -- in a real building it is "the unit was serviced on this
-date" -- and it is supplied here as configuration in AHU_SPANS below. It says
-nothing about what fault is coming, or whether one is coming at all; the clean
-run carries exactly the same declaration as the faulted ones. Nothing in this
-module reads schema groundtruth, and nothing reads the onset, fault mode or
-severity waypoints out of the scenario manifests. It should be said plainly that
-the windows below coincide with the pre-onset period of each scenario, because
-that is how the scenarios were built.
+date" -- and it is supplied here as configuration in RUNS below. It says nothing
+about what fault is coming, or whether one is coming at all; the clean runs carry
+exactly the same declaration as the faulted ones. Nothing in this module reads
+schema groundtruth, and nothing reads the onset, fault mode or severity waypoints
+out of the scenario manifests. It should be said plainly that the windows below
+coincide with the pre-onset period of each scenario, because that is how the
+scenarios were built.
 
 Run through `make baselines`, which invokes analytics.baselines.residual.
 """
@@ -32,39 +36,63 @@ Run through `make baselines`, which invokes analytics.baselines.residual.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from datetime import datetime
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from functools import cache
 
 import numpy as np
 import pandas as pd
 import psycopg
+from rdflib import Graph
 
 from analytics.rules.readings import effective_quality_frame
+from analytics.rules.registry import class_closure, to_uri
+from model.loader import load_merged_graph
 
 log = logging.getLogger("baselines")
+
+Roles = dict[str, np.ndarray]
 
 # ---------------------------------------------------------------------------
 # configuration
 # ---------------------------------------------------------------------------
 
-# The air handler's four 120-day runs and the commissioning window at the start
-# of each. Stated here as configuration for the reason given in the module
-# docstring. Dates are the extent of the data, which is visible from the
-# measurements themselves.
+# Every 120-day run, the assets that have data in it, and the commissioning
+# window at the start of each. Stated here as configuration for the reason given
+# in the module docstring. Dates are the extent of the data, which is visible
+# from the measurements themselves.
 COMMISSIONING_DAYS = 21
 
-AHU_SPANS: tuple[tuple[str, str, str], ...] = (
-    ("ahu_cooling_valve_leakage", "2036-02-25T00:00:00+00:00", "2036-06-24T00:00:00+00:00"),
-    ("ahu_oa_damper_stuck", "2037-01-27T00:00:00+00:00", "2037-05-27T00:00:00+00:00"),
-    ("ahu_sat_sensor_drift", "2038-05-27T00:00:00+00:00", "2038-09-24T00:00:00+00:00"),
-    ("clean_ahu", "2039-05-27T00:00:00+00:00", "2039-09-24T00:00:00+00:00"),
+RUNS: tuple[tuple[str, tuple[str, ...], str, str], ...] = (
+    ("ahu_cooling_valve_leakage", ("ahu-1",),
+     "2036-02-25T00:00:00+00:00", "2036-06-24T00:00:00+00:00"),
+    ("chiller_condenser_fouling", ("chiller-1", "chiller-2", "chiller-3"),
+     "2036-05-10T00:00:00+00:00", "2036-09-07T00:00:00+00:00"),
+    ("ahu_oa_damper_stuck", ("ahu-1",),
+     "2037-01-27T00:00:00+00:00", "2037-05-27T00:00:00+00:00"),
+    ("chiller_bypass_valve_leakage", ("chiller-1", "chiller-2", "chiller-3"),
+     "2037-05-10T00:00:00+00:00", "2037-09-07T00:00:00+00:00"),
+    ("ahu_sat_sensor_drift", ("ahu-1",),
+     "2038-05-27T00:00:00+00:00", "2038-09-24T00:00:00+00:00"),
+    ("cooling_tower_fouling", ("chiller-1", "chiller-2", "chiller-3"),
+     "2038-05-10T00:00:00+00:00", "2038-09-07T00:00:00+00:00"),
+    ("clean_ahu", ("ahu-1",),
+     "2039-05-27T00:00:00+00:00", "2039-09-24T00:00:00+00:00"),
+    ("clean_chiller", ("chiller-1", "chiller-2", "chiller-3"),
+     "2039-05-10T00:00:00+00:00", "2039-09-07T00:00:00+00:00"),
 )
 
-# Chilled water supply temperature, degC. THE AIR HANDLER DOES NOT MEASURE IT.
-# The LBNL single-duct dataset publishes 30 columns and not one is water side --
-# the coil is instrumented with a valve position and nothing else. The coil model
-# needs a cold-side temperature to have a driving temperature difference at all,
-# so a constant design value stands in for it.
+# Kept so checkpoint 4.1's verification still resolves the air-handler runs.
+AHU_SPANS: tuple[tuple[str, str, str], ...] = tuple(
+    (label, a, b) for label, assets, a, b in RUNS if "ahu-1" in assets
+)
+
+# Chilled water supply temperature at the AIR HANDLER's coil, degC. THE AIR
+# HANDLER DOES NOT MEASURE IT. The LBNL single-duct dataset publishes 30 columns
+# and not one is water side -- the coil is instrumented with a valve position and
+# nothing else. The coil model needs a cold-side temperature to have a driving
+# temperature difference at all, so a constant design value stands in for it.
 #
 # This costs very little, because the effectiveness coefficients rescale to
 # absorb whatever value is chosen. Sweeping it from 4 to 8 degC moves the fit
@@ -80,14 +108,22 @@ AHU_SPANS: tuple[tuple[str, str, str], ...] = (
 # buildings, so the join would assert a water connection that does not exist.
 CHILLED_WATER_SUPPLY_C = 6.7
 
-# The supply fan is running when its speed command is off its stop. NOT
-# ahu-1.sf_status, which despite its name is not a fan status: it is byte for
-# byte identical to ahu-1.occupancy across all 138,240 samples of the record,
-# and the fan runs during morning pull-down while it still reads zero -- 7,686
-# samples, 5.6 percent of the record. Gating on it would drop every start-up and
-# every after-hours run out of the fit.
-RUN_GATE_POINT = "ahu-1.sf_speed_cmd"
-RUN_GATE_THRESHOLD = 0.05
+# Nominal chiller capacity in tons of refrigeration, used to turn delivered
+# cooling into a part load ratio. THE FIT IS INVARIANT TO THIS NUMBER -- part
+# load ratio is delivered tons divided by it, so changing it rescales the
+# coefficients and leaves every prediction and residual identical. It is here so
+# the fitted coefficients read as fractions of capacity rather than as tons.
+# Observed load reaches 138 tons on chiller-1 and 154 on chiller-2, so the ratio
+# occasionally exceeds one, which is normal for a plate rating.
+CHILLER_DESIGN_TONS = 150.0
+
+WATER_DENSITY = 997.0  # kg/m3
+WATER_SPECIFIC_HEAT = 4184.0  # J/(kg K)
+WATTS_PER_TON = 3516.85  # one ton of refrigeration
+
+# Below this the chiller is barely loaded and every per-ton quantity is dominated
+# by dividing through a small number. Matches analytics/rules/chiller.py.
+MIN_EVALUABLE_TONS = 20.0
 
 # Readings this untrustworthy are excluded from the FIT, so a dead sensor cannot
 # define what healthy looks like. Residuals are still computed for them later and
@@ -95,32 +131,15 @@ RUN_GATE_THRESHOLD = 0.05
 # silent. Matches the gate the rule engine uses.
 MIN_FIT_QUALITY = 70
 
-# A fit on fewer points than this is not reported as a baseline. Three weeks of
-# five-minute data is around 3,300 running samples, so this is a floor against a
-# window that is mostly missing, not a real constraint.
+# A fit on fewer points than this is refused. Three weeks of five-minute data is
+# a few thousand running samples, so this is a floor against a window that is
+# mostly missing, not a real constraint. It does bite once: chiller-3 runs for 9
+# samples in the commissioning window and is correctly refused.
 MIN_FIT_SAMPLES = 200
-
-# The coil model cannot be identified if the valve never moves: every
-# effectiveness term is multiplied by valve position, so a window with the valve
-# always shut has no information about coil authority at all.
-MIN_VALVE_RANGE = 0.10
 
 # Floor on the fitted spread, so a baseline that happens to fit almost perfectly
 # cannot turn rounding noise into enormous normalised values.
 MIN_SCALE = 1e-9
-
-# Every point the two air-handler baselines read, plus the run gate.
-AHU_POINTS: tuple[str, ...] = (
-    "ahu-1.sa_temp",
-    "ahu-1.ma_temp",
-    "ahu-1.sa_flow",
-    "ahu-1.chw_valve",
-    "ahu-1.sf_power",
-    "ahu-1.sf_speed_cmd",
-)
-
-BASELINE_FAN_POWER = "ahu-1.sf_power.fan-similarity"
-BASELINE_SUPPLY_AIR_TEMP = "ahu-1.sa_temp.coil-effectiveness"
 
 
 class BaselineError(RuntimeError):
@@ -128,8 +147,60 @@ class BaselineError(RuntimeError):
 
 
 # ---------------------------------------------------------------------------
-# the fitted object
+# the generic pieces
 # ---------------------------------------------------------------------------
+
+
+def _identity_roles(roles: Roles) -> Roles:
+    return roles
+
+
+@dataclass(frozen=True)
+class ModelForm:
+    """One physics form: how to build a model, and when it is allowed to apply.
+
+    Everything asset-specific lives in here, so the fitter below can stay generic.
+    The four callables run in this order:
+
+      derive        measured point values -> the quantities the physics is
+                    written in. Lift and part load ratio are not sensors; they
+                    are arithmetic over sensors, and this is where that happens.
+      evaluable     which instants the model is meaningful at, beyond the run
+                    gate. A chiller at three tons has a meaningless efficiency.
+      fit_quantity  what to regress on, which is not always the target point. The
+                    cooling coil regresses on the cooling it delivers rather than
+                    on the supply air temperature it produces.
+      to_target     converts a prediction of that quantity back into a prediction
+                    of the target point, so the stored residual is always in the
+                    units of a real sensor.
+    """
+
+    name: str
+    terms: tuple[str, ...]
+    unit: str
+    design: Callable[[Roles], np.ndarray]
+    # Points that must all exceed their threshold for the model to apply.
+    gates: tuple[tuple[str, float], ...] = ()
+    derive: Callable[[Roles], Roles] = _identity_roles
+    evaluable: Callable[[Roles], np.ndarray] | None = None
+    fit_quantity: Callable[[np.ndarray, Roles], np.ndarray] | None = None
+    to_target: Callable[[np.ndarray, Roles], np.ndarray] | None = None
+
+
+@dataclass(frozen=True)
+class BaselineSpec:
+    """One baseline to fit, written with {asset} where the asset id goes."""
+
+    form: ModelForm
+    target: str
+    drivers: Mapping[str, str]
+
+    def resolve(self, asset_id: str) -> tuple[str, dict[str, str], tuple[str, ...]]:
+        """Substitute a concrete asset into the target, drivers and gates."""
+        target = self.target.format(asset=asset_id)
+        drivers = {role: p.format(asset=asset_id) for role, p in self.drivers.items()}
+        gates = tuple(p.format(asset=asset_id) for p, _ in self.form.gates)
+        return target, drivers, gates
 
 
 @dataclass(frozen=True)
@@ -137,39 +208,42 @@ class Baseline:
     """One fitted model, and everything needed to judge and reuse it."""
 
     baseline_id: str
+    asset_id: str
+    form: ModelForm
     target: str  # point id the model predicts
     drivers: tuple[str, ...]  # point ids it predicts from
-    terms: tuple[str, ...]  # human-readable name of each coefficient
-    coefficients: np.ndarray
-    unit: str
-    r_squared: float
-    residual_sd: float  # standard deviation of the fit errors; also the scale
-    centre: float  # robust centre of the fit errors, subtracted before scaling
-    samples: int
-    fit_from: datetime
-    fit_to: datetime
+    driver_roles: Mapping[str, str] = field(compare=False, default_factory=dict)
+    coefficients: np.ndarray = field(default_factory=lambda: np.empty(0))
+    r_squared: float = float("nan")
+    residual_sd: float = float("nan")  # sd of the fit errors; also the scale
+    centre: float = 0.0  # robust centre of the fit errors, subtracted before scaling
+    samples: int = 0
+    fit_from: datetime | None = None
+    fit_to: datetime | None = None
+
+    @property
+    def terms(self) -> tuple[str, ...]:
+        return self.form.terms
+
+    @property
+    def unit(self) -> str:
+        return self.form.unit
 
     def describe(self) -> str:
         return "  ".join(
             f"{name}={value:+.4g}"
-            for name, value in zip(self.terms, self.coefficients, strict=True)
+            for name, value in zip(self.form.terms, self.coefficients, strict=True)
         )
 
 
 # ---------------------------------------------------------------------------
-# physics forms
-#
-# Each of these turns the measured drivers into the design matrix of a model
-# that is linear in its coefficients but not in its inputs. Linear in the
-# coefficients means ordinary least squares solves it exactly, with no starting
-# guess and no chance of landing in a local minimum; non-linear in the inputs is
-# what lets the terms be the actual physics.
+# physics forms -- air handler
 # ---------------------------------------------------------------------------
 
 FAN_TERMS = ("a_speed^3", "b_speed^2*flow", "c_speed*flow^2")
 
 
-def fan_power_terms(flow: np.ndarray, speed: np.ndarray) -> np.ndarray:
+def fan_power_design(roles: Roles) -> np.ndarray:
     """Design matrix for fan power under the fan similarity laws.
 
     A fan's power is not a function of airflow alone. The affinity law that says
@@ -194,20 +268,14 @@ def fan_power_terms(flow: np.ndarray, speed: np.ndarray) -> np.ndarray:
     fitted constant would let the model claim otherwise. Enforcing it costs
     0.0008 of R-squared.
     """
+    flow, speed = roles["flow"], roles["speed"]
     return np.column_stack([speed**3, speed**2 * flow, speed * flow**2])
 
 
-COIL_TERMS = (
-    "valve_authority",
-    "valve_curvature",
-    "flow_dilution",
-    "fan_temp_rise_K",
-)
+COIL_TERMS = ("valve_authority", "valve_curvature", "flow_dilution", "fan_temp_rise_K")
 
 
-def supply_air_terms(
-    mixed_air: np.ndarray, valve: np.ndarray, flow: np.ndarray
-) -> np.ndarray:
+def coil_design(roles: Roles) -> np.ndarray:
     """Design matrix for the cooling coil, in effectiveness-NTU form.
 
     A cooling coil is a heat exchanger, and the standard way to describe one is
@@ -236,15 +304,204 @@ def supply_air_terms(
     there is nothing to cool with, and its errors do not grow without bound when
     the mixed air temperature moves outside the fitted range.
     """
-    drive = mixed_air - CHILLED_WATER_SUPPLY_C
+    valve, flow = roles["valve"], roles["flow"]
+    drive = roles["mixed_air"] - CHILLED_WATER_SUPPLY_C
+    return np.column_stack(
+        [valve * drive, valve * valve * drive, valve * flow * drive, -np.ones_like(valve)]
+    )
+
+
+def coil_fit_quantity(observed: np.ndarray, roles: Roles) -> np.ndarray:
+    """Regress on the cooling the coil delivers, not on the temperature it makes.
+
+    The two carry identical information, but supply air temperature is a
+    controlled variable pinned near setpoint, so in a winter window it barely
+    varies and an R-squared measured against it reports how flat the controller
+    holds it rather than how good the model is. The same fit scores 0.859 against
+    supply air temperature and 0.994 against coil duty in the February window.
+    """
+    return roles["mixed_air"] - observed
+
+
+def coil_to_target(predicted: np.ndarray, roles: Roles) -> np.ndarray:
+    """Turn predicted cooling back into a predicted supply air temperature."""
+    return roles["mixed_air"] - predicted
+
+
+FAN_SIMILARITY = ModelForm(
+    name="fan-similarity",
+    terms=FAN_TERMS,
+    unit="watt",
+    design=fan_power_design,
+    # The supply fan is running when its speed command is off its stop. NOT
+    # ahu-1.sf_status, which despite its name is not a fan status: it is byte for
+    # byte identical to ahu-1.occupancy across all 138,240 samples of the record,
+    # and the fan runs during morning pull-down while it still reads zero --
+    # 7,686 samples, 5.6 percent of the record. Gating on it would drop every
+    # start-up and every after-hours run out of the fit.
+    gates=(("{asset}.sf_speed_cmd", 0.05),),
+)
+
+COIL_EFFECTIVENESS = ModelForm(
+    name="coil-effectiveness",
+    terms=COIL_TERMS,
+    unit="degC",
+    design=coil_design,
+    gates=(("{asset}.sf_speed_cmd", 0.05),),
+    fit_quantity=coil_fit_quantity,
+    to_target=coil_to_target,
+)
+
+
+# ---------------------------------------------------------------------------
+# physics forms -- chiller
+# ---------------------------------------------------------------------------
+
+CHILLER_TERMS = (
+    "intercept",
+    "plr", "plr^2",
+    "lift", "lift^2",
+    "chws", "chws^2",
+    "plr*lift", "plr*chws", "lift*chws",
+)
+
+
+def chiller_derive(roles: Roles) -> Roles:
+    """Turn the four water-side sensors into the quantities the physics uses.
+
+    None of part load ratio, lift or delivered cooling is a sensor. Delivered
+    cooling is the chilled water flow times the temperature it gained crossing
+    the evaporator, converted to tons of refrigeration; part load ratio is that
+    divided by the machine's nominal capacity. Lift is the temperature gap the
+    compressor has to push against -- leaving condenser water minus leaving
+    chilled water -- and it is the single largest thing that changes how much
+    power a healthy chiller draws, which is exactly why a fixed efficiency
+    threshold flags every hot afternoon.
+    """
+    tons = (
+        roles["chw_flow"]
+        * WATER_DENSITY
+        * WATER_SPECIFIC_HEAT
+        * (roles["chw_return"] - roles["chw_supply"])
+        / WATTS_PER_TON
+    )
+    return {
+        **roles,
+        "tons": tons,
+        "plr": tons / CHILLER_DESIGN_TONS,
+        "lift": roles["cdw_leaving"] - roles["chw_supply"],
+        "chws": roles["chw_supply"],
+    }
+
+
+def chiller_evaluable(roles: Roles) -> np.ndarray:
+    """A barely loaded chiller has no meaningful efficiency."""
+    return roles["tons"] >= MIN_EVALUABLE_TONS
+
+
+def chiller_design(roles: Roles) -> np.ndarray:
+    """Design matrix for chiller power against load, lift and chilled water.
+
+    A full quadratic in the three drivers: each on its own, each squared, and
+    each pair multiplied together. That is the standard shape of a manufacturer's
+    chiller performance map, and the cross terms are the physics rather than
+    decoration -- the power cost of an extra kelvin of lift depends on how loaded
+    the machine is, which is precisely the plr*lift term.
+    """
+    plr, lift, chws = roles["plr"], roles["lift"], roles["chws"]
     return np.column_stack(
         [
-            valve * drive,
-            valve * valve * drive,
-            valve * flow * drive,
-            -np.ones_like(valve),
+            np.ones_like(plr),
+            plr, plr * plr,
+            lift, lift * lift,
+            chws, chws * chws,
+            plr * lift, plr * chws, lift * chws,
         ]
     )
+
+
+CHILLER_EFFICIENCY = ModelForm(
+    name="chiller-efficiency",
+    terms=CHILLER_TERMS,
+    unit="watt",
+    design=chiller_design,
+    # Chillers carry a power test as well as a status test because chiller-1's
+    # status point reads 1 for the entire year -- on its own it would never gate
+    # anything. Matches the run gates in analytics/rules/constraints.py.
+    gates=(("{asset}.status", 0.5), ("{asset}.power", 1000.0)),
+    derive=chiller_derive,
+    evaluable=chiller_evaluable,
+)
+
+
+# ---------------------------------------------------------------------------
+# the catalogue, keyed by Brick class
+# ---------------------------------------------------------------------------
+
+# Which baselines belong to which kind of equipment. Keyed by Brick class rather
+# than by asset id for the same reason the rule registry in checkpoint 3.2 is:
+# three chillers get one entry, not three, and a fourth chiller added to the
+# building needs a row in app.assets and nothing here.
+BASELINE_CATALOGUE: dict[str, tuple[BaselineSpec, ...]] = {
+    "brick:Air_Handling_Unit": (
+        BaselineSpec(
+            form=FAN_SIMILARITY,
+            target="{asset}.sf_power",
+            drivers={"flow": "{asset}.sa_flow", "speed": "{asset}.sf_speed_cmd"},
+        ),
+        BaselineSpec(
+            form=COIL_EFFECTIVENESS,
+            target="{asset}.sa_temp",
+            drivers={
+                "mixed_air": "{asset}.ma_temp",
+                "valve": "{asset}.chw_valve",
+                "flow": "{asset}.sa_flow",
+            },
+        ),
+    ),
+    "brick:Chiller": (
+        BaselineSpec(
+            form=CHILLER_EFFICIENCY,
+            target="{asset}.power",
+            drivers={
+                "chw_supply": "{asset}.chw_supply_temp",
+                "chw_return": "{asset}.chw_return_temp",
+                "chw_flow": "{asset}.chw_flow",
+                "cdw_leaving": "{asset}.cdw_leaving_temp",
+            },
+        ),
+    ),
+}
+
+
+def asset_classes(conn: psycopg.Connection) -> dict[str, str]:
+    """Brick class of every asset, straight from the relational catalogue."""
+    return dict(conn.execute("SELECT asset_id, brick_class FROM app.assets").fetchall())
+
+
+@cache
+def _taxonomy() -> Graph:
+    """Brick's own subclass and equivalence edges, vendored in checkpoint 3.2."""
+    graph, _ = load_merged_graph()
+    return graph
+
+
+def specs_for(brick_class: str) -> tuple[BaselineSpec, ...]:
+    """Every baseline declared for this class or any class it is a kind of.
+
+    Resolved through Brick's taxonomy rather than by string equality, using the
+    same closure the rule registry dispatches on. This is not pedantry: the
+    database records the air handler as brick:AHU and the catalogue above is
+    written against brick:Air_Handling_Unit, which Brick declares equivalent in
+    one direction only. String matching silently fits nothing, which is exactly
+    what it did on the first run of this checkpoint.
+    """
+    ancestry = class_closure(_taxonomy(), to_uri(brick_class))
+    out: tuple[BaselineSpec, ...] = ()
+    for declared, specs in BASELINE_CATALOGUE.items():
+        if to_uri(declared) in ancestry:
+            out += specs
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -252,24 +509,23 @@ def supply_air_terms(
 # ---------------------------------------------------------------------------
 
 
-def load_ahu_frame(
-    conn: psycopg.Connection, t_from: datetime, t_to: datetime
+def load_points(
+    conn: psycopg.Connection, point_ids: list[str], t_from: datetime, t_to: datetime
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Every point the air-handler baselines need, with usable quality scores.
+    """Values and usable quality scores for a named set of points over a window.
 
-    Returns the values and a quality frame in which the staleness dimension has
-    been discounted. Staleness says a reading stopped changing, not that it is
-    wrong: the supply fan sitting at full command for two hours is scored badly
-    for not moving, and it is still a correct statement of where the fan is.
-    Every reading below 70 in these windows is below 70 for staleness alone, so
-    judging on the raw composite would throw away real operating points.
+    The quality frame returned has the staleness dimension discounted. Staleness
+    says a reading stopped changing, not that it is wrong: the supply fan sitting
+    at full command for two hours is scored badly for not moving, and it is still
+    a correct statement of where the fan is. Every reading below 70 in these
+    windows is below 70 for staleness alone, so judging on the raw composite
+    would throw away real operating points.
     """
-    points = [*AHU_POINTS, RUN_GATE_POINT]
     rows = conn.execute(
         "SELECT time, point_id, value_si, quality_score, quality_flags "
         "  FROM app.measurements "
         " WHERE point_id = ANY(%s) AND time >= %s AND time < %s",
-        (sorted(set(points)), t_from, t_to),
+        (sorted(set(point_ids)), t_from, t_to),
     ).fetchall()
     if not rows:
         return pd.DataFrame(), pd.DataFrame()
@@ -283,171 +539,182 @@ def load_ahu_frame(
     quality = frame.pivot_table(
         index="time", columns="point_id", values="quality_score", dropna=False
     ).sort_index()
-    flags = frame.pivot(
-        index="time", columns="point_id", values="quality_flags"
-    ).sort_index()
+    flags = frame.pivot(index="time", columns="point_id", values="quality_flags").sort_index()
     return values, effective_quality_frame(quality, flags)
 
 
-def running(values: pd.DataFrame) -> pd.Series:
-    """True where the supply fan is turning. See RUN_GATE_POINT on why not status."""
-    if RUN_GATE_POINT not in values.columns:
-        raise BaselineError(f"run gate needs {RUN_GATE_POINT}, which was not loaded")
-    return (values[RUN_GATE_POINT] > RUN_GATE_THRESHOLD).fillna(False)
+def points_needed(spec: BaselineSpec, asset_id: str) -> list[str]:
+    """Every point one baseline reads, including its run gate."""
+    target, drivers, gates = spec.resolve(asset_id)
+    return [target, *drivers.values(), *gates]
 
 
-def usable_for_fit(
-    values: pd.DataFrame, quality: pd.DataFrame, needed: tuple[str, ...]
-) -> pd.Series:
-    """Running, complete, and trustworthy enough to define what healthy means."""
-    mask = running(values)
-    for point in needed:
+def gate_mask(form: ModelForm, asset_id: str, values: pd.DataFrame) -> pd.Series:
+    """True where every run gate this form declares is satisfied."""
+    mask = pd.Series(True, index=values.index)
+    for raw_point, threshold in form.gates:
+        point = raw_point.format(asset=asset_id)
         if point not in values.columns:
-            raise BaselineError(f"no readings for {point}")
-        mask &= values[point].notna()
-        if point in quality.columns:
-            mask &= (quality[point] >= MIN_FIT_QUALITY).fillna(False)
+            raise BaselineError(f"run gate needs {point}, which was not loaded")
+        mask &= (values[point] > threshold).fillna(False)
     return mask
 
 
-# ---------------------------------------------------------------------------
-# fitting
-# ---------------------------------------------------------------------------
+def role_arrays(drivers: Mapping[str, str], values: pd.DataFrame) -> Roles:
+    """Pull each driver point out under the role name the physics calls it."""
+    return {role: values[point].to_numpy(dtype=float) for role, point in drivers.items()}
 
 
-def _solve(
-    baseline_id: str,
+def applicable(
+    baseline_or_spec: Baseline | BaselineSpec,
+    asset_id: str,
     target: str,
-    drivers: tuple[str, ...],
-    terms: tuple[str, ...],
-    design: np.ndarray,
-    observed: np.ndarray,
-    unit: str,
-    t_from: datetime,
-    t_to: datetime,
-) -> Baseline:
-    """Ordinary least squares plus the statistics needed to judge the result.
+    drivers: Mapping[str, str],
+    values: pd.DataFrame,
+    quality: pd.DataFrame | None,
+) -> tuple[pd.Series, Roles]:
+    """Which instants this model can be evaluated at, and the derived drivers.
 
-    The centre is a median and the scale is the plain standard deviation of the
-    fit errors, and mixing the two that way is deliberate. The median guards the
-    offset: a handful of start-up transients would drag a mean off zero and put a
-    permanent bias into every residual measured against it.
-
-    The scale does NOT use a median absolute deviation, which is what the
-    constraint residuals in checkpoint 3.5 use. These error distributions are
-    extremely peaked -- measured kurtosis runs from 30 to 250 against 3 for a
-    normal distribution -- because they mix two regimes. In steady operation the
-    model is very accurate, and in the minutes after a fan start it is not. A
-    median absolute deviation sees only the steady regime and reports a spread of
-    0.55 watts where the standard deviation reports 24. Normalising on the
-    robust number would make every ordinary morning start-up a fifty-sigma event
-    and drown any real drift underneath it.
-
-    The reason 3.5 goes the other way is that it has no fitted model, so it has
-    no fit-error scale available and has to estimate spread from the raw
-    residuals themselves, where a single excursion really would dominate.
+    Three gates in order: the equipment is running, every reading it needs is
+    present, and the physics is meaningful. When a quality frame is supplied a
+    fourth applies -- every input trustworthy enough to define healthy -- which
+    is used when fitting and not when predicting.
     """
-    if len(observed) < MIN_FIT_SAMPLES:
+    form = baseline_or_spec.form
+    mask = gate_mask(form, asset_id, values)
+    for point in (target, *drivers.values()):
+        if point not in values.columns:
+            raise BaselineError(f"no readings for {point}")
+        mask &= values[point].notna()
+        if quality is not None and point in quality.columns:
+            mask &= (quality[point] >= MIN_FIT_QUALITY).fillna(False)
+
+    roles = form.derive(role_arrays(drivers, values))
+    if form.evaluable is not None:
+        with np.errstate(invalid="ignore"):
+            mask &= pd.Series(form.evaluable(roles), index=values.index).fillna(False)
+    return mask, roles
+
+
+# ---------------------------------------------------------------------------
+# the fitter
+# ---------------------------------------------------------------------------
+
+
+def fit_baseline(
+    conn: psycopg.Connection,
+    asset_id: str,
+    target_point: str,
+    driver_points: Mapping[str, str],
+    window: tuple[datetime, datetime],
+    form: ModelForm,
+) -> Baseline:
+    """Fit one baseline for one asset over one window.
+
+    This is the only fitter. It reads the points it is told to read, asks the
+    model form to turn them into whatever quantities the physics is written in,
+    solves ordinary least squares, and measures the result. Nothing in it knows
+    what an air handler or a chiller is.
+
+    driver_points maps a ROLE the physics uses -- "lift", "valve", "mixed_air" --
+    to the point id that supplies it, which is what lets one form serve three
+    chillers and would let it serve a fourth.
+
+    Two arguments beyond the four the checkpoint named are structurally
+    unavoidable: a connection, because the window has to be read from somewhere,
+    and the model form, because there is no way to guess from a point id whether
+    a fan similarity law or a chiller performance map is wanted.
+
+    The centre returned is a median and the scale is the plain standard deviation
+    of the fit errors, and mixing the two is deliberate. The median guards the
+    offset: a handful of start-up transients would drag a mean off zero and put a
+    permanent bias into every residual measured against it. The scale does NOT
+    use a median absolute deviation, which is what the constraint residuals in
+    checkpoint 3.5 use. These error distributions are extremely peaked --
+    measured kurtosis runs from 30 to 250 against 3 for a normal distribution --
+    because they mix two regimes: in steady operation the model is very accurate,
+    and in the minutes after a start it is not. A median absolute deviation sees
+    only the steady regime and reports a spread of 0.55 watts where the standard
+    deviation reports 24. Normalising on the robust number would make every
+    ordinary morning start-up a fifty-sigma event and drown any real drift
+    underneath it. Checkpoint 3.5 goes the other way because it has no fitted
+    model, so no fit-error scale is available and spread has to come from the raw
+    residuals, where a single excursion really would dominate.
+    """
+    t_from, t_to = window
+    baseline_id = f"{target_point}.{form.name}"
+
+    spec = BaselineSpec(form=form, target=target_point, drivers=dict(driver_points))
+    values, quality = load_points(
+        conn, [target_point, *driver_points.values(),
+               *(p.format(asset=asset_id) for p, _ in form.gates)], t_from, t_to
+    )
+    if values.empty:
+        raise BaselineError(f"{baseline_id}: no readings in {t_from} .. {t_to}")
+
+    mask, roles = applicable(spec, asset_id, target_point, driver_points, values, quality)
+    rows = mask.to_numpy()
+    if rows.sum() < MIN_FIT_SAMPLES:
         raise BaselineError(
-            f"{baseline_id}: {len(observed)} usable samples, below the "
-            f"{MIN_FIT_SAMPLES} needed to fit"
+            f"{baseline_id}: {int(rows.sum())} usable samples in the window, "
+            f"below the {MIN_FIT_SAMPLES} needed to fit"
         )
-    coefficients, *_ = np.linalg.lstsq(design, observed, rcond=None)
-    predicted = design @ coefficients
-    errors = observed - predicted
 
-    total = float(np.sum((observed - observed.mean()) ** 2))
-    r_squared = 1.0 - float(np.sum(errors**2)) / total if total > 0 else float("nan")
+    fit_roles = {role: array[rows] for role, array in roles.items()}
+    observed = values[target_point].to_numpy(dtype=float)[rows]
+    regressand = (
+        observed if form.fit_quantity is None else form.fit_quantity(observed, fit_roles)
+    )
 
+    design = form.design(fit_roles)
+    coefficients, *_ = np.linalg.lstsq(design, regressand, rcond=None)
+    errors = regressand - design @ coefficients
+
+    total = float(np.sum((regressand - regressand.mean()) ** 2))
     return Baseline(
         baseline_id=baseline_id,
-        target=target,
-        drivers=drivers,
-        terms=terms,
+        asset_id=asset_id,
+        form=form,
+        target=target_point,
+        drivers=tuple(driver_points.values()),
+        driver_roles=dict(driver_points),
         coefficients=coefficients,
-        unit=unit,
-        r_squared=r_squared,
+        r_squared=1.0 - float(np.sum(errors**2)) / total if total > 0 else float("nan"),
         residual_sd=max(float(errors.std(ddof=len(coefficients))), MIN_SCALE),
         centre=float(np.median(errors)),
-        samples=len(observed),
+        samples=int(rows.sum()),
         fit_from=t_from,
         fit_to=t_to,
     )
 
 
-FAN_DRIVERS = ("ahu-1.sa_flow", "ahu-1.sf_speed_cmd")
-COIL_DRIVERS = ("ahu-1.ma_temp", "ahu-1.chw_valve", "ahu-1.sa_flow")
+def fit_asset_baselines(
+    conn: psycopg.Connection,
+    asset_id: str,
+    brick_class: str,
+    window: tuple[datetime, datetime],
+) -> tuple[list[Baseline], list[str]]:
+    """Every baseline this asset's Brick class declares. Refusals are returned.
 
-
-def fit_fan_power(
-    values: pd.DataFrame, quality: pd.DataFrame, t_from: datetime, t_to: datetime
-) -> Baseline:
-    """Fan electrical power against airflow and fan speed."""
-    mask = usable_for_fit(values, quality, ("ahu-1.sf_power", *FAN_DRIVERS))
-    rows = values[mask]
-    design = fan_power_terms(
-        rows["ahu-1.sa_flow"].to_numpy(), rows["ahu-1.sf_speed_cmd"].to_numpy()
-    )
-    return _solve(
-        BASELINE_FAN_POWER,
-        "ahu-1.sf_power",
-        FAN_DRIVERS,
-        FAN_TERMS,
-        design,
-        rows["ahu-1.sf_power"].to_numpy(),
-        "watt",
-        t_from,
-        t_to,
-    )
-
-
-def fit_supply_air_temp(
-    values: pd.DataFrame, quality: pd.DataFrame, t_from: datetime, t_to: datetime
-) -> Baseline:
-    """Supply air temperature against mixed air, valve position and airflow.
-
-    Fitted on the cooling the coil delivers -- mixed air temperature minus supply
-    air temperature -- rather than directly on supply air temperature. They carry
-    the same information, but supply air temperature is a controlled variable
-    held near its setpoint, so in a winter window it barely varies and an
-    R-squared measured against it is dominated by how flat the controller keeps
-    it rather than by how good the model is. The coil duty has real range in
-    every window, so the statistic means the same thing in all of them.
+    A baseline that cannot be fitted is not an error to abort on -- chiller-3
+    runs for nine samples in the commissioning window and genuinely cannot be
+    modelled -- so the refusal is collected and reported rather than raised.
     """
-    mask = usable_for_fit(values, quality, ("ahu-1.sa_temp", *COIL_DRIVERS))
-    rows = values[mask]
-    valve = rows["ahu-1.chw_valve"].to_numpy()
-    if valve.size and float(valve.max() - valve.min()) < MIN_VALVE_RANGE:
-        raise BaselineError(
-            f"{BASELINE_SUPPLY_AIR_TEMP}: valve position spans only "
-            f"{valve.max() - valve.min():.3f} in this window, so coil authority "
-            "cannot be identified"
-        )
-    design = supply_air_terms(
-        rows["ahu-1.ma_temp"].to_numpy(), valve, rows["ahu-1.sa_flow"].to_numpy()
-    )
-    duty = (rows["ahu-1.ma_temp"] - rows["ahu-1.sa_temp"]).to_numpy()
-    return _solve(
-        BASELINE_SUPPLY_AIR_TEMP,
-        "ahu-1.sa_temp",
-        COIL_DRIVERS,
-        COIL_TERMS,
-        design,
-        duty,
-        "degC",
-        t_from,
-        t_to,
-    )
+    fitted: list[Baseline] = []
+    refused: list[str] = []
+    for spec in specs_for(brick_class):
+        target, drivers, _ = spec.resolve(asset_id)
+        try:
+            fitted.append(
+                fit_baseline(conn, asset_id, target, drivers, window, spec.form)
+            )
+        except BaselineError as exc:
+            refused.append(str(exc))
+    return fitted, refused
 
 
-def fit_ahu_baselines(
-    values: pd.DataFrame, quality: pd.DataFrame, t_from: datetime, t_to: datetime
-) -> list[Baseline]:
-    """Both air-handler baselines from one commissioning window."""
-    return [
-        fit_fan_power(values, quality, t_from, t_to),
-        fit_supply_air_temp(values, quality, t_from, t_to),
-    ]
+def commissioning_window(t_from: datetime) -> tuple[datetime, datetime]:
+    return t_from, t_from + timedelta(days=COMMISSIONING_DAYS)
 
 
 # ---------------------------------------------------------------------------
@@ -455,27 +722,18 @@ def fit_ahu_baselines(
 # ---------------------------------------------------------------------------
 
 
-def predict(baseline: Baseline, values: pd.DataFrame) -> pd.Series:
-    """What the baseline says the target point should read, at every instant.
+def predict(baseline: Baseline, values: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+    """What the baseline says the target point should read, and where it applies.
 
-    The coil model predicts how much cooling the coil delivers, so its prediction
-    is converted back to a supply air temperature by subtracting that cooling
-    from the measured mixed air temperature. The fan model predicts watts
-    directly.
+    Returns the prediction alongside the mask of instants the model is valid at,
+    so a caller never has to re-derive the run gate or the evaluability test that
+    the model form already declares.
     """
-    if baseline.baseline_id == BASELINE_FAN_POWER:
-        design = fan_power_terms(
-            values["ahu-1.sa_flow"].to_numpy(), values["ahu-1.sf_speed_cmd"].to_numpy()
-        )
-        return pd.Series(design @ baseline.coefficients, index=values.index)
-
-    if baseline.baseline_id == BASELINE_SUPPLY_AIR_TEMP:
-        mixed = values["ahu-1.ma_temp"].to_numpy()
-        design = supply_air_terms(
-            mixed,
-            values["ahu-1.chw_valve"].to_numpy(),
-            values["ahu-1.sa_flow"].to_numpy(),
-        )
-        return pd.Series(mixed - design @ baseline.coefficients, index=values.index)
-
-    raise BaselineError(f"no prediction rule for baseline {baseline.baseline_id}")
+    mask, roles = applicable(
+        baseline, baseline.asset_id, baseline.target, baseline.driver_roles, values, None
+    )
+    with np.errstate(invalid="ignore"):
+        predicted = baseline.form.design(roles) @ baseline.coefficients
+        if baseline.form.to_target is not None:
+            predicted = baseline.form.to_target(predicted, roles)
+    return pd.Series(predicted, index=values.index), mask

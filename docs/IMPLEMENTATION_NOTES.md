@@ -3828,3 +3828,235 @@ Task 3 code and outside this checkpoint.
 START HERE: `analytics/baselines/fit.py` — the two design-matrix functions are
 the whole checkpoint. Everything else loads rows for them or stores what comes
 out.
+
+## Checkpoint 4.2 — Generalise the fitter
+
+### WAS THE GENERALISATION NEEDED?
+
+Yes, and not marginally. Nothing in 4.1 could have accepted a chiller: the
+prediction function dispatched on a hardcoded if/else naming the two air-handler
+baselines, the loader named six `ahu-1.*` points as a module constant, the run
+gate was a single module-level point id, and both fit functions spelled out
+`ahu-1.sa_flow` and friends inline. The commit stands.
+
+### WHAT WE DID
+
+The baseline fitter is now one function that knows nothing about air handlers or
+chillers, and the chiller goes through it. Before this there were two
+hand-written air-handler fitters with the equipment's sensor names spelled out
+inside them, and adding a second kind of machine meant writing a third.
+
+What differs between kinds of equipment is now packed into a description of the
+physics — how to turn raw sensor readings into the quantities the equation is
+written in, what shape the equation takes, and when the machine is running hard
+enough for the equation to mean anything. Which descriptions apply to a given
+machine is decided by looking up its class in the semantic model, so all three
+chillers are served by one entry and a fourth chiller would need no code at all.
+The chiller baseline predicts compressor power from how hard the machine is
+working, how large a temperature gap it is pushing against, and how cold it is
+being asked to make the water, which is the same idea as the air-handler models:
+subtract what the conditions explain, and watch what is left.
+
+### HOW IT WORKS
+
+    analytics/baselines/fit.py :: ModelForm
+      WHY IT EXISTS: The seam that makes one fitter serve every kind of
+        equipment. Without it, generalising the signature would have moved the
+        air-handler knowledge from the function bodies into the caller and
+        changed nothing.
+      WHAT IT DOES: Holds a name, the list of coefficient names, the unit, and
+        four callables that run in order. `derive` turns measured point values
+        into the quantities the physics is written in — lift and part load ratio
+        are not sensors, they are arithmetic over sensors. `evaluable` says which
+        instants the model is meaningful at beyond the run gate. `fit_quantity`
+        says what to regress on, which is not always the target point.
+        `to_target` converts a prediction of that quantity back into a prediction
+        of the target point, so the stored residual is always in the units of a
+        real sensor. It also carries the run gates, as point-and-threshold pairs.
+      CHOICES: The gates live on the form rather than on the spec because "this
+        model is only valid while the machine is running" is a statement about
+        the physics, not about the installation. Same shape as the RUN_GATES
+        table in analytics/rules/constraints.py, deliberately.
+
+    analytics/baselines/fit.py :: BaselineSpec
+      WHY IT EXISTS: One chiller entry has to serve three chillers.
+      WHAT IT DOES: Pairs a model form with a target point and a role-to-point
+        mapping, all written with `{asset}` where the asset id goes, and
+        substitutes a concrete asset on demand.
+      CHOICES: `{asset}` templating rather than a function taking asset_id,
+        matching how analytics/rules/chiller.py already addresses its three
+        machines.
+
+    analytics/baselines/fit.py :: BASELINE_CATALOGUE and specs_for(brick_class)
+      WHY IT EXISTS: Something has to say which baselines a given machine gets,
+        and doing it by asset id would mean three identical chiller entries and a
+        fourth the day someone adds a chiller.
+      WHAT IT DOES: A dictionary from Brick class to the baselines that class
+        declares. Lookup resolves through Brick's own taxonomy — the class the
+        database records, plus every class it is a kind of or is declared
+        equivalent to — reusing the closure walk the rule registry dispatches on.
+      ⚠ JUDGEMENT CALL: The taxonomy lookup is not decoration. The database
+        records the air handler as `brick:AHU` and the catalogue is written
+        against `brick:Air_Handling_Unit`, which Brick declares equivalent in one
+        direction only and rdflib does not reason over. The first run of this
+        checkpoint used plain string equality, fitted the chillers correctly and
+        silently fitted nothing at all for the air handler — no error, just two
+        missing baselines. Consistent with checkpoint 3.2, which vendored the
+        taxonomy for exactly this.
+
+    analytics/baselines/fit.py :: fit_baseline(conn, asset_id, target_point,
+                                               driver_points, window, form)
+      WHY IT EXISTS: The single fitter. Everything else in the package either
+        feeds it or stores what comes out.
+      WHAT IT DOES: Reads the points it is told to read over the window, asks the
+        form to derive the physics quantities, masks down to instants that are
+        running, complete, trustworthy and evaluable, solves ordinary least
+        squares on whatever the form says to regress on, and measures R-squared,
+        the error spread and the error median.
+      CHOICES: `driver_points` maps a ROLE the physics uses — "lift", "valve",
+        "mixed_air" — to the point id that supplies it. That indirection is what
+        lets one form serve three chillers.
+      CHOICES: Two arguments beyond the four the checkpoint named are
+        structurally unavoidable: a connection, because the window has to be read
+        from somewhere, and the form, because there is no way to guess from a
+        point id whether a fan similarity law or a chiller performance map is
+        wanted.
+
+    analytics/baselines/fit.py :: applicable(...)
+      WHY IT EXISTS: Fitting and predicting have to agree exactly on which
+        instants a model covers, or the residuals would be computed on a
+        different population than the one the baseline was fitted on.
+      WHAT IT DOES: Applies the run gates, drops instants with any reading
+        missing, derives the physics quantities, and applies the form's
+        evaluability test. When a quality frame is passed a fourth gate applies —
+        every input trustworthy enough to define healthy — which is used when
+        fitting and skipped when predicting.
+      CHOICES: Quality gates the fit but not the prediction, so a residual
+        computed from a doubtful reading is stored with its low score attached
+        rather than quietly vanishing.
+
+    analytics/baselines/fit.py :: chiller_derive(roles)
+      WHY IT EXISTS: None of the three drivers the chiller model needs is a
+        sensor. All three are arithmetic over the four water-side temperatures
+        and the chilled water flow.
+      WHAT IT DOES: Delivered cooling is the chilled water flow times the
+        temperature it gained crossing the evaporator, converted to tons of
+        refrigeration; part load ratio is that divided by nominal capacity. Lift
+        — the temperature gap the compressor has to push against — is leaving
+        condenser water minus leaving chilled water.
+      CHOICES: Lift is the single largest thing that changes how much power a
+        healthy chiller draws, which is precisely why a fixed efficiency
+        threshold flags every hot afternoon and misses every mild one.
+
+    analytics/baselines/fit.py :: chiller_design(roles)
+      WHY IT EXISTS: The design matrix for chiller power.
+      WHAT IT DOES: A full quadratic in part load ratio, lift and chilled water
+        supply temperature: each on its own, each squared, and each pair
+        multiplied together. Ten terms.
+      CHOICES: That is the standard shape of a manufacturer's chiller performance
+        map. The cross terms are physics rather than decoration — the power cost
+        of an extra kelvin of lift depends on how loaded the machine is, which is
+        exactly the plr*lift term.
+      ⚠ JUDGEMENT CALL: The checkpoint asked for kW/ton as the modelled quantity.
+        The model targets electrical POWER instead, with those same three
+        drivers. Two reasons. The structural one is decisive: app.residuals.
+        point_id carries a foreign key to app.points, and kW/ton is not a point,
+        so storing a residual against it would mean inventing a synthetic sensor.
+        The measured one is that it barely matters either way — fitting power and
+        dividing through gives a kW/ton residual spread of 0.12195 against 0.12489
+        fitting the ratio directly, a 2.4 percent difference. Both are reported.
+
+    analytics/baselines/fit.py :: CHILLER_DESIGN_TONS
+      WHY IT EXISTS: Part load ratio is delivered cooling as a fraction of what
+        the machine can do, so it needs a capacity.
+      CHOICES: 150 tons, nominal. THE FIT IS INVARIANT TO IT — part load ratio is
+        tons divided by this number, so changing it rescales the coefficients and
+        leaves every prediction and residual identical. It is here so the
+        coefficients read as fractions of capacity rather than as tons. Observed
+        load reaches 138 tons on chiller-1 and 154 on chiller-2, so the ratio
+        occasionally exceeds one, which is normal against a plate rating.
+
+    analytics/baselines/fit.py :: fit_asset_baselines(...)
+      WHY IT EXISTS: Fits everything one asset's class declares, and does not
+        abort the run when one of them cannot be fitted.
+      WHAT IT DOES: Loops the specs for the class, catches the refusal, and
+        returns the successes and the refusal messages separately.
+      CHOICES: A refusal is a result, not an error. chiller-3 runs for nine
+        samples in the commissioning window and genuinely cannot be modelled;
+        raising would have taken the other two chillers down with it.
+
+    analytics/baselines/fit.py :: RUNS
+      WHY IT EXISTS: The air-handler runs and the chiller runs are different
+        calendar windows, so one list of spans no longer suffices.
+      WHAT IT DOES: Eight runs, each naming the assets that have data in it.
+        AHU_SPANS is derived from it so checkpoint 4.1's verification still
+        resolves.
+      CHANGED FROM BEFORE: 4.1 had four air-handler spans. This has eight runs
+        across both systems, with the assets listed per run — the chiller record
+        does not start until 2036-05-10 and the air-handler runs at 2036-02-25
+        and 2037-01-27 predate it entirely.
+
+    analytics/baselines/residual.py :: main()
+      WHAT IT DOES: For each run, for each asset in it, reads the asset's Brick
+        class from app.assets, fits whatever that class declares, then computes
+        and stores residuals for each fitted baseline.
+      CHANGED FROM BEFORE: The 4.1 version named the air handler in its loop and
+        called a function called fit_ahu_baselines. This version contains no
+        equipment name at all.
+
+    scripts/plot_baselines.py :: kw_per_ton_sd(...)
+      WHY IT EXISTS: The chiller residual is stored in watts and an engineer
+        reads efficiency, so the verification reports the same spread both ways.
+      WHAT IT DOES: Divides the fitted power spread by the mean evaluable load
+        over the fit window.
+
+### MEASURED RESULT
+
+AHU R-squared identical to checkpoint 4.1, to all five decimal places, and so is
+every downstream number — residual spread, error median, sample count, rows
+written, residual median and normalised 95th percentile:
+
+    run                        baseline                4.1        4.2
+    ahu_cooling_valve_leakage  fan-similarity      0.98909    0.98909
+    ahu_cooling_valve_leakage  coil-effectiveness  0.99395    0.99395
+    ahu_oa_damper_stuck        fan-similarity      0.97688    0.97688
+    ahu_oa_damper_stuck        coil-effectiveness  0.99588    0.99588
+    ahu_sat_sensor_drift       fan-similarity      0.98354    0.98354
+    ahu_sat_sensor_drift       coil-effectiveness  0.99094    0.99094
+    clean_ahu                  fan-similarity      0.98354    0.98354
+    clean_ahu                  coil-effectiveness  0.99094    0.99094
+
+Chiller fits, through the same call:
+
+    asset      R2         residual sd
+    chiller-1  0.97927    7042.6052 W   = 0.10125 kW/ton
+    chiller-2  0.96861    6279.7553 W   = 0.09222 kW/ton
+    chiller-3  REFUSED — 9 usable samples in the commissioning window, below 200
+
+The kW/ton spread of 0.10125 is an independent corroboration of the 0.109949 the
+chiller rules in checkpoint 3.4 use as their process-control limit. That number
+was fitted on the LBNL fault-free year with a different driver set; this one is
+fitted on the scenario commissioning window with part load ratio, lift and
+chilled water temperature. They agree to eight percent.
+
+Chiller residual medians over each whole run, in the fit's own error spread:
+
+    run                           chiller-1        chiller-2
+    clean_chiller                 -1,001 W (0.14)     -26 W (0.00)
+    chiller_condenser_fouling    +21,183 W (3.01)    -165 W (0.03)
+    chiller_bypass_valve_leakage +34,902 W (4.96) +30,442 W (4.85)
+    cooling_tower_fouling           -743 W (0.11)    +283 W (0.05)
+
+Condenser fouling moves chiller-1 by three of its own standard deviations and
+leaves chiller-2 alone, which is right — the fault is injected into chiller-1.
+Bypass valve leakage moves both, which is also right, since it is a plant-level
+fault. Cooling tower fouling moves neither, which is what the held-out fault
+should do to a chiller baseline: tower fouling raises condenser water
+temperature, the model conditions ON lift, and so the effect is absorbed as an
+operating condition rather than reported as a chiller problem. Task 8 has to find
+it without a model.
+
+- 260,561 residual rows now stored across both systems.
+
+START HERE: `analytics/baselines/fit.py` — the ModelForm dataclass and
+fit_baseline directly below the catalogue. Those two are the whole refactor.

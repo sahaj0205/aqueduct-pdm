@@ -1,7 +1,8 @@
-"""Plot the air-handler baseline residuals and report each fit.
+"""Report every fitted baseline and plot the air-handler residuals.
 
-Verification for checkpoint 4.1. Prints R-squared and residual standard
-deviation for both fits on every run, then draws the residuals for the clean run
+Verification for checkpoints 4.1 and 4.2. Prints R-squared and residual standard
+deviation for every baseline on every run and asset -- air handler and chillers
+through the same call -- then draws the air-handler residuals for the clean run
 against the cooling coil valve leakage run so the flat case and the drifting case
 sit side by side.
 
@@ -26,16 +27,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from analytics.baselines.fit import (
     AHU_SPANS,
-    BASELINE_FAN_POWER,
-    BASELINE_SUPPLY_AIR_TEMP,
     COMMISSIONING_DAYS,
-    fit_ahu_baselines,
-    load_ahu_frame,
+    RUNS,
+    asset_classes,
+    chiller_derive,
+    commissioning_window,
+    fit_asset_baselines,
+    load_points,
+    role_arrays,
 )
 from analytics.rules.readings import resolve_dsn
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLOT_DIR = REPO_ROOT / "docs" / "plots"
+
+BASELINE_SUPPLY_AIR_TEMP = "ahu-1.sa_temp.coil-effectiveness"
+BASELINE_FAN_POWER = "ahu-1.sf_power.fan-similarity"
 
 BASELINES = (BASELINE_SUPPLY_AIR_TEMP, BASELINE_FAN_POWER)
 LABELS = {
@@ -73,19 +80,45 @@ def daily(frame: pd.DataFrame) -> pd.DataFrame:
     ).dropna()
 
 
+def kw_per_ton_sd(conn, baseline, window) -> float | None:
+    """Restate a chiller power residual spread as kW per ton of refrigeration.
+
+    The fit is on electrical power, because that is the quantity a real point
+    carries and app.residuals keys on a point. Efficiency is what an engineer
+    reads, so the same spread is reported in both.
+    """
+    if baseline.form.name != "chiller-efficiency":
+        return None
+    t_from, t_to = window
+    values, _ = load_points(conn, list(baseline.drivers), t_from, t_to)
+    roles = chiller_derive(role_arrays(baseline.driver_roles, values))
+    tons = roles["tons"]
+    usable = tons >= 20.0
+    return float(baseline.residual_sd / 1000.0 / tons[usable].mean())
+
+
 def main() -> int:
     with psycopg.connect(resolve_dsn()) as conn:
-        print("=== fits, one set per run, on the first "
+        print("=== fits, one set per run and asset, on the first "
               f"{COMMISSIONING_DAYS} days of each ===")
-        print(f"  {'run':<26}{'baseline':<22}{'R2':>10}{'resid sd':>12}  unit")
-        for label, raw_from, _ in AHU_SPANS:
-            t_from = datetime.fromisoformat(raw_from)
-            fit_to = t_from + timedelta(days=COMMISSIONING_DAYS)
-            values, quality = load_ahu_frame(conn, t_from, fit_to)
-            for baseline in fit_ahu_baselines(values, quality, t_from, fit_to):
-                short = baseline.baseline_id.split(".")[-1]
-                print(f"  {label:<26}{short:<22}{baseline.r_squared:10.5f}"
-                      f"{baseline.residual_sd:12.4f}  {baseline.unit}")
+        print(f"  {'run':<30}{'asset':<11}{'baseline':<20}{'R2':>10}"
+              f"{'resid sd':>12}  unit")
+        classes = asset_classes(conn)
+        for label, assets, raw_from, _ in RUNS:
+            window = commissioning_window(datetime.fromisoformat(raw_from))
+            for asset_id in assets:
+                fitted, refused = fit_asset_baselines(
+                    conn, asset_id, classes[asset_id], window
+                )
+                for baseline in fitted:
+                    short = baseline.baseline_id.split(".")[-1]
+                    extra = kw_per_ton_sd(conn, baseline, window)
+                    tail = "" if extra is None else f"   = {extra:.5f} kW/ton"
+                    print(f"  {label:<30}{asset_id:<11}{short:<20}"
+                          f"{baseline.r_squared:10.5f}{baseline.residual_sd:12.4f}"
+                          f"  {baseline.unit}{tail}")
+                for message in refused:
+                    print(f"  {label:<30}{asset_id:<11}REFUSED  {message.split(': ', 1)[1]}")
 
         spans = {label: (a, b) for label, a, b in AHU_SPANS}
         data = {}
