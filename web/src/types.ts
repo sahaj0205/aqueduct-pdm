@@ -211,3 +211,21 @@ export interface HealthSeries {
   modes: string[];
   series: HealthPoint[];
 }
+
+export interface GraphNode {
+  asset_id: string;
+  name: string;
+  brick_class: string;
+  hops: number;
+  health: number | null;
+  open_advisories: number;
+}
+
+export interface GraphResult {
+  asset_id: string;
+  direction: string;
+  nodes: GraphNode[];
+  /** Occupied spaces reached. Downstream only. */
+  zones: string[];
+  occupants: number;
+}

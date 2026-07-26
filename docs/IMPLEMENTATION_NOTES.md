@@ -7037,3 +7037,120 @@ strict and builds.
 
 START HERE: `web/src/lib/chart.ts` — every number the fan chart draws is computed there,
 which is also what makes the narrowing claim verifiable outside a browser.
+
+
+## Checkpoint 6.6 — Plant schematic
+
+### WHAT WE DID
+
+The dashboard now draws the plant. Cooling towers feed a condenser water loop, which
+feeds three chillers, which feed the chilled water loop, which feeds the air handler's
+cooling coil, which feeds the supply fan, which feeds the five occupied zones. Each
+machine is a box coloured by its current health — green above 70, amber between 40 and
+69, red below, grey for the equipment this dataset never scores — with a count of its
+open advisories pinned to the corner and a coloured dot for each kind of fault open on
+it. When cross-asset reasoning has blamed a chiller for something happening at the air
+handler, the pipe between those two lights up red and dashed and the picture says which
+machine is being held responsible. That is the thing a list cannot do: the queue can put
+the chiller at position two and the air handler symptom at position seven, but only the
+drawing shows that they are joined by a pipe and are one fault rather than two. Clicking
+a machine opens its highest-priority advisory.
+
+### HOW IT WORKS
+
+`web/src/lib/schematic.ts :: buildSchematic(assets, advisories, zones)`
+  WHY IT EXISTS: The whole picture as data — every coordinate, every colour, and whether
+    the chilled water path is lit. The component draws shapes and does no arithmetic,
+    which is what lets the schematic be rendered and checked without a browser.
+  WHAT IT DOES: Places eleven boxes and sixteen connecting polylines, resolves each
+    machine's colour from its health, collects the distinct fault classes open on it, and
+    decides whether the chilled water path is carrying an explanation rather than just
+    water.
+  CHOICES: Positions are hand-placed rather than produced by a graph layout engine. This
+    plant has a fixed topology that will not change, and a solver would arrange it
+    differently on every load, which is the opposite of what a schematic is for — an
+    operator learns where the chiller is on this picture. Zone boxes come from the
+    downstream graph traversal rather than being written into the frontend, so a building
+    with a sixth zone gets a sixth box with no code change. The two health thresholds are
+    imported from `lib/format.ts` rather than restated, so the queue and the schematic
+    cannot disagree about what amber means.
+  ⚠ JUDGEMENT CALL: Colour lives in fill and stroke attributes computed from health, not
+    in a CSS class. Partly because colour here IS data — it is the health score — and
+    partly for a second reason that turned out to matter more: it makes the rendered SVG
+    self-contained, so it can be written to a file and opened on its own. A
+    class-styled SVG would have needed a stylesheet to mean anything and could not have
+    been verified the way this one is.
+
+`web/src/lib/schematic.ts` — which chiller lights up
+  WHY IT EXISTS: The cross-asset highlight is the one piece of state on this drawing that
+    is an inference rather than a measurement, so it needs care.
+  WHAT IT DOES: Looks for a consequential advisory whose named cause is a chiller, and if
+    it finds one, lights the pipe from THAT chiller to the loop and the loop to the coil.
+  CHOICES: Only the chiller actually blamed is lit, not all three. Lighting the whole
+    plant would say the plant is at fault when the diagnosis named one machine, and the
+    diagnosis naming one machine is the entire value of checkpoint 6.1. The accompanying
+    line above the drawing repeats that the demoted advisory is still in the queue, so
+    the picture cannot be read as the system having decided the air handler is fine.
+
+`web/src/components/PlantSchematic.tsx`
+  WHY IT EXISTS: The drawing.
+  WHAT IT DOES: Renders the plan as SVG — edges first so boxes sit on top of them, two
+    arrowhead markers so an ordinary flow and a lit fault path are distinguishable at a
+    glance, a health legend and a legend entry for the fault path. Machines are
+    clickable; loops and zones are not, because there is nothing to open on them.
+  CHOICES: Loops are drawn as dashed rounded bars rather than boxes, and zones smaller
+    than machines, so three kinds of thing are three shapes. The advisory count is a
+    filled red circle in the corner and the fault classes are small dots along the
+    bottom edge in the same colours the queue's badges use, so the class survives a
+    glance down the picture rather than needing a hover.
+
+`web/scripts/run-ts.mjs`
+  WHY IT EXISTS: Runs the three verification scripts, TypeScript and all, with no test
+    runner and no new dependency.
+  WHAT IT DOES: Bundles a script in memory with esbuild, which Vite already depends on,
+    writes it to a temp file and imports it.
+  CHOICES: Three things in here are each a fix for a real failure rather than
+    boilerplate. A plugin stubs `*.module.css`, because esbuild treats those as CSS
+    modules and refuses to bundle one without an output path — and `--loader` does not
+    override that; the stub returns each key as its own class name, which is what a CSS
+    module does anyway. A `createRequire` banner is injected, because `react-dom/server`
+    is CommonJS and calls `require("stream")`, which does not exist in an ESM bundle. And
+    the bundle goes to a temp file rather than a `data:` URL, because any error inside a
+    data URL reports the entire base64 bundle as the specifier and buries the stack trace
+    under seven megabytes of noise.
+
+`web/scripts/verify-schematic.ts`
+  WHY IT EXISTS: This is the one visual in the project that can be verified properly
+    rather than described, because an SVG is text.
+  WHAT IT DOES: Fetches live assets, advisories and the downstream traversal, prints the
+    component table with each box's state and pinned faults, renders the real React
+    component to static markup with `renderToStaticMarkup`, asserts eleven properties,
+    and writes the result to `docs/plots/plant_schematic.svg`.
+  CHOICES: Eight of the eleven checks are about data — every asset has a box, boxes are
+    coloured from live health, faults are pinned to the component they belong to, supply
+    air reaches every zone, the path highlights on a cross-asset fault, and only the
+    blamed chiller is lit. The last three are about GEOMETRY, and they exist because they
+    are the only checks on the drawing itself available without eyes: no two components
+    overlap, every component is inside the canvas, and every pipe's endpoints land on a
+    component rather than in mid-air. Those three catch exactly what a glance would catch.
+  ⚠ JUDGEMENT CALL: The output path resolves against the working directory, not against
+    the script's own location. The runner bundles the script into a temp directory before
+    executing it, so `import.meta.dirname` points at `/tmp` — the first version tried to
+    write to the filesystem root and got EACCES. npm scripts always run in the package
+    directory, which makes the working directory the stable anchor.
+
+### The verification, in one paragraph
+
+`make web-verify-schematic` passes all eleven checks and writes a 10,688-byte SVG. The
+component table shows chiller-1 critical at health 0 with two equipment advisories,
+chiller-2 healthy at 79 with one, the air handler degrading at 63 with four advisories
+across two fault classes, and the three cooling towers and third chiller grey because
+this dataset never scores them — which is honest rather than a gap, since the LBNL
+chiller file carries no readings for them. Sixteen pipes are drawn and exactly two are
+lit: `chiller-1-chw` and `chw-coil`, with the chilled water path reported ACTIVE and
+chiller-1 named as responsible for `ahu-1 / apar-20`. Supply air reaches five zones and
+200 occupants. Geometry is clean: no overlaps, nothing outside the 780×588 canvas, and
+all 32 polyline endpoints land on a component.
+
+START HERE: `docs/plots/plant_schematic.svg` — open it. It is the rendered output of
+`web/src/components/PlantSchematic.tsx` against live data, written by the verification.

@@ -9,6 +9,7 @@ import type {
   AdvisoryDetail,
   AdvisorySummary,
   AssetSummary,
+  GraphResult,
   HealthSeries,
   RulHistory,
   SiteSummary,
@@ -50,6 +51,8 @@ export const api = {
     get<AdvisoryDetail>(`/advisories/${encodeURIComponent(id)}`),
   rulHistory: (assetId: string) =>
     get<RulHistory>(`/assets/${encodeURIComponent(assetId)}/rul-history`),
+  downstream: (assetId: string) =>
+    get<GraphResult>(`/graph/downstream/${encodeURIComponent(assetId)}`),
   health: (assetId: string, from: string, to: string) =>
     get<HealthSeries>(
       `/assets/${encodeURIComponent(assetId)}/health` +

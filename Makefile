@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories api web web-verify web-verify-detail web-build
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories api web web-verify web-verify-detail web-verify-schematic web-build
 
 # Resolve and install the Python environment into .venv
 install:
@@ -171,6 +171,12 @@ web-verify:
 # Prints the interval per date as a bar so the narrowing is readable in a terminal.
 web-verify-detail:
 	cd web && npm run verify:detail
+
+# Render the plant schematic with live data OUTSIDE a browser, check its structure and
+# its geometry, and write it to docs/plots/plant_schematic.svg. An SVG is text, so that
+# file is a reproducible screenshot rather than a description.
+web-verify-schematic:
+	cd web && npm run verify:schematic
 
 # Typecheck and production-build the frontend.
 web-build:

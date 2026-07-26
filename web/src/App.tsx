@@ -3,8 +3,9 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.ts";
 import { AdvisoryDetail } from "./components/AdvisoryDetail.tsx";
 import { AdvisoryQueue } from "./components/AdvisoryQueue.tsx";
+import { PlantSchematic } from "./components/PlantSchematic.tsx";
 import { SummaryStrip } from "./components/SummaryStrip.tsx";
-import type { AdvisorySummary, SiteSummary } from "./types.ts";
+import type { AdvisorySummary, AssetSummary, SiteSummary } from "./types.ts";
 
 /**
  * The operations screen.
@@ -24,18 +25,27 @@ export function App() {
   // linkable, which is worth naming -- an operator cannot paste a colleague an
   // advisory. That is the first thing a router would buy.
   const [openId, setOpenId] = useState<string | null>(null);
+  const [assets, setAssets] = useState<AssetSummary[] | null>(null);
+  const [zones, setZones] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setError(null);
     try {
       // Fetched together rather than in sequence: the strip and the queue are two
       // views of one queue and should never be rendered from different vintages.
-      const [nextSummary, nextAdvisories] = await Promise.all([
+      const [nextSummary, nextAdvisories, nextAssets, downstream] = await Promise.all([
         api.summary(),
         api.advisories("open"),
+        api.assets(),
+        // Zone names come from the graph traversal rather than being written into the
+        // frontend, so a building with a sixth zone gets a sixth box with no code
+        // change. Tolerated as optional: the schematic renders without zones.
+        api.downstream("ahu-1").catch(() => null),
       ]);
       setSummary(nextSummary);
       setAdvisories(nextAdvisories);
+      setAssets(nextAssets);
+      setZones(downstream?.zones ?? []);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
@@ -74,6 +84,20 @@ export function App() {
       {!error && openId === null && (
         <>
           {summary && <SummaryStrip summary={summary} />}
+          {assets && advisories && (
+            <PlantSchematic
+              assets={assets}
+              advisories={advisories}
+              zones={zones}
+              onSelectAsset={(assetId) => {
+                // Clicking a machine opens its highest-priority advisory. The queue is
+                // already in priority order, so the first match is that advisory, and
+                // a component with nothing open simply does not respond.
+                const first = advisories.find((a) => a.asset_id === assetId);
+                if (first) setOpenId(first.advisory_id);
+              }}
+            />
+          )}
           {advisories && (
             <AdvisoryQueue
               advisories={advisories}

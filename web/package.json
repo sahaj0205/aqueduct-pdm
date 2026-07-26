@@ -8,8 +8,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "verify": "esbuild scripts/verify-queue.ts --bundle --platform=node --format=esm --target=node20 --log-level=warning | node --input-type=module",
-    "verify:detail": "esbuild scripts/verify-detail.ts --bundle --platform=node --format=esm --target=node20 --log-level=warning | node --input-type=module"
+    "verify": "node scripts/run-ts.mjs scripts/verify-queue.ts",
+    "verify:detail": "node scripts/run-ts.mjs scripts/verify-detail.ts",
+    "verify:schematic": "node scripts/run-ts.mjs scripts/verify-schematic.ts"
   },
   "dependencies": {
     "react": "^18.3.1",
