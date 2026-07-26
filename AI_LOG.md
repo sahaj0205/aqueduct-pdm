@@ -885,3 +885,426 @@ rather than against the commissioned value, which is correct for residual-based
 indicators and wrong for directly measured ones — chilled water at full
 compressor command sits 0.2 K above setpoint on a healthy machine, and that alone
 started the clean chiller at 90 and ended it at 68 with nothing whatsoever wrong.
+
+**Updated after Task 5.** The forward claim this outcome ended on was that the fix
+for the seasonal false onsets is a longer or seasonally refitted commissioning
+window, which this dataset cannot supply. That was half right and the wrong half is
+the more useful one.
+
+The half that was right: the two false onsets are real and they persist. Nothing in
+Task 5 made the changepoint detector stop firing on the clean chillers.
+
+The half that was wrong: a longer commissioning window is not the only fix, and the
+one that works needed no more data at all. The problem was never the LENGTH of the
+reference period — it was that the reference period is the wrong period. Checkpoint
+5.4 compares each window against the FAULT-FREE run at the same time of year
+instead of against the start of the same run, and the seasonal artefact simply
+disappears: the coil-leak run's mixed air balance reads −2.36 of its own spread
+against its own February commissioning window, and +0.03 against the fault-free run
+in the same weeks. Same data, same relation, same code — a different choice of what
+"normal" is compared to. The lesson generalises past this project: when a
+condition-normalised model drifts seasonally, matching the season of the comparison
+is cheaper than extending the fit, and it was available the whole time.
+
+And the two false onsets no longer reach anybody. Checkpoint 5.3 refuses to publish
+a prediction whose degradation rate cannot be separated from zero, and both of these
+sit at 0.08 and 0.11 standard deviations from zero. Across both fault-free runs —
+720 combinations of machine, failure mode and day — the system now publishes
+nothing at all. So the false-positive problem this decision relocated rather than
+solved has now been bounded twice: once by making the comparison season-matched, and
+once by requiring a rate to be measurably non-zero before anyone is told about it.
+Neither fix touched a threshold in the baseline layer, which is where I expected to
+have to pay for this.
+
+---
+
+## D-07 — Wiener first-passage RUL over an LSTM or Transformer
+
+**Forcing question**
+
+Remaining useful life is the deliverable this project is judged on, and the
+question is not "which model is most accurate" — nothing here can establish that,
+because no run-to-failure population exists to be accurate against. The question
+is what a maintenance planner can be handed. A single date is unusable: nobody
+schedules a crew on a point estimate with no width. A date with a made-up width is
+worse, because the width looks like information and is not.
+
+So the requirement is a genuine distribution over failure dates, narrowing as
+evidence arrives, from parameters somebody can argue with. That requirement rules
+out more than it sounds like it does, and it rules out the method a reader would
+expect to see first.
+
+**Options**
+
+1. **Deep sequence model — LSTM or Transformer over the multivariate history.**
+   *Rejected, deliberately.* This is the fashionable answer and it is what a
+   reviewer expects on a remaining-life problem in 2026. Two reasons it cannot be
+   used honestly here, and the first is fatal. There is no public run-to-failure
+   fleet dataset for commercial building HVAC. The LBNL data this project uses is
+   labelled fault data, not failure histories: each run is a simulation of a fault
+   at a fixed severity, and no machine in it is followed from healthy to dead. So a
+   sequence model would have to be trained on the degradation trajectories in
+   `simulator/trajectory.py` — which this project synthesised. Training a model on
+   my own synthetic ramps and then reporting its accuracy against those same ramps
+   measures whether the network can learn the shape I chose. It is circular, and
+   the resulting accuracy number would be a fabrication dressed as a result. The
+   second reason: it produces no attribution. It cannot say WHY it expects failure
+   in forty days, so it cannot be checked, and a technician cannot act on it.
+
+2. **Weibull or another age-based reliability distribution.** *Rejected.* Fits a
+   failure-time distribution to equipment age and returns a hazard from the age
+   alone. This is what most maintenance planning software actually does, and it is
+   the thing predictive maintenance is supposed to replace: it says nothing about
+   the machine in front of you. Two identical chillers of the same age, one with a
+   fouled condenser and one clean, get identical predictions. Every measurement
+   this project spent four tasks producing would be discarded at the last step.
+
+3. **Cox proportional hazards.** *Rejected.* The right shape of answer — a hazard
+   modulated by measured covariates, so condition does enter — and it is the
+   standard tool when you have a population of units, some of which failed. That
+   population is the problem. Cox estimates its baseline hazard from observed
+   failures across many units; here there is one air handler and three chillers,
+   with zero recorded failures between them. There is nothing to estimate the
+   baseline hazard from, and a Cox model fitted to no failures is not a Cox model.
+
+4. **Wiener process with drift, failure as first passage to a threshold.**
+   *Chosen.* Model the degradation indicator as a trend plus noise, and define
+   failure as the first time it touches the threshold in `app.failure_modes`. For
+   this process the first-passage time is Inverse Gaussian in closed form, so the
+   whole distribution over failure dates is an expression rather than a simulation.
+   With a Gamma process as the declared alternative for modes whose underlying
+   quantity can only accumulate.
+
+**Rationale**
+
+The interval is the model's own output, not an add-on. This is the decisive
+property and it is what all three rejected options lack. A Wiener process starting
+a distance `a` below its threshold with drift `mu` and diffusion `sigma` reaches
+that threshold at a time whose cumulative distribution is two normal terms:
+
+    F(t) = Phi((mu*t - a)/(sigma*sqrt(t)))
+           + exp(2*mu*a/sigma^2) * Phi(-(mu*t + a)/(sigma*sqrt(t)))
+
+P10, P50 and P90 are quantiles of that. There is no point estimate anywhere in
+`analytics/rul/estimator.py` and nothing is padded by a factor chosen to make the
+band look appropriately humble. Checked against scipy's Inverse Gaussian on four
+parameter sets spanning these modes, the implementation agrees to 5e-16.
+
+The parameters mean something a person can dispute. `mu` is kelvin per day, or
+watts per day, or kW/ton per day. `sigma` is how far a single day strays from that
+rate. `a` is how far the indicator still has to travel to reach a threshold with a
+written physical justification beside it in the config table. Somebody who thinks
+the answer is wrong can point at which of those three they disagree with. No layer
+of an LSTM affords that.
+
+Bayesian updating on `mu` makes the narrowing a property of the model rather than
+a hope. Accumulated precision is a running sum of positive terms, so the standard
+deviation of the belief about the rate can only fall. Measured: on the coil valve
+leak it goes 0.0110, 0.0067, 0.0054 over 17, 57 and 91 post-onset days, and across
+14 mode/asset/run combinations it narrows in 12, holds unchanged in 1 where no new
+data arrived, and widens in exactly 1 — a Gamma-declared mode on an accelerating
+fault, where the absolute width grows 6.9% while the scale-free width narrows
+10.6%, which is inherent to the Gamma family tying spread to mean.
+
+And the model can refuse. This is the property I did not anticipate and it is the
+best thing about the choice. For non-positive drift the first-passage distribution
+is DEFECTIVE: the total probability of ever reaching the threshold is
+`exp(2*mu*a/sigma^2)`, less than one, with the missing mass at infinity. The
+belief about `mu` is normal so it always puts some weight there, and if P90 lands
+in the missing mass then there is no P90 and the estimator returns nothing. That is
+not a special case anybody coded — it falls out of the arithmetic of the chosen
+process, and it is why checkpoint 5.3 has a coherent thing to refuse on.
+
+**Mine vs delegated**
+
+The rejection of the deep model on circularity grounds is mine and it is the
+central call in this entry. It would have been straightforward to train a small
+LSTM on the synthesised trajectories, report a low validation error, and present
+that as the headline. The reason not to is that the trajectories were built by
+`simulator/trajectory.py` from a severity ladder I chose; measuring a network
+against them measures my own assumptions, and I would have had no honest way to
+say so in a results table. Declining the method a reviewer expects is a risk I
+took knowingly.
+
+The Gamma-process alternative was specified. Where it applies is mine: the column
+`degradation_process` in `app.failure_modes` carries a per-mode physical argument,
+and I assigned `gamma` only where the underlying quantity is irreversible —
+deposit on a tube, escaped refrigerant, trapped dust. Bearing wear is physically
+irreversible too and I still assigned `wiener`, because 45 of 116 daily changes in
+that indicator are downward on a machine with nothing wrong with it, and a process
+that assigns zero probability to observed data is worse than one that is
+philosophically imprecise.
+
+The prior is mine and three versions of it were wrong. Scaling its width by the
+commissioning-period spread made it worth several thousand days of observation on
+a fast fault, dragging a measured 0.438 kW/ton per day down to 0.021. Re-deriving
+it at each date meant the starting point moved, so the interval could widen while
+evidence accumulated. Re-estimating the noise at each step gave day one roughly
+eight hundred times the weight of day thirty. The version that works fixes the
+prior, the process spread and the Gamma shape once, at the moment degradation is
+confirmed, and then only accumulates evidence.
+
+**Confidence**
+
+High that this is the right family for this problem, and the confidence does not
+rest on accuracy. It rests on the interval being derived rather than asserted, on
+the parameters being disputable, and on the model being able to decline. Those are
+properties of the choice and they hold whether or not any particular prediction
+lands.
+
+Moderate on the numbers. Three modes both degraded genuinely and crossed their
+threshold inside a run, and for those the median prediction three weeks out lands
++2.0, +3.9 and +13.6 days from the crossing it was predicting. That is a small
+sample of three, on synthetic degradation, and it should be read as "the machinery
+is not broken" rather than as a measured accuracy.
+
+Low on `sigma` being right. It is fixed from the first fittable window, so a
+trajectory that later turns out much noisier than its opening weeks gets an
+interval that is too narrow by that factor. The monotone clamp upstream makes this
+worse: it flattens a median of 90 percent of all daily intervals and deflates the
+measured spread by between 2.8 and 61 times, which is why the spread is floored at
+the indicator's own commissioning-period spread. That floor is doing real work in
+12 of 14 cases and it is a patch over an upstream problem, not a solution to it.
+
+**Outcome**
+
+**The model was right and the refusal layer turned out to be the load-bearing
+half.** 1,117 estimates were stored across 14 mode/asset/run combinations and the
+first-passage arithmetic behaved exactly as advertised — verified against scipy,
+against simulated random walks for the defective case, and monotone in time. But
+the raw estimator, used on its own, produced two badly wrong answers with
+impeccable arithmetic: the air handler on the coil-leak run reported that it had
+ALREADY failed, on the strength of a fan indicator whose rate sat 0.49 standard
+deviations from zero, and the fault-free chiller reported a median crossing 254
+days out with nothing whatever wrong with it.
+
+Neither is a defect in the model. Both are it faithfully computing the consequence
+of a rate it cannot distinguish from no degradation at all. Refusing on exactly
+that quantity fixed both, and the effect is the single most convincing measurement
+in Task 5: across both fault-free runs, 720 combinations of machine, failure mode
+and day where any prediction is wrong by definition, the system now publishes
+nothing. And on the air handler carrying the coil leak the answer a human sees
+flips from "this unit has already failed, because of its fan" to "its cooling coil
+valve needs attention in about a month", which is the fault that was injected.
+
+What this means for the decision is worth stating precisely, because it is not
+what I expected going in. The value of choosing an interpretable parametric process
+was not primarily that its predictions were good. It was that `mu` and its
+posterior spread are quantities you can test against zero. A deep sequence model
+would have produced its wrong answers with no comparable quantity to gate on —
+there is no "is this network's belief separable from no degradation" test — so the
+fan-bearing false alarm and the healthy-chiller prediction would have shipped. The
+refusal layer exists because the model has parameters. That is the real argument
+for this decision and I did not have it when I made it.
+
+One cost, paid and recorded. The interval genuinely widens sometimes, and the
+verification asked for it never to. On the coil valve leak the P10-to-P90 span goes
+from unbounded to 1,160 days to 1,947 days across the three weeks before failure,
+because the indicator plateaus during exactly that window — the answer key
+confirms the fault reached terminal severity on 2036-05-01, mid-window. The rate
+sawtooths, decaying between the discrete steps of an indicator that only exists
+while the coil valve is commanded shut, and P90 sits far out in the tail of a rate
+only two standard deviations clear of zero. A model that becomes less certain when
+the machine stops getting worse is behaving correctly. It was not tuned to pass.
+
+---
+
+## D-08 — Constraint isolation for sensor versus equipment discrimination
+
+**Forcing question**
+
+A drifting supply air temperature sensor and a leaking cooling coil valve produce
+the same complaint at the air handler: supply air is not where the controller wants
+it. The two call for opposite responses. Sent for equipment when it is a sensor,
+somebody dismantles a healthy coil; sent for a sensor when it is equipment,
+somebody recalibrates a thermometer that was telling the truth and the machine
+carries on failing. Getting this wrong wastes the visit either way, and a
+predictive maintenance system that cannot tell them apart is producing work orders
+by coin flip on a substantial fraction of what it detects.
+
+The tempting approach is a signature per fault: this pattern means sensor, that
+pattern means equipment. It is quick and it is a dead end, because the number of
+patterns grows with the product of faults and equipment types, and each one is a
+claim about the data that nothing can falsify.
+
+**Options**
+
+1. **Learned classifier over the residual vector.** Label the scenarios and train
+   something to map residual patterns onto sensor-or-equipment. Rejected for the
+   same reason as the deep RUL model in D-07 and more sharply: there are four
+   labelled AHU scenarios. A classifier fitted to four examples has memorised them.
+
+2. **A signature rule per fault mode.** Written by hand from the physics: sensor
+   drift moves the coil balance one way, a leak moves it the other. Rejected
+   because it does not generalise past the faults somebody thought of, and because
+   it is unfalsifiable in the way that matters — there is no observation that could
+   contradict "this pattern means sensor".
+
+3. **Analytical redundancy: single-sensor bias reconciliation over the declared
+   relation set.** *Chosen.* Write down every relation between measurements that
+   ought to hold. Observe which stopped holding. Ask whether ONE measurement, if
+   assumed to read consistently wrong, makes all of them hold again — and crucially
+   whether the bias that fixes one relation BREAKS another that the same
+   measurement appears in. If a single bias reconciles everything, the instrument
+   is the suspect. If no single bias can, the measurements agree with each other
+   and the machine is what changed.
+
+**Rationale**
+
+Option 3 is the only one that can be wrong, and that is the argument for it. Every
+hypothesis makes a checkable prediction about relations it did not come from. On
+the sensor drift, assuming `ahu-1.sa_temp` reads high predicts a specific shift in
+three different relations at once, and one bias of +2.434 K reproduces all three
+within their own spreads. The true injected bias is +4 degrees Fahrenheit, which is
++2.22 K. The recovered figure is out by 0.21 K, under ten percent, and nothing in
+the isolation path has access to the answer key.
+
+On the coil valve leak the same hypothesis is refuted by its own arithmetic. The
+bias that reconciles the shut-valve baseline pushes the coil-effectiveness baseline
+from −1.11 to +2.88 of its own spread, flipping its sign. One number cannot be both,
+so no single measurement is lying, so the machine is not performing. That is a
+falsification, not a pattern match, and it would work identically on a fault nobody
+has thought of.
+
+**The consequence for where sensor coverage lives, and a correction to how I first
+stated it.** The premise of this decision is that discrimination is possible only
+where a measurement appears in more than one relation — one relation with one
+suspect can always be reconciled, because it is one equation in one unknown with no
+way to fail. That makes coverage a MODELLING property, settled in the semantic
+model, not a threshold inside a detector. The mixed-air section demonstrates it
+working as intended: `ma_temp` appears in both the mixed-air balance and the coil
+energy balance, and on the stuck-damper run that over-determination is what
+falsifies it — a bias reconciling one would break the other.
+
+But the correction matters more than the confirmation. `sa_temp` appears in exactly
+ONE physical constraint. On the `.ttl` constraint set alone the supply air sensor
+is unfalsifiable, and BOTH faults in the key test come out as "a sensor explains
+it". The coverage that made the key test possible did not come from the constraint
+bindings at all. It came from the condition-normalised baselines of Task 4:
+observed minus expected is a relation that ought to sit at zero exactly like a
+constraint residual, its derivative with respect to its own target point is exactly
+plus one, and `sa_temp` is the target of two of them. Three relations instead of
+one, and the case becomes decidable.
+
+So the honest form of the consequence is broader than the one I set out to record.
+Sensor coverage is a modelling decision — and the model that provides it is not
+only the constraint graph. Any declared relation counts, and a fitted baseline is
+one. That is a more useful conclusion than the original, because adding a baseline
+is cheaper than adding a physical constraint and needs no new instrumentation.
+
+Sparsity is the preference rather than a regulariser bolted on. Two solves run: an
+explicit sweep of every single-point hypothesis, which is the sparsest correction
+that exists, and an L1-penalised fit over all points at once to check whether the
+correction WANTS to concentrate. On the drift run the penalised solve puts +2.415
+on supply air temperature and +0.001 on everything else, reaching the sweep's
+answer independently.
+
+**Mine vs delegated**
+
+Analytical redundancy and the sparsity preference were specified. What the task
+described as achievable with the constraint residuals alone was not, and finding
+that out is the substance of my contribution: bringing the Task 4 baselines in as
+additional relations is the difference between this checkpoint working and not.
+
+Four judgement calls, each forced by a wrong answer I got first, all recorded in
+`analytics/diagnosis/`. The reference window has to be the fault-free run at the
+same time of year, not the start of the same run — comparing the coil-leak run's
+May behaviour against its own February commissioning window reported the mixed-air
+balance out by −2.36 of its spread, and every bit of it was the weather; season
+matched, the same figure is +0.03. A baseline's spread must not be measured over
+the window it was fitted on, because that is an in-sample fit error, and using it
+rejected a hypothesis explaining 94 percent of everything. Falsification has to
+mean "makes some relation worse", not "leaves nothing above one sigma", which
+demands 92 percent per-relation accuracy on a twelve-sigma violation. And at least
+two VIOLATED relations must agree, not merely two relations exist — condenser
+fouling genuinely raises compressor power, so "the meter reads 63 kW high" is
+arithmetically identical to "the machine draws 63 kW more" from one relation, and
+without this the fouled chiller was diagnosed as a faulty power meter.
+
+**Overrode**
+
+Two instructions in the task were followed in a different form than written,
+because as written they produced wrong answers, and both are worth naming.
+
+The localisation test was to be computed over the constraint graph on the premise
+that a sensor fault moves one node while its neighbours hold still. On raw
+readings that premise is false here, because these air handlers run closed loops:
+when the supply air sensor drifts high the controller opens the chilled water
+valve until the READING returns to setpoint. Mean valve position goes from 0.310 on
+the fault-free run to 0.445 on the drift run, while supply air relative to setpoint
+moves LESS than on the clean run. In raw measurement space a drifting sensor looks
+distributed and its neighbours look guilty. Computed on residuals the premise
+holds exactly, and the drift scores 1.00 — a control loop can hide a fault from a
+measurement but it cannot make a physical relation hold that does not hold.
+
+The quality flags from Task 3 were to be combined in as a third test and they
+cannot serve as one. Measured across these runs, `ahu-1.sa_temp` draws stale-data
+advisories on ALL FOUR, the fault-free run included, 16 times there against 8 on
+the run where it is genuinely drifting. That layer answers "can this reading be
+trusted right now", which is about dropouts and stuck values, and it is silent on
+whether a reading arriving perfectly on time is correct. Treating it as evidence
+would have made the fault-free run the most suspicious of the four. It is wired in
+as a confidence caveat that can downgrade `clear` to `weak`, and it changes no
+classification in the set.
+
+**Confidence**
+
+High on the two-fault key test. Both classify correctly, the recovered sensor bias
+lands within 0.21 K of an injected value the code cannot see, and the separation is
+not marginal: on both fault-free runs every relation sits below 0.48 of its own
+spread against 12.18 on the drift run.
+
+High that the method generalises past these faults, because nothing in it is keyed
+to a fault. It asks one question — can a single measurement be biased to reconcile
+this — and the question has the same form for any relation set.
+
+Moderate on the four-way classification. Six scenarios classify correctly and all
+four classes are reached, but three of the four classes rest on a single scenario
+each. `control` in particular rests entirely on the stuck damper, and the threshold
+that catches it had to be made relative to the fault-free gap because one actuator
+in this building disagrees with its own command by half of full travel on every run
+— the same source-data defect Task 3 found when it discovered `sf_status` is
+byte-identical to the occupancy schedule.
+
+Low on anything requiring a season-matched fault-free reference outside the
+May-to-September window the clean air handler run covers. The stuck-damper run is
+late winter and has none; its constraint evidence is therefore untrustworthy and
+the output says so. Its classification survives only because an actuator
+disagreeing with its own command needs no reference at all.
+
+**Outcome**
+
+Six scenarios, six correct classifications, all four classes reached including
+`ambiguous`. The key test passes: the sensor drift is called SENSOR and named to
+the right point with a bias within ten percent of truth, and the coil valve leak is
+called EQUIPMENT, from a single mechanism that was never told which fault was
+which.
+
+The most useful thing this produced is not a classification. It is that
+`ambiguous` turned out to be a diagnosis of the INSTRUMENTATION rather than of the
+equipment, and an actionable one. When the only surviving suspect appears in a
+single relation, the correct output is not a guess with low confidence — it is
+"this building cannot decide this case, and one more relation containing this point
+would make it decidable". `chw-plant-1.sec_supply_temp` is permanently in that
+state here and cannot even be cross-checked, because the model already records that
+the two LBNL systems are independent simulations and the water in that expression
+is not physically the water that cooled that air. That is a gap in the model, it is
+now visible as one, and closing it is a `.ttl` edit rather than a threshold change
+— which is exactly the consequence this decision was made to produce, arrived at
+from a direction I did not expect.
+
+The measured set, for the record:
+
+    ahu_sat_sensor_drift        SENSOR     ahu-1.sa_temp, bias +2.434 K (true +2.22)
+    ahu_cooling_valve_leakage   EQUIPMENT  no single bias reconciles the relations
+    ahu_oa_damper_stuck         CONTROL    oa_damper 0.612 from command vs 0.000 clean
+    chiller_condenser_fouling   EQUIPMENT  power bias would break the energy balance
+    clean_ahu                   AMBIGUOUS  nothing violated, nothing degrading
+    clean_chiller               AMBIGUOUS  nothing violated, nothing degrading
+
+Two limits are worth carrying forward rather than leaving implied. Three of the four
+classes rest on a single scenario each, so "all four classes are reachable" is
+demonstrated and "all four are reliable" is not. And the whole layer depends on
+having a fault-free window at the same time of year to compare against; where the
+calendar does not supply one, as on the late-winter damper run, the constraint
+evidence has to be discounted and the output says so.

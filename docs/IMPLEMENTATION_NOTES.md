@@ -5740,3 +5740,142 @@ fault-free runs every relation sits below 0.5 of its own spread — the largest 
 START HERE: `analytics/diagnosis/isolation.py` — `baseline_relations`. The checkpoint
 is impossible without it: the physical constraints alone leave supply air temperature
 in one relation, and one relation with one suspect can never be wrong.
+
+---
+
+## Checkpoint 5.5 — Decision log for RUL and fault discrimination
+
+### WHAT WE DID
+
+The log now records the two decisions Task 5 turned on, and closes out the one
+Task 4 left open. The first is why the remaining-life model is a classical
+stochastic process rather than a neural network — a choice a reader will question
+first, so the reasoning is written to be attacked rather than admired. The second
+is why sensor-versus-equipment discrimination is posed as a falsifiable question
+about redundancy instead of a pattern learned from examples.
+
+Both entries record something that changed my mind while building them, and in both
+cases the thing that changed was the argument for the decision rather than the
+decision itself. That is the useful content: a log that only says "I chose X and X
+worked" teaches nothing that the code does not already show.
+
+### HOW IT WORKS
+
+`AI_LOG.md` :: D-07 — Wiener first-passage RUL over an LSTM or Transformer
+- WHY IT EXISTS: The single most predictable objection to this project is that it
+  does not use a deep sequence model on a sequence problem. Declining the
+  fashionable method needs an argument on the record, not an omission.
+- WHAT IT DOES: Four named options. The deep model is rejected on circularity: no
+  public run-to-failure fleet dataset exists for building HVAC, so a network would
+  be trained on the degradation ramps this project synthesised and then scored
+  against those same ramps, which measures whether it can learn a shape I chose.
+  Weibull is rejected as age-based, which is the thing predictive maintenance
+  replaces — two identical chillers of the same age, one fouled and one clean, get
+  identical answers. Cox is rejected for needing a failure population; there are
+  four machines here and zero recorded failures. Wiener first passage is chosen
+  because the interval is the model's own output, the parameters are quantities
+  somebody can dispute, and the belief narrows by construction.
+- CHOICES: The Rationale leads with the closed-form cumulative distribution written
+  out, so the claim "the interval is derived, not asserted" can be checked rather
+  than believed. Every number in the entry is measured: the posterior spread
+  narrowing 0.0110 to 0.0067 to 0.0054 over 17, 57 and 91 days; 12 of 14
+  combinations narrowing with one holding and one widening; the three median errors
+  of +2.0, +3.9 and +13.6 days.
+- ⚠ JUDGEMENT CALL: The Confidence section says high confidence in the family and
+  moderate in the numbers, with the reason separated: the confidence rests on the
+  interval being derived, the parameters being disputable and the model being able
+  to decline — properties of the choice that hold whether or not any prediction
+  lands. Three data points on synthetic degradation is explicitly labelled as "the
+  machinery is not broken" rather than as an accuracy measurement.
+
+`AI_LOG.md` :: D-07 Outcome
+- WHY IT EXISTS: The Outcome is where the argument changed, and it changed in the
+  project's favour for a reason I did not have when I made the decision.
+- WHAT IT DOES: Records that the estimator on its own produced two badly wrong
+  answers with impeccable arithmetic — the air handler reporting it had already
+  failed on a fan indicator 0.49 standard deviations from zero, and the fault-free
+  chiller predicting a crossing 254 days out. Then the point: the value of an
+  interpretable parametric process was not mainly that its predictions were good.
+  It was that the drift and its spread are quantities you can test against zero. A
+  deep model has no comparable quantity to gate on, so both false answers would
+  have shipped. **The refusal layer exists because the model has parameters** —
+  that is the real argument for the decision, and it is stated as one I acquired
+  rather than one I started with.
+- CHOICES: The one cost is recorded rather than buried: the interval genuinely
+  widens on the coil valve leak, from unbounded to 1,160 to 1,947 days, because the
+  indicator plateaus in exactly that window — which the answer key confirms, the
+  fault having reached terminal severity mid-window. Stated as correct behaviour and
+  explicitly not tuned.
+
+`AI_LOG.md` :: D-08 — Constraint isolation for sensor versus equipment
+  discrimination
+- WHY IT EXISTS: Records why the discrimination is a falsification rather than a
+  signature, and what that implies about where the capability lives.
+- WHAT IT DOES: Three options. A learned classifier is rejected — four labelled air
+  handler scenarios means memorisation. A signature rule per fault is rejected for
+  not generalising and for being unfalsifiable, in that no observation could
+  contradict "this pattern means sensor". Single-sensor bias reconciliation is
+  chosen precisely because it CAN be wrong: every hypothesis predicts a specific
+  shift in relations it did not come from, and on the drift run one bias of +2.434 K
+  reproduces three of them against an injected truth of +2.22 K.
+- ⚠ JUDGEMENT CALL: The consequence the checkpoint asked me to record is that
+  sensor coverage is a modelling decision in the `.ttl` bindings, with the
+  over-determined mixed-air section being what makes isolation possible. I recorded
+  a correction to that rather than the claim itself, because the claim is half
+  wrong. The mixed-air section does work as described and it is what falsifies mixed
+  air temperature on the damper run. But supply air temperature appears in exactly
+  ONE physical constraint, so on the constraint set alone it is unfalsifiable and
+  both faults in the key test come out as sensor faults. The coverage that made the
+  key test possible came from Task 4's baselines, not from the constraint bindings.
+  The corrected form — any declared relation counts, and a fitted baseline is one —
+  is more useful than the original, because adding a baseline is cheaper than adding
+  a physical constraint and needs no new instrumentation.
+- CHANGED FROM BEFORE: This is the second entry to carry an **Overrode** section,
+  after D-05. Two instructions were followed in a different form than written: the
+  localisation test is computed on residuals rather than raw readings, because these
+  are closed control loops and in raw space a drifting sensor looks distributed while
+  its neighbours look guilty; and the Task 3 quality flags are demoted from a third
+  test to a confidence caveat, because the supply air sensor draws stale-data
+  advisories on all four runs and 16 times on the fault-free one against 8 on the
+  drift run.
+
+`AI_LOG.md` :: D-06 Outcome, updated after Task 5
+- WHY IT EXISTS: D-06 ended on a forward claim, and leaving a forward claim
+  unresolved is how a decision log becomes decoration.
+- WHAT IT DOES: The claim was that fixing the seasonal false onsets needs a longer
+  or seasonally refitted commissioning window, which this dataset cannot supply.
+  Half right. The two false onsets are real and persist. But a longer window was
+  never the only fix and the one that works needed no extra data: the problem was
+  not the LENGTH of the reference period, it was that the reference period is the
+  wrong period. Comparing against the fault-free run at the same time of year
+  instead of the start of the same run takes the coil-leak run's mixed air balance
+  from −2.36 of its own spread to +0.03. Same data, same relation, same code.
+- CHOICES: Also records that the two false onsets no longer reach anybody, because
+  5.3 refuses a rate that cannot be separated from zero and both sit at 0.08 and
+  0.11 standard deviations. So the false-positive problem D-06 admitted it had
+  relocated rather than solved is now bounded twice, and neither fix touched a
+  threshold in the baseline layer — which is where I had expected to have to pay.
+
+Skipped as routine: no code was written in this checkpoint.
+
+### MEASURED RESULT
+
+    8 entries; Forcing question 8, Options 8, Rationale 8, Mine vs delegated 8,
+    Confidence 8, Outcome 8, Overrode 2
+
+- Outcome lengths, characters: D-01 3383, D-02 2470, D-03 2397, D-04 2457,
+  D-05 3947, D-06 4913, D-07 2760, D-08 2248. None blank, none a stub.
+- D-07 carries four named options, D-08 three, both as specified.
+- D-06's outcome grew from 2,917 to 4,913 characters with the Task 5 update, and the
+  forward claim it previously ended on is now resolved — with the prediction inside
+  it recorded as half wrong.
+- Every figure quoted in both new entries traces to output in this document or in a
+  run script: the +2.434 K recovered bias against +2.22 K injected, the −1.11 to
+  +2.88 sign flip, the 0.310 to 0.445 valve position, the 16-against-8 advisory
+  count, 0 predictions across 720 fault-free mode-days, and the 5e-16 agreement with
+  scipy's Inverse Gaussian.
+
+START HERE: `AI_LOG.md` — the Outcome of D-07. It is the only place in the log that
+records the ARGUMENT for a decision changing while the decision stayed put: the
+reason to prefer an interpretable model turned out to be that its parameters give
+you something to refuse on, which is not why I chose it.
