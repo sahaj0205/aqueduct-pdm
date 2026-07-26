@@ -3355,3 +3355,135 @@ condition-normalised baseline rather than a single median and spread.
 
 START HERE: `analytics/rules/constraints.py` — `parse_expression` and `evaluate`
 are the whole mechanism; everything else is configuration and storage.
+
+## Checkpoint 3.6 — Decision log
+
+### WHAT WE DID
+
+The decision log now covers the rule engine, which was the largest architectural
+choice in this task and the one that determines what a third piece of equipment
+will cost. The entry on the semantic model is also closed out, because the thing
+it was waiting for happened earlier and differently than expected.
+
+Separately, one small defect in the semantic model found by the previous
+checkpoint was corrected: a constraint claimed to depend on a sensor its
+arithmetic never touches.
+
+### HOW IT WORKS
+
+`model/extensions.ttl :: mvn:CoilEnergyBalance`
+  WHY IT EXISTS: The model declares which sensors each physical constraint
+    depends on. Task 5 will use those declarations to work out which readings
+    could have moved a residual, so an over-broad declaration would send it
+    looking at a sensor that cannot possibly be responsible.
+  CHANGED FROM BEFORE: Five member points were declared and only four were read.
+    The extra one was the secondary loop RETURN water temperature; the expression
+    needs the water going TO the coil, and because the source dataset crosses
+    that pair, the supply water arrives in the column named RW. The declaration
+    now lists four members and the cross-check that found it is silent.
+
+`AI_LOG.md :: D-04 Outcome`
+  WHY IT EXISTS: The entry predicted the Brick decision would not be tested until
+    cross-asset diagnosis in Task 6. That prediction was wrong and the log should
+    say so.
+  WHAT IT DOES: Records that the graph was tested in Task 3 instead, by rule
+    dispatch, and on precisely the capability a hand-built schema could not have
+    provided — a rule written against one class name matching equipment recorded
+    under another, resolved through an equivalence Brick declares and the LBNL
+    files do not. Records what using it cost against what adopting it cost, and
+    that the constraint expressions live in the graph so 500,810 residual rows
+    were produced with no physics in the Python.
+  ⚠ JUDGEMENT CALL: The outcome also records a failure that reflects badly on
+    the entry above it. D-04 credits the decision to give each source system its
+    own namespace, on the grounds that both files define OA_TEMP and the two are
+    different instruments. That held in the model — and then the same trap caught
+    me one layer up in checkpoint 3.5, where the dictionary translating graph
+    names back to database identifiers was keyed on the column name alone and
+    silently resolved the air handler's dry bulb to the chiller plant's wet bulb.
+    Being right about namespacing in the model does not inoculate the code that
+    reads the model. A log that only records the decisions that worked is
+    marketing.
+
+`AI_LOG.md :: D-05`
+  WHY IT EXISTS: The rule engine's central choice — where a machine's identity
+    enters the system.
+  WHAT IT DOES: Sets out the three options the checkpoint names, argues for the
+    class-keyed registry, and backs the argument with the measured cost of the
+    second equipment class rather than an estimate.
+  CHOICES: The rationale rests on one number. Adding the chiller — three rules,
+    its own baselines, and a completely different notion of when the machine is
+    running — changed 346 new lines of chiller physics, 24 lines in the shared
+    evaluator, and ZERO lines in the dispatcher. The 24 lines are one parameter:
+    an air handler is idle when the building is empty and a chiller is idle when
+    it is not running, so the name of the idle state became an argument. That is
+    what a new equipment class costs here, and it is the number the per-asset
+    option could not have produced.
+  ⚠ JUDGEMENT CALL: On rejecting the rules DSL, the entry argues the position was
+    not "no DSL ever" but "a DSL for arithmetic, not for control flow" — and
+    points at checkpoint 3.5, where a narrow one did earn its place because the
+    constraint expressions are arithmetic only and buy a real property. Recording
+    a rejected option that was then partially adopted elsewhere is more useful
+    than pretending the two decisions were unrelated.
+
+`AI_LOG.md :: D-05 Overrode`
+  WHY IT EXISTS: A field the earlier entries do not have, added because this
+    checkpoint asks for it: where my recommendation was overruled.
+  WHAT IT DOES: Records both cases from this task. The package name, where
+    `platform/` turned out to be unusable, I recommended `aqueduct/` and was
+    overruled in favour of `analytics/` — no consequence, aesthetic either way.
+    And the quality scoring scope, where I recommended scoring only the
+    synthesised scenarios and was overruled in favour of including the fault-free
+    LBNL year as well.
+  CHOICES: The second override is recorded as having been RIGHT, and my
+    recommendation as having been wrong in a way that would have caused rework.
+    The fault-free year became the baseline for the chiller design curves in 3.4
+    and the residual normalisation in 3.5, and both need quality scores attached
+    to their baseline data. My cost estimate was pessimistic too — 50 to 70
+    minutes projected against 17.3 actual.
+
+`AI_LOG.md :: D-01 Outcome`
+  WHY IT EXISTS: The entry carried a caveat that the one-day chunk interval was
+    "workable but at the high end", and that planning cost would grow with chunk
+    count. That prediction came true with a number large enough to constrain the
+    design of the API.
+  WHAT IT DOES: Records that the database choice itself was right and delivered
+    what it was picked for, and then that the chunk interval was not. The quality
+    scorer's write-back joins a staging table against the measurements on point
+    and timestamp, which gives the planner nothing to exclude chunks by, so it
+    planned across all 5,077 chunks to change 267,840 rows: 36,750 ms of planning
+    on top of 296,200 ms of execution, 5 minutes 33 seconds in total, against
+    7,850 ms once the time range is restated. A factor of 42.
+  CHOICES: Recorded explicitly as debt rather than as a solved problem. The fix
+    applied in 3.1 is one redundant-looking predicate in one statement; nothing
+    stops the next query from omitting it, and the penalty for forgetting looks
+    like a hang rather than an error. The real fix needs the hypertable rebuilt,
+    because the chunk interval only applies to chunks created after it changes —
+    a reload, a scenario re-run and a re-score, roughly an hour, which was not
+    paid. The entry says so rather than leaving the decision implicit.
+  ⚠ JUDGEMENT CALL: The outcome also argues the interval is not wrong in
+    general, only wrong here: a one-day chunk suits a real building, and this
+    table only reaches 5,077 chunks because it holds 7,936 days of simulated
+    time. A real three-year deployment at the same cadence would have produced
+    about 1,100 and none of this would have surfaced. Saying that matters because
+    the naive lesson — never use daily chunks — is the wrong one to carry
+    forward.
+
+### MEASURED RESULT
+
+- Five entries, each carrying all six required subsections: 5, 5, 5, 5, 5, 5.
+- The Overrode field appears once, on D-05, as specified.
+- Numbered D-05, not D-04 as the checkpoint said, because D-04 is already the
+  Brick entry written in checkpoint 2.5. The outcomes filled in are D-04's, which
+  is the one now genuinely testable, and D-01's, rather than D-03's, which was
+  filled in at 2.5 already.
+- No outcome is left open. All five entries now carry one.
+- The constraint member cross-check, which reported one discrepancy before this
+  checkpoint, now reports none. Stored residuals are unaffected — they are
+  computed from the expression, not from the declared membership, so no
+  re-evaluation was needed.
+
+START HERE: `AI_LOG.md` — two sections earn the read. The Overrode section of
+D-05 is the only place in the log where a recommendation of mine is recorded as
+having been overruled and the overrule as having been correct. The Outcome of
+D-01 is the one piece of live technical debt the project is carrying, with the
+measurement that quantifies it and the hour it would cost to clear.

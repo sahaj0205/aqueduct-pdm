@@ -201,11 +201,18 @@ traced to a chiller cause.
 
 Fires on: cooling valve leaking, cooling valve stuck, supply air sensor drift,
 and -- through the chiller plant -- loss of chilled water temperature.""" ;
+    # Four members, matching the four points the expression below actually
+    # reads. chiller:CWL_SEC_SW_TEMP was listed here until checkpoint 3.5 and was
+    # never read: the expression needs the water GOING TO the coil, and because
+    # LBNL crosses that pair, the supply water arrives in the column named RW.
+    # Declaring the return water as well made the model claim a dependency the
+    # arithmetic does not have, which would have misled the sensor-versus-
+    # equipment discrimination in Task 5 about which sensors can move this
+    # residual.
     mvn:constrainedBy sdahu:SA_TEMP,
         sdahu:MA_TEMP,
         sdahu:CHWC_VLV,
-        chiller:CWL_SEC_RW_TEMP,
-        chiller:CWL_SEC_SW_TEMP ;
+        chiller:CWL_SEC_RW_TEMP ;
     mvn:residualExpression """({ahu-1.ma_temp} - {ahu-1.sa_temp}) - {ahu-1.chw_valve} * ({ahu-1.ma_temp} - {chw-plant-1.sec_supply_temp})""" .
 
 # --- water side -----------------------------------------------------------

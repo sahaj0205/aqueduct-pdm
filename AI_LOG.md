@@ -72,7 +72,64 @@ planning time shows up in the API latency later.
 
 **Outcome**
 
-_(left blank)_
+**The database choice was right. The chunk interval was not, and it is now
+technical debt with a number attached.**
+
+TimescaleDB delivered what it was chosen for. `app.measurements` holds 130.8
+million rows in 22 GB, joins directly to `app.points` and `app.assets`, and the
+hourly rollup is maintained by a continuous aggregate rather than by anything I
+wrote. The privilege wall that D-02 depends on is enforced by the same engine
+that stores the readings, exactly as argued. None of that is in question.
+
+The caveat recorded above is. It said: *"the one-day chunk interval … produced
+4,381 chunks. That is workable but at the high end, and query planning cost grows
+with chunk count … Worth revisiting if planning time shows up in the API latency
+later."*
+
+Planning time showed up in checkpoint 3.1, and it is not a rounding error.
+
+The quality scorer writes scores back by joining a staging table against
+`app.measurements` on point and timestamp. That join gives the planner nothing to
+exclude chunks by, so it planned an update across every chunk in the table —
+5,077 of them, since the synthesised scenarios in 2.4 pushed the count up from
+4,381 — in order to change 267,840 rows. Measured:
+
+    Planning Time:    36,750 ms
+    Execution Time:  296,200 ms
+    Total:           333,022 ms   (5 min 33 s, to update one month of one asset)
+
+Thirty-six seconds of that is the planner alone, before a single row is read.
+Restating the time range in the statement so chunk exclusion can work brings the
+same update to **7,850 ms** — a factor of 42, and the single largest performance
+finding in the project.
+
+**Why this is debt and not a solved problem.** The fix applied in 3.1 is local:
+that one statement now carries a redundant-looking time predicate, with a comment
+explaining that it is load-bearing. Nothing prevents the next query from omitting
+it. Every future join against the measurements table has to remember, and the
+penalty for forgetting is a 37-second planning cost that looks like a hang rather
+than an error.
+
+**What the real fix costs.** `set_chunk_time_interval` only affects chunks
+created after it is called, so re-intervalling the existing table means recreating
+the hypertable and re-inserting: a full reload, re-running the scenarios, and
+re-scoring quality — roughly an hour. At a seven-day interval the 5,077 populated
+days would collapse to about 725 chunks, a seventh of the present count. I have
+not paid that hour, and I am recording the decision not to rather than leaving it
+implicit.
+
+Worth noting what actually made this bite. A one-day chunk is a sensible interval
+for a real building; it is wrong here because this table holds 7,936 days of
+simulated time, four eras of scenarios stacked on top of twenty-one years of
+stitched trajectories. A real three-year deployment at the same cadence would
+have produced about 1,100 chunks and none of this would have surfaced.
+
+**Two things follow for later tasks.** First, this is now a hard constraint on the
+API in Task 8: any endpoint that touches `app.measurements` must carry a bounded
+time range, and one that accepts an unbounded query is not slow, it is broken.
+Second, the lesson has already been applied once — `app.constraint_residuals`,
+created in checkpoint 3.5, uses a seven-day interval and holds its data in 157
+chunks rather than the roughly 1,100 a one-day interval would have produced.
 
 ---
 
@@ -399,5 +456,204 @@ complete. A reviewer should read the adoption cost above as the honest figure.
 
 **Outcome**
 
-_(left blank — the graph has not yet been used in anger; cross-asset diagnosis is
-Task 6 and that is where this decision will actually be tested.)_
+**Vindicated earlier than expected, and by a use I had not planned for.**
+
+I wrote above that the graph would not be tested until cross-asset diagnosis in
+Task 6. That was wrong. It was tested in Task 3, by the rule engine, and the
+thing it was tested on is precisely the thing a custom schema would not have
+been able to do.
+
+The rule registry dispatches on Brick class. A rule written against
+`brick:Air_Handling_Unit` has to fire on an asset the LBNL model types as
+`brick:AHU`. Nothing in the LBNL files relates those two names — instance data
+never carries the vocabulary that defines it — but Brick does, as an
+`owl:equivalentClass` statement, and the dispatcher resolves it by walking that
+relation. A hand-rolled schema would have had one name for the concept and no
+equivalence to fall back on, so the mismatch would have been a silent
+non-matching rule rather than a resolved one. The same mechanism means a rule
+written for `brick:Chiller` already covers `brick:Centrifugal_Chiller` without
+anyone saying so.
+
+Using it cost less than adopting it did. Brick's published ontology is 52,113
+triples and 2.07 s to parse, on a graph the rule engine reloads constantly, so
+only the class hierarchy is vendored — 1,628 triples, 116 KB, 0.09 s. That is
+generated from the published file rather than hand-picked, so no relation was
+quietly dropped.
+
+The graph also turned out to be the right home for the physics. The five
+constraint residuals in checkpoint 3.5 are read out of it as expressions and
+evaluated against 500,810 rows of measurements, with no physics whatsoever in the
+Python. Adding a constraint is a triple.
+
+One honest counterpoint. This entry credits me with giving each source system its
+own namespace, on the grounds that both files define `OA_TEMP` and the two are
+different instruments. That decision was right and it held. Then in checkpoint
+3.5 I hit exactly the same trap one layer up: the code translating graph names
+back to database point identifiers was keyed on the column name alone, so the air
+handler's outdoor dry bulb silently resolved to the chiller plant's wet bulb. The
+model was namespaced; the dictionary out of it was not. Namespacing has to be
+carried the whole way, and being right about it once in the model does not
+inoculate the code that reads the model.
+
+Still untested: the chilled water loop edge itself. Nothing has yet traced a
+symptom at the coil back to a cause at the chiller, and that remains Task 6.
+
+---
+
+## D-05 — Class-keyed rule registry over per-asset rule functions
+
+**Forcing question**
+
+The project detects faults on two kinds of equipment, an air handler and a
+chiller, and the fault rules for them share nothing physically — one is about air
+mixing and economizers, the other about compressor lift and part-load
+efficiency. But everything downstream is shared: the same quality gate has to
+apply to both, the same transient suppression, the same severity and cost
+reporting, and later the same health index and remaining-life estimate.
+
+So the question is where the machine's identity enters. If a rule is a function
+that knows it is about `ahu-1`, then everything downstream also has to know, and
+a third equipment class means editing detection, health and prediction code
+together. If a rule is a statement about a KIND of equipment, the identity enters
+once, at dispatch, and nothing downstream has to care.
+
+This had to be settled before the first rule was written, because retrofitting it
+means rewriting every rule.
+
+**Options**
+
+1. **Per-asset rule functions.** A function per rule per machine, calling it by
+   name. Fastest thing to write and the easiest to read for the first two
+   machines — there is no indirection, and what a rule applies to is obvious from
+   its body. The cost lands later and lands everywhere: a third equipment class
+   means touching the detection layer, the health index and the remaining-life
+   code at the same time, because each of them has its own idea of which assets
+   exist.
+
+2. **A registry keyed by Brick class.** *Chosen.* A rule declares the class it
+   applies to and the framework works out which machines that means by querying
+   the semantic model. Roughly forty minutes more work than option 1 to build,
+   all of it in one file. After that, the second equipment class costs what the
+   third would, and the third costs what the second did.
+
+3. **A full rules DSL.** Rules as data in a file, with their own expression
+   language, evaluated by an interpreter. Genuinely useful when non-programmers
+   author rules or when there are hundreds of them. There are nine, they are
+   written by the same person writing the engine, and the cost — an expression
+   language, a parser, error messages that point at the right line, some story
+   for debugging — is entirely real. Over-engineered at this size.
+
+**Rationale**
+
+Option 1 is the right answer for a two-machine building that will never grow, and
+this one will. The whole premise of the semantic model, argued in D-04, is that
+the building describes itself well enough for code to ask it questions. Keying
+rules to asset identifiers throws that away at exactly the layer that most
+benefits from it.
+
+The forty-minute estimate was about right, and the payoff is measurable rather
+than hypothetical. Adding the chiller — the second equipment class, three rules,
+its own baselines and a completely different notion of when the machine is
+running — changed exactly two files:
+
+    analytics/rules/chiller.py    346 lines, new, all of it physics
+    analytics/rules/evaluate.py    24 lines changed
+    analytics/rules/registry.py     0 lines changed
+
+The dispatcher never learned what a chiller is. The 24 lines in the shared
+evaluator are one parameter: the air handler is idle when the building is
+unoccupied and a chiller is idle when it is not running, so the name of the idle
+state became an argument. That is the honest measure of what a new equipment
+class costs here, and it is the number option 1 could not have produced.
+
+Two other things fell out of having a single registration point rather than
+scattered functions. The quality gate is enforced in one place and inherited by
+all nine rules across both modules, so a rule cannot fire on a reading it was not
+allowed to see even if its author forgets — that is not a convention, it is that
+the only route to a measurement refuses. And when the stuck-actuator problem
+appeared, the exemption was added once and claimed by two rules in different
+modules with one line each.
+
+On option 3, the judgement was not "no DSL ever" but "a DSL for arithmetic, not
+for control flow". A narrow one did appear where it earned its place: the
+constraint residuals in checkpoint 3.5 are arithmetic expressions stored in the
+`.ttl` and evaluated through a whitelist that admits nothing but arithmetic. That
+is a hundred lines and it buys a genuine property — adding a physical constraint
+is a triple in the model rather than a code change. A DSL for the rules
+themselves would have had to express operating modes, persistence, quality
+thresholds and cost models, and at nine rules that is a language nobody needs.
+
+**Mine vs delegated**
+
+*Mine.* Requiring dispatch on Brick class rather than asset identifier or an
+internal enum, and requiring it before any rule was written. Requiring that a
+rule be unable to fire on a reading below its quality bar, rather than trusting
+rule authors to check. Authorising the staleness exemption for rules that detect
+seized actuators, and requiring it be declared per rule and per point rather than
+turned on globally. Holding the line that the checkpoint's six APAR rules had to
+be the real published ones with their real numbers, not six plausible-looking
+inventions.
+
+*Delegated.* The taxonomy closure and the equivalence walk, the context object
+that enforces the gate, the selection of which six APAR rules the instrumentation
+supports and the argument for the twenty-two it does not, the transient
+suppression, the chiller baseline fits, and the constraint evaluator.
+
+**Overrode**
+
+Two of the model's recommendations, both during Task 3.
+
+*The package name.* `platform/` could not be used — it shadows a Python standard
+library module and breaks `import pandas` outright, which the model found by
+testing rather than by reasoning about it. It recommended `aqueduct/`; I chose
+`analytics/`, because PROJECT_CONTEXT.md already describes these as the analytics
+layers and the directory should match the document. No consequence either way;
+this one was aesthetic.
+
+*The quality scoring scope.* The model recommended scoring only the synthesised
+scenario era, 14.8 million rows, leaving the LBNL trajectories unscored. I
+widened it to include the fault-free LBNL year as well, 26 million rows. **This
+one mattered and the recommendation would have caused rework.** The fault-free
+year became the baseline for the chiller design curves in 3.4 and for the
+constraint residual normalisation in 3.5, and both of those need quality scores
+attached to the baseline data. Scoring only the scenario era would have left both
+layers fitting against unscored measurements or forced a second pass. The model's
+cost estimate was also pessimistic — it projected 50 to 70 minutes for the wider
+scope and the actual run took 17.3.
+
+**Confidence**
+
+High on the mechanism. It is exercised by nine rules across two equipment classes
+and the dispatch resolves entirely through the published ontology, including the
+equivalent-class case that a custom schema could not have handled.
+
+Moderate on the extrapolation. Two classes is a small sample, and the claim that
+a third is free rests on the second having cost 24 lines of shared code. A class
+with genuinely different temporality — per-zone VAV boxes, where the interesting
+comparisons are between zones rather than against a baseline — could need more
+than a parameter. The claim I am confident in is narrower than "the third class
+is free": it is that the third class will not require touching dispatch.
+
+**Outcome**
+
+**The mechanism holds; the rules it carries are more conservative than expected.**
+
+Nine rules, two equipment classes, and across 1,090 fault-free asset-days —
+485 on the air handler and 605 on the chiller — **zero false positives**. Dispatch
+resolved correctly for every asset, including the three cooling towers and the
+plant, which correctly matched nothing because no rule was registered for them.
+
+What the registry could not fix is what the rules can see. The APAR set caught one
+of three injected air-side faults. A stuck outdoor air damper is missed for a
+structural reason worth recording: the operating mode is inferred from the same
+damper that is broken, so the fault disguises itself as an economizer decision
+and routes evaluation away from the one rule that would catch it — that rule's
+evidence, when it does run, is more than twice its threshold. A leaking cooling
+coil valve is missed because it only shows in a mode the season had already left,
+and even there it reaches 22% of the detection threshold.
+
+Neither is a registry problem and neither is fixable by moving a number. They are
+the honest cost of a rule set that trades sensitivity for silence, and they are
+the argument for the layers that come next: the residuals in 3.5 caught the
+sensor drift directly that the rules only saw second-hand, and the condition-
+normalised baselines in Task 4 are what the two remaining misses need.
