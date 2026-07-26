@@ -8182,3 +8182,177 @@ the capacity rule look like an unnecessary complication.
 START HERE: `DOMAIN_NOTES.md` — the approach-temperature section. It is the one place where
 the physics a textbook would use and the physics this data permits come apart, and the rest
 of the chiller design only makes sense once that is understood.
+
+
+## Checkpoint 7.5 — README and roadmap
+
+### What we did
+
+The project can now be handed to somebody. Two documents: one that says what this is, gets it
+running, and walks a stranger through the seven minutes that demonstrate it; and one that says
+what is finished, what should be done next in what order and why, and what will never be done.
+
+Between them they close the last gap in the deliverable. Until now a reader arriving at the
+repository had no entry point — the architecture document explains a system they had not seen
+running, and the validation document scores a system they had no way to start. And the
+absence of a roadmap meant every gap in the product looked like an oversight, including the
+missing test suite that the architecture document explicitly promises is scheduled somewhere.
+It is now scheduled somewhere.
+
+Two things came out of writing the quickstart that matter more than the prose. The documented
+setup sequence did not work, and fixing it needed two new Makefile targets — so the README is
+the first artefact in this project that was tested by being followed rather than by being
+read.
+
+### How it works
+
+`Makefile` :: `advisories-write`
+  WHY IT EXISTS: Nothing in the project put rows in `app.advisories`. The `advisories` target
+    runs the queue as a report; only `scripts/run_advisories.py --write` stores it, and that
+    invocation existed nowhere except in the script's own docstring. On a freshly built
+    database the API therefore serves an empty queue and the dashboard comes up blank, which
+    would have made the README's walkthrough undemonstrable on any machine but this one.
+  WHAT IT DOES: Runs the same script with `--write`.
+  CHOICES: Kept as a separate target rather than adding `--write` to `advisories`, because
+    that target is a verification report and printing a report should not mutate a table.
+
+`Makefile` :: `demo`
+  WHY IT EXISTS: The analytics artefacts the dashboard shows — health scores, the
+    remaining-life history, the advisory queue — do not exist after `make load`. There was no
+    single documented path from an empty database to a working demo, only nine checkpoints'
+    worth of targets and the knowledge of which order they go in.
+  WHAT IT DOES: Chains `db-up load scenarios quality residuals baselines health rul
+    advisories-write` and then prints what to run next.
+  CHOICES: The order is a genuine dependency chain, not a convenience: the loader has to place
+    measurements before the graph can resolve nodes to assets, the quality scores gate what
+    the baselines may fit on, health needs the residuals, the remaining-life replay needs
+    health, and the advisory queue needs both plus the cross-asset pass. Stated in a comment
+    on the target so it survives someone reordering it.
+  CHOICES: `modes`, `degradation`, `plots`, `apar`, `chiller-rules`, `refusal` and `diagnosis`
+    are deliberately NOT in the chain. They are report-only — they compute and print and
+    write nothing — so including them would triple the runtime of a setup step for output
+    nobody is reading at that moment.
+
+`README.md` :: what this is, and the quickstart
+  WHAT IT DOES: Three sentences on the product, a table linking the four other documents, and
+    a six-command setup.
+  CHANGED FROM BEFORE: The brief specified `docker compose up, make load, make api, make web`.
+    That sequence does not work and the first command is the reason: `docker compose up`
+    starts the container but does not apply `scripts/schema.sql`, so `make load` runs against a
+    database with no tables. The quickstart uses `make db-up`, which starts the container,
+    waits for it to accept connections and applies the schema, and the README says in one
+    clause why. `make demo` was added between `load` and `api` for the same reason — following
+    the brief literally produces a dashboard with nothing on it.
+  CHOICES: It also says to download the LBNL datasets into `data/raw/` first, because the
+    loader exits with "Download the dataset first" and a reader should hit that sentence in the
+    README rather than in a traceback.
+
+`README.md` :: the timed walkthrough
+  WHY IT EXISTS: Seven minutes is what a reviewer will actually give this, and left to
+    themselves they will click the first row and see a chart. The walkthrough routes them
+    through the five things that are hard to build and easy to miss.
+  WHAT IT DOES: Six stops at the specified times. The dashboard and the economic ranking; the
+    fan chart; the evidence and graph trace; the sensor-versus-equipment pair; the demoted
+    cross-asset advisory; and the validation document.
+  ⚠ JUDGEMENT CALL: The brief says "1:00 open the chiller advisory, RUL with narrowing
+    interval". The chiller advisory's interval does not narrow — `chiller-condenser-fouling`
+    **widens by 12%** over its run, which is a known limitation of the degradation fit recorded
+    in checkpoint 5.2 and visible in `VALIDATION.md`. The series that narrows is the air
+    handler's coil valve leak, which closes 97% from 2,259 days to 59 across 84 estimates, and
+    checkpoint 6.5 deliberately put that advisory in the queue so the flagship chart would be
+    reachable by clicking. So the walkthrough opens the top row — the coil valve leak — for the
+    narrowing chart, and then opens the chiller advisory immediately afterwards to show the
+    contrast, with the sentence "a demo where every chart cooperates is a demo of chart
+    selection". Following the brief literally would have put a widening interval on screen at
+    the moment the presenter said the word "narrowing".
+  CHOICES: Every number in the walkthrough was read out of the live database rather than
+    recalled: priority 24.7, cost $68,625, median 32 days, position 7 of 7 for the demoted
+    advisory, and $262.50 against $830.00 for the two dispatch options — verified as 3.16×,
+    quoted as 3.2×.
+  CHOICES: The 1:00 stop states that the fan chart is not monotone and that it widens at 44
+    samples before closing, and says why that is correct behaviour rather than a defect. The
+    7:00 stop reads the worst number in the project out loud — 10.1% interval coverage against
+    a nominal 80%. A walkthrough that only visits the good screens is a sales demo, and this is
+    being judged as engineering.
+
+`README.md` :: the iteration paragraph and the validation claim
+  WHAT IT DOES: Two short sections covering the specified content — prioritised iterations
+    against a fixed time budget, iteration 1 as the minimum system that genuinely predicts
+    failure with quantified confidence, everything after it additive and listed in the roadmap,
+    the commit history reflecting that order; and separately that the fault signatures are
+    grounded in third-party labelled data, that only the temporal trajectory between measured
+    severity levels is synthesised because no public run-to-failure dataset exists for
+    building HVAC, and that every accuracy number is computed against labels this project did
+    not create.
+  CHOICES: The validation claim ends with the mechanism rather than the assertion: the
+    separation is enforced by a database role with no grant on the answer key's schema, and
+    exactly one module opens the credential that can read it. An assertion of independence is
+    worth much less than a description of what makes it unavoidable.
+  CHOICES: A scope-and-limitations section follows immediately, saying that the figures rest on
+    single-digit event counts against asset-day denominators in the thousands, and pointing at
+    the six known defects. Putting it under the validation claim rather than at the bottom is
+    deliberate.
+
+`ROADMAP.md` :: section 1, shipped
+  WHAT IT DOES: A table of what each of the eleven layers actually delivers, then the current
+    measured numbers with the bad one included in the same list as the good ones.
+
+`ROADMAP.md` :: section 2, next in priority order
+  ⚠ JUDGEMENT CALL: I reordered the brief's list and said so in the document. The brief
+    suggested leading with an energy and water dashboard and putting the natural-language
+    query layer third. I put four correctness items in front of everything: fixing the chiller
+    efficiency false positive, adding chiller baselines so the isolation test can falsify a
+    power-meter hypothesis, diagnosing the late bias in the remaining-life interval, and the
+    test suite. The reasoning is stated in the document — the system currently has a false
+    positive that propagates through three layers and a prediction interval that does not mean
+    what it says, and building a dashboard on top of that is building on a floor with a hole in
+    it. Two of those four items make the numbers look worse before they look right, which is
+    exactly why they would never get done if the ordering optimised for the demo. Every item
+    the brief listed is present.
+  WHAT IT DOES: Five tiers. Tier 0 correctness; tier 1 the two things without which the
+    product is not usable, work order lifecycle and a frontend router; tier 2 new capability
+    the existing data supports; tier 3 new capability blocked on instrumentation; tier 4
+    presentation. Each item says what it is, what is known and not known, the approach, the
+    effort, and what it depends on.
+  CHOICES: Each tier-0 item cites the specific evidence for it in `VALIDATION.md`, so a reader
+    can check that the priority is justified rather than asserted.
+  CHOICES: The water balance and air quality items say explicitly that they are **unbuildable,
+    not merely unbuilt** — neither dataset publishes a makeup water flow or a CO₂ point — and
+    each names the single instrument that would unblock it. That distinction is the difference
+    between an omission and a dependency.
+  CHOICES: The physics simulator entry opens by distinguishing itself from a decision already
+    taken. D-02 rejected a simulator as the source of ground truth and that stands permanently;
+    what is proposed here is a forward model for what-if projection, and the entry says it must
+    never be wired into a metric. Without that paragraph the roadmap would appear to contradict
+    the decision log.
+
+`ROADMAP.md` :: section 3, explicitly not doing
+  WHY IT EXISTS: The difference between "not yet" and "no" is most of what a roadmap is for.
+  WHAT IT DOES: Eight decisions, each with the reason it would make the system worse: a
+    self-built simulator as ground truth, deep learning for remaining life, suppressing
+    consequential advisories, removing the refusal behaviour, tuning a threshold to improve a
+    validation number, closed-loop control, becoming a building automation system, and
+    authentication or multi-tenancy for their own sake.
+  CHOICES: Two of these are new here rather than inherited from the decision log. **Tuning a
+    threshold to make a validation number improve** is written down as a prohibition because
+    every threshold carries a required written physical justification in a `NOT NULL` column
+    specifically so that moving one means changing the argument rather than only the value.
+    And **closed-loop control** is refused on a safety basis rather than a scope basis: this
+    system advises a human, and a platform that adjusted setpoints on the strength of an
+    inference `VALIDATION.md` shows can be wrong is a different product with a different
+    safety case.
+
+### Verification
+
+Both documents were checked mechanically rather than read for typos. All six specified
+walkthrough timings present; all four quickstart commands present; every element of the
+iteration paragraph and the validation claim present; all ten roadmap items from the brief
+present plus the test suite the architecture document promises; all seventeen internal links
+across README, ROADMAP and ARCHITECTURE resolve, which includes the `ROADMAP.md` link that has
+been broken since checkpoint 7.3 and the one inside the mandated no-test-suite paragraph; no
+ragged markdown tables. `make -n demo` expands to the correct nine-step chain. `.env.example`
+does carry exactly the two passwords the README says to set.
+
+START HERE: `README.md` — the timed walkthrough. It is the only document in the project written
+to be executed rather than read, and the one place where a claim that does not survive contact
+with the running system shows up immediately.

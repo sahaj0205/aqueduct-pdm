@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories api web web-verify web-verify-detail web-verify-schematic web-build validate
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write demo api web web-verify web-verify-detail web-verify-schematic web-build validate
 
 # Resolve and install the Python environment into .venv
 install:
@@ -147,6 +147,23 @@ rootcause:
 # checks field by field that nothing arrived empty without a reason.
 advisories:
 	uv run python scripts/run_advisories.py
+
+# The same queue, stored in app.advisories, which is what the API serves. Kept separate
+# from `advisories` because that target is a report and this one writes: nothing else in
+# the project puts rows in that table, so without this the API has an empty queue and the
+# dashboard comes up blank on a freshly built database.
+advisories-write:
+	uv run python scripts/run_advisories.py --write
+
+# Empty database to demo-ready, in dependency order. Each step needs the one before it:
+# the loader has to place measurements before the graph can resolve nodes to assets, the
+# quality scores gate what the baselines may fit on, health needs the residuals, the
+# remaining-life replay needs health, and the advisory queue needs both plus the
+# cross-asset pass. Takes a while -- the two rule sweeps and the daily replay are the
+# expensive parts -- and is the sequence the README's setup section documents.
+demo: db-up load scenarios quality residuals baselines health rul advisories-write
+	@echo ""
+	@echo "demo data ready. now run 'make api' and 'make web' in two terminals."
 
 # Serve the API on :8000
 api:
