@@ -7,6 +7,138 @@ decisions about what to build, what to reject, and what to trust were mine, and
 this document is the audit trail for them. Where I overrode the model, I've said
 so. Where I got something wrong and reversed it, I've said that too.
 
+Entries are numbered in the order the decisions were taken. Two of them —
+**D-00** on scope and **D-10** on what would not be built — were taken early and
+written down at the end, which is stated at the top of each. D-00 is numbered
+zero rather than renumbering the nine entries that cite each other and are cited
+from `ARCHITECTURE.md`, `ROADMAP.md` and the implementation notes.
+
+---
+
+## D-00 — Scope: one building, AHU plus chiller, fixed time budget
+
+> **Decision taken at project start, before any code. Recorded here retrospectively,
+> at the end of Task 7.** The reasoning below is what I decided on at the outset; the
+> Outcome section is what it turned out to cost.
+
+**Forcing question**
+
+Two days, and a dataset that ships far more than two days of work. The LBNL release
+covers several building systems, and the chiller plant alone publishes 23 fault runs
+across bypass valves, temperature biases, fouling, tower faults and loop pressure. A
+predictive maintenance platform could plausibly be scoped at anything from one machine
+to a campus. Everything else in this log is downstream of where that line was drawn,
+because the line decides how many equipment classes every layer has to generalise over
+and how much surface there is to validate.
+
+**Options**
+
+1. **One equipment class, done deeply.** The air handler alone: six APAR rules, its
+   baselines, its failure modes, remaining life, a dashboard.
+   *Rejected.* It would have been the safest build and it forecloses the one thing that
+   distinguishes this from a rules engine with a chart on top. With a single asset every
+   diagnosis stops at the machine boundary. There is no upstream to traverse, no
+   consequential symptom to demote, and no way to demonstrate that a semantic model earns
+   its place — because with one asset a graph is an overengineered dictionary.
+2. **One building, two equipment classes, joined by one modelled edge.** An air handler
+   and a chiller plant, connected by the chilled water loop.
+   *Chosen.* This is the minimum scope in which cross-asset root cause exists at all. Two
+   assets and one edge between them is the smallest configuration where "the air handler
+   looks faulty and the chiller is the reason" is a sentence the system can produce.
+3. **Everything the dataset ships.** All systems, all 23 chiller fault runs, all air-side
+   faults.
+   *Rejected.* Breadth is cheap in this architecture and that is exactly the trap. Adding
+   a fault run is a scenario manifest; adding an equipment class is a rules module and some
+   config rows. Neither adds a capability — they add validation surface, and validation is
+   the expensive part. Twenty fault runs scored badly is worth less than six scored
+   carefully.
+4. **Multiple buildings, to show it scales.** Duplicate the model, synthesise a second
+   site.
+   *Rejected.* It would demonstrate that a `WHERE building_id =` clause works. Nothing in
+   the schema forbids a second building and nothing about the prediction gets harder.
+
+**Rationale**
+
+The scope was chosen against one question: what is the smallest system that can genuinely
+predict a failure, quantify its confidence, and explain it across a machine boundary? Each
+of those three is load-bearing and each rules something out. "Genuinely predict" rules out
+detection-only, which is where most FDD work stops. "Quantify its confidence" rules out a
+point estimate, and it is why the remaining-life layer is parametric. "Across a machine
+boundary" is what fixes the count at two equipment classes and one edge, and no fewer.
+
+Two classes rather than three was a time judgement rather than a design one. Every layer
+in this platform is class-generic, so a third class is a rules module, a baseline form and
+some config rows — but it is also a third set of thresholds to justify from commissioning
+data, a third set of relations for the isolation solver, and a third column in every
+validation table. I estimated a day. Against a two-day budget that was the whole margin.
+
+The fixed budget also changed what counts as done. With unlimited time the constraint is
+what can be built; with two days it is what can be built **and validated**, and those are
+very different lists. That is why the harness is a numbered checkpoint rather than a
+stretch goal, and it is the reason several capabilities that would have demoed well —
+water, air quality, live ingestion — were ruled out at the start rather than run out of
+time. That decision is D-10.
+
+**Mine vs delegated**
+
+The scope was mine and it was the first thing decided. Left to itself the model
+consistently proposed more: more fault runs, more equipment classes, more dashboards. It
+is good at estimating what can be built and has no instinct at all for what can be
+defended, and the gap between those two is where a time-boxed project fails.
+
+What I delegated completely was everything downstream of the line. Given "one AHU, one
+chiller, one CHW edge", the model chose which six of APAR's 28 rules were computable from
+the published points, which failure modes the data could support, and where each layer's
+boundaries fell.
+
+**Confidence**
+
+High at the time on two classes and one edge, and that part was right. Low, and correctly
+low, on the two-day estimate — the build fit, the validation did not, and Task 7 ran
+longer than the layers it scores.
+
+**Outcome**
+
+Recorded at the end of Task 7, which is the first point at which the scope decision could
+be assessed rather than asserted.
+
+**The two-class scope was right, and it was right for a reason I had not identified.** I
+justified it as the minimum configuration in which cross-asset diagnosis is possible.
+What it actually bought was something else: two classes is the minimum at which the
+*extensibility* claim becomes checkable. With one equipment class, "no engine changes when
+you add a class" is an assertion about code nobody has exercised. With two, every dispatch
+point had to be resolved through Brick's class taxonomy and every one of them broke first
+and got fixed — string matching on class names silently fitted nothing on the first run of
+the baseline layer, because the database records the air handler as `brick:AHU` and the
+catalogue is written against `brick:Air_Handling_Unit`. A single-class build would have
+shipped that bug invisibly and claimed generality anyway.
+
+**The one edge turned out to be unvalidatable in the positive direction, and I did not
+see that coming.** The two LBNL systems are independent simulations. The air handler's
+chilled water comes from a boundary condition inside its own simulation, not from this
+chiller, so no run in this dataset contains a genuine chiller-caused air handler symptom.
+The topology is real — `chiller-1` really does feed `ahu-1` at two hops in the semantic
+model, cross-checked against an independently built edge cache — and the mechanism is
+real, but the coupling is not in the data. Checkpoint 6.1 had to compose its target
+scenario by moving one real fault's calendar era forward by two whole years, and
+`VALIDATION.md` can falsify a cross-asset link and cannot confirm one. That is a direct
+consequence of choosing scope by *what the model needs* rather than by *what the data
+couples*, and I chose the former without checking the latter. The cheapest fix was
+available and unnoticed: the one chain this dataset genuinely couples is cooling tower to
+chiller, both of which are in the chiller plant simulation, and the towers ship seven
+points each. Giving the tower a failure mode would have made the cross-asset layer
+positively validatable on real data. It is now item 2.2 in `ROADMAP.md` and it should have
+been in scope on day one.
+
+**The time estimate was wrong in a specific and repeatable way.** Eleven layers over two
+equipment classes fit the budget. Scoring them did not — Task 7 alone found a false
+positive that propagates through three layers, an interval that achieves 10% of its
+nominal coverage, and a classifier miss with a structural cause, none of which were
+visible from the layers' own verification output. The lesson is not "allow more time for
+tests". It is that in a system where every layer consumes the one above it, defects do not
+stay in the layer that produced them, and only an end-to-end scoring pass shows that. I
+budgeted validation as a checkpoint and it behaved like a layer.
+
 ---
 
 ## D-01 — TimescaleDB for time-series scalability vs standard PostgreSQL
@@ -1381,6 +1513,75 @@ Stated plainly: the constraint isolation verdict is about the asset's violated r
 not about every fault open on the asset. I had been over-reading it, and the
 over-reading was invisible until advisories put a class badge on every row.
 
+**Updated after Task 7.** This is the first time the discrimination has been scored
+against the answer key rather than demonstrated on chosen cases, and the result is a
+number that looks mediocre and a finding that is better than the number.
+
+**4 of 5 injected faults classified correctly.** Read that next to the baseline before
+reading it as a result: a classifier that ignored the data entirely and always answered
+`equipment` would score 3 of 5, because three of the five scoreable faults are equipment
+faults. A one-case margin over guessing is not a demonstration of anything on its own.
+What makes it worth having is which cases are in it. The drifting thermometer and the
+jammed damper are exactly the two a majority guess gets wrong, and both come out right —
+and the damper case now names `ahu-1.oa_damper`, the actuator that was actually jammed,
+rather than the return damper it is mechanically linked to.
+
+**The one miss is more useful than the four hits, because it has a structural cause and
+the cause is this entry's own thesis.** Condenser fouling on `chiller-1` came out SENSOR,
+blaming `chiller-1.power`, with two of the machine's three relations violated. The
+classifier's own reasoning says why: assuming the power meter reads 83,539 W wrong
+reconciles 99 percent of the violation across the two relations that point appears in,
+and makes none of them worse. There is nothing left to contradict it with.
+
+That is precisely the failure this decision was written to describe. The original entry
+above explains that supply air temperature participates in exactly ONE constraint and is
+therefore UNFALSIFIABLE on the constraint set alone — one equation, one unknown, one
+solution, no way to be wrong — and that the fix was to add the condition-normalised
+baselines as relations, taking supply air from one relation to three. **The chiller never
+received that treatment.** It contributes three relations where the air handler
+contributes five, and electrical power appears in two of the three. So the same
+falsifiability argument that made the air side work predicts, exactly, that the chiller
+will fail on any fault developed enough to move two relations at once. It did.
+
+Two things follow. The first is that the decision is validated in an uncomfortable way:
+its central claim — that this method's discriminating power is a function of how many
+relations touch the suspect — is confirmed by a miss rather than by a hit, which is the
+stronger kind of confirmation and the less pleasant one to report. The second is that the
+fix is known, cheap and configuration rather than code: declare chiller-side baselines
+targeting points other than power, and every relation that does not read power reduces
+power's explanatory reach. It is item 0.2 in `ROADMAP.md`, above every feature.
+
+**Two weaknesses the scoring exposed that I had not been tracking.**
+
+The window matters more than I assumed, and there is no uniformly right one. Scored over
+the last 28 days of each run the air handler is right on all three of its faults and the
+chiller fouling is wrong; scored over the whole post-injection stretch the fouling is
+right and the coil valve leak is wrong — over three months reaching from winter into
+summer, the coil valve's average position drifts far enough from its command that a
+leaking valve is reported as an actuator refusing orders. Choosing per equipment class
+would be fitting the harness to the answer key, so the harness uses one rule, states it,
+and reports the run it gets wrong.
+
+And the equipment branch is weaker than the sensor branch in a way the chosen cases hid.
+On both fault-free chillers the classifier answers EQUIPMENT with **zero relations
+violated** — the verdict comes entirely from the degradation flag, which on those machines
+is the efficiency-channel false positive from D-06's territory. The sensor and control
+branches require positive evidence: a reconciling bias, or an actuator away from its
+command. The equipment branch fires on the absence of a sensor explanation plus a
+degradation trend, and when the trend is spurious there is nothing to stop it. Two of four
+healthy machines were given a fault class this way. The two with no degradation flag came
+out `ambiguous`, which is the closest this taxonomy has to saying nothing is wrong — and
+the fact that the honest answer only appears when the upstream layer is silent is itself
+the finding.
+
+**One correction to the record above.** The original Outcome says the layer "depends on
+having a fault-free window at the same time of year to compare against". Task 7 tested
+that and it is weaker than stated: the harness uses each run's own three-week
+commissioning window as the reference for every run, including the two winter ones where
+no same-season fault-free run exists, and on the one run where both references are
+available over the same 28 days they return the same class. The seasonal reference is
+better; it is not required.
+
 ---
 
 ## D-09 — Cross-asset consequential faults are demoted, never hidden
@@ -1548,3 +1749,140 @@ the module docstring, the report and the dashboard. And `app.advisories.status` 
 three values with nothing in the project moving a row off `open`, so an operator can
 demote-and-see but cannot yet acknowledge or close. A queue with no way to retire an
 item is not finished being a queue.
+
+---
+
+## D-10 — Explicitly not built, and why
+
+> **Decision taken early, applied continuously, and recorded here at the end of Task 7.**
+> The list of what was not built is in `ROADMAP.md`; this entry is the decision about how
+> to treat not-building as a first-class act rather than as whatever was left over.
+
+**Forcing question**
+
+D-00 fixed the scope at one building and two equipment classes against a two-day budget.
+That leaves a large set of things a predictive maintenance platform could obviously have —
+water metering, air quality, live protocol ingestion, a physics simulator, a test suite,
+more dashboards, a work order lifecycle — none of which will exist when the project is
+handed over. The question is not which to cut; the budget answers that. The question is
+what a reader is supposed to conclude from their absence, and whether that is left to
+chance.
+
+**Options**
+
+1. **Build a thin version of everything.** A water tab with an estimated consumption, an
+   air-quality panel, an MQTT adapter with no device behind it, a handful of unit tests on
+   the easy functions.
+   *Rejected, and this was the most tempting option because it demos best.* Every one of
+   those is a claim the system cannot support. A water number computed from an evaporation
+   estimate is an estimate presented as a measurement. An MQTT adapter tested against
+   nothing is untested code that looks tested. A handful of tests on the easy functions is
+   worse than none, because it converts "no test suite" into "a test suite that passes",
+   and the second is a lie about coverage. Thin versions transfer risk from the builder to
+   the reader.
+2. **Build deep and say nothing about the gaps.** Ship the eleven layers, let the absences
+   speak for themselves.
+   *Rejected.* They do not speak for themselves; they speak as oversights. A reader
+   encountering no water metering in a building platform cannot distinguish "decided
+   against, here is the reason" from "did not think of it" from "ran out of time", and in
+   the absence of a statement the least generous reading is the rational one.
+3. **Build deep, and document every gap with its reason and its blocker.**
+   *Chosen.*
+
+**Rationale**
+
+The whole argument is that an undocumented gap and a documented one are different
+artefacts. The first is evidence about the builder's thoroughness. The second is evidence
+about their judgement, and judgement is what a time-boxed project is actually being
+assessed on — anyone can list features, and the interesting question is which ones you
+declined and whether the reason holds up.
+
+That reframing produced a distinction that runs through the whole roadmap and that I would
+not have found by simply listing cuts. **Some things are unbuildable on this data and some
+were traded away, and they are not the same kind of absence.**
+
+- **Unbuildable.** Neither LBNL dataset publishes a makeup water flow — the towers ship a
+  circulating flow, which is water going round the loop rather than water bought — so a
+  water balance cannot be computed, only estimated. Neither publishes a CO₂, particulate
+  or VOC point, so air quality has nothing to detect on. These are blocked on
+  instrumentation, each unblocked by exactly one meter, and saying so is a statement about
+  the data rather than about the schedule.
+- **Traded away.** The test suite, the additional dashboards, the work order lifecycle, the
+  frontend router. Every one of these could have been built with this data and was not,
+  because something else was worth more against the budget.
+
+The two require different treatment and get it. An unbuildable item names the instrument
+that would unblock it. A traded one names what it was traded against, and goes into the
+roadmap in priority order.
+
+Two consequences I committed to rather than drifted into. The cost of inaction has **no
+water term and says so in the code**, rather than carrying an evaporation estimate that
+would make the number look more complete and less true. And the absence of a test suite is
+stated in `ARCHITECTURE.md` in a paragraph that names the three kinds of test production
+would need — golden-dataset regression per rule, calibration per RUL model, property tests
+on the monotonicity constraint — because "no tests" and "no tests, and here is exactly
+which ones, and they are scheduled" are different admissions.
+
+**Mine vs delegated**
+
+The list was mine and so was the discipline of writing reasons rather than a backlog. The
+model's instinct throughout was to build the thin version — offered repeatedly, plausibly,
+and always with a working implementation attached, which is what makes option 1 dangerous:
+it is not lazy, it is productive in the wrong direction, and it arrives already working so
+the cost of declining it feels like waste.
+
+Delegated: the enumeration and the ordering rationale in `ROADMAP.md`, and the physical
+reasoning for each blocker — that a tower water balance is makeup equals evaporation plus
+blowdown plus drift, so a persistent unexplained surplus is a leak and its size is the
+leak's size, is the model's, and it is what turns "we have no water meter" into a
+specification for the one that is needed.
+
+**Confidence**
+
+High on the unbuildable set — those are facts about the published columns, checkable in a
+minute. Lower on the traded set, and the ordering is where the uncertainty sits rather
+than the membership. I am confident the work order lifecycle was the largest thing given
+up; less confident that the test suite should have been traded at all, which is addressed
+in the Outcome.
+
+**Outcome**
+
+Recorded at the end of Task 7.
+
+**Two of the trades were correct and one is not defensible in hindsight.** The dashboards
+and the natural-language layer were right to cut: both re-present data the API already
+serves, and neither would have changed a single number in `VALIDATION.md`. The work order
+lifecycle was a real loss and is correctly ranked first among the features — an operator
+can see and rank the queue and cannot acknowledge, assign, defer or close anything, so
+`app.advisories.status` has three values and nothing moves a row off `open`. The system
+cannot be told it was wrong, which matters most on exactly the advisory that IS wrong.
+
+The test suite is the trade I would not make again, and Task 7 is why. Three defects
+surfaced in the final scoring pass that a modest suite would have caught earlier and
+cheaper: a degradation channel confirming an onset on a fault-free machine, a prediction
+interval achieving 10 percent of its nominal coverage, and a classifier miss with a
+structural cause. None of them was visible from any individual layer's own verification
+output, because each layer's script checks that the layer did what it was asked and none
+checks that what it was asked for was right. The defence I would have offered — that
+ten verification scripts and an end-to-end harness substitute for tests — is half
+true and the half that fails is the important one. They catch a regression in accuracy;
+they do not pin behaviour on a fixed input, so nothing in this project would notice a rule
+silently changing what it fires on as long as the aggregate numbers stayed plausible.
+
+**The unbuildable framing turned out to be worth more than the list it produced.** It
+forced a question about every absence — is this blocked on data or on time — and answering
+it honestly for water led directly to the cost-of-inaction layer carrying no water term
+and stating why in the module docstring. That is a small piece of code and it is the one I
+would point at if asked what this decision bought: a system that declines to produce a
+number it cannot ground, in a place where producing one would never have been noticed.
+
+**What I got wrong about the shape of the not-built list.** I treated it as a scope
+document and it turned out to be two documents. The permanent refusals — a self-built
+simulator as ground truth, deep learning for remaining life, suppressing consequential
+advisories, closed-loop control, tuning a threshold to improve a validation number — are
+not deferred work and putting them in a roadmap alongside "energy dashboard" flattens a
+real distinction. They are now section 3 of `ROADMAP.md`, headed "Explicitly not doing",
+and separated from the priority-ordered backlog above it. Two of those five were only
+articulated while writing that section, which is late: a prohibition on tuning thresholds
+to improve a metric should have been written down the first time a validation number came
+out badly, not after the last one did.

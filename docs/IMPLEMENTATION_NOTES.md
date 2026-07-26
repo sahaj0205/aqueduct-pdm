@@ -8020,7 +8020,7 @@ oversight rather than a choice. `ARCHITECTURE.md` is the map that sits above all
     natural-language query, floorplan and 3D, a frontend router, authentication, and
     multi-building.
   CHOICES: The no-test-suite paragraph is followed by a short honest note on what partly
-    stands in for it and what does not. Sixteen verification scripts run each layer over
+    stands in for it and what does not. Ten verification scripts run each layer over
     real data and print the numbers its checkpoint claimed, and the harness scores accuracy
     on every run — so a regression in accuracy is caught, and a regression in behaviour on a
     fixed input is not. That is exactly the gap the mandated paragraph names.
@@ -8356,3 +8356,143 @@ does carry exactly the two passwords the README says to set.
 START HERE: `README.md` — the timed walkthrough. It is the only document in the project written
 to be executed rather than read, and the one place where a claim that does not survive contact
 with the running system shows up immediately.
+
+
+## Checkpoint 7.6 — Final decision log entries
+
+### What we did
+
+The decision log now covers the two decisions that framed everything else and had never
+been written down: how much of the building to take on, and how to treat the things that
+would deliberately not be built. It also records what Task 7 measured about the
+sensor-versus-equipment discrimination, which is the first time that layer has been scored
+against the answer key rather than demonstrated on cases chosen for it.
+
+Those two missing entries were missing for the same reason. Both decisions were taken
+before any code existed, both were applied continuously afterwards, and neither ever
+produced a moment where writing it down was the obvious next thing to do. The result was a
+log that recorded nine technical choices in detail and was silent on the two that
+constrained all nine.
+
+### How it works
+
+`AI_LOG.md` :: D-00 — Scope: one building, AHU plus chiller, fixed time budget
+  WHY IT EXISTS: Every other entry in the log is downstream of this one. The scope decides
+    how many equipment classes each layer must generalise over and how much surface there
+    is to validate, and without it a reader cannot tell whether "two equipment classes" was
+    a judgement or whatever the dataset happened to offer.
+  WHAT IT DOES: Four named options — one class done deeply, two classes joined by one
+    modelled edge, everything the dataset ships, and multiple buildings — with the rejection
+    reason for each. The rationale turns on one question: what is the smallest system that
+    can genuinely predict a failure, quantify its confidence and explain it across a machine
+    boundary. Each of those three rules something out, and the third is what fixes the count
+    at two classes and one edge.
+  ⚠ JUDGEMENT CALL: Numbered **D-00** and placed FIRST in the log rather than appended at
+    the end. The checkpoint said to append it as D-01, and there is already a D-01 on
+    TimescaleDB. Renumbering nine entries would break every cross-reference in
+    `ARCHITECTURE.md`, `ROADMAP.md` and these notes, and appending a project-start decision
+    at position ten makes it useless as the frame for the nine it precedes. So it is zero,
+    it sits at the top, and it opens with a blockquote saying the decision was taken at
+    project start and recorded retrospectively at the end of Task 7. The log's header now
+    explains the numbering in two sentences so a reader does not have to infer it.
+  CHOICES: The Outcome is the part worth reading, because two of its three findings are
+    corrections to the reasoning rather than confirmations of it. The two-class scope was
+    right for a reason I had not identified — it is the minimum at which the extensibility
+    claim becomes CHECKABLE, and every class-dispatch point broke first and got fixed,
+    including the Brick equivalence bug that made string matching silently fit nothing.
+    And the one edge turned out to be unvalidatable in the positive direction, because the
+    two LBNL systems are independent simulations, which is a direct consequence of choosing
+    scope by what the model needs rather than by what the data couples. The cheapest fix was
+    available and unnoticed: tower to chiller is the one chain this dataset genuinely
+    couples, both sit inside the same simulation, and giving the tower a failure mode would
+    have made the cross-asset layer positively validatable. It is now roadmap item 2.2 and
+    it should have been in scope on day one.
+
+`AI_LOG.md` :: D-08 Outcome — "Updated after Task 7"
+  WHY IT EXISTS: The checkpoint asks for it, and Task 7 scored this layer against the
+    answer key for the first time.
+  WHAT IT DOES: Records 4 of 5 correct against a 3 of 5 majority-guess baseline, states that
+    a one-case margin over guessing is not a demonstration on its own, and then says what
+    makes it worth having: the drifting thermometer and the jammed damper are the two a
+    majority guess gets wrong and both are right, with the damper case naming the outdoor
+    damper that was actually jammed rather than the return damper it is linked to.
+  CHOICES: Most of the entry is about the MISS rather than the four hits, because the miss
+    confirms this decision's own central claim. The original entry argues that supply air
+    temperature is unfalsifiable on the constraint set alone because it appears in exactly
+    one relation, and that adding baselines as relations fixed it by taking it from one to
+    three. The chiller never received that treatment: it contributes three relations to the
+    air handler's five, and electrical power appears in two of the three. So the same
+    argument predicts, exactly, that the chiller will fail on any fault developed enough to
+    move two relations at once — and condenser fouling came out SENSOR, blaming the power
+    meter, reconciling 99 percent of the violation with nothing left to contradict it. The
+    entry says plainly that being confirmed by a miss is the stronger and less pleasant kind
+    of confirmation.
+  CHOICES: Two weaknesses the scoring exposed are recorded as new rather than folded into
+    the existing text. The observation window matters and there is no uniformly right one —
+    28 days gets the air handler right and the chiller wrong, the whole post-injection
+    stretch gets the reverse, and choosing per equipment class would be fitting the harness
+    to the answer key. And the equipment branch is weaker than the sensor branch in a way
+    the chosen cases hid: sensor and control both require positive evidence, while equipment
+    fires on the absence of a sensor explanation plus a degradation trend, so when the trend
+    is spurious nothing stops it — two of four healthy machines were labelled that way.
+  CHANGED FROM BEFORE: One sentence in the earlier Outcome is corrected rather than left
+    standing. It said the layer "depends on having a fault-free window at the same time of
+    year to compare against". Task 7 tested that with each run's own commissioning window as
+    the reference and it holds: on the one run where both references cover the same 28 days
+    they return the same class. The seasonal reference is better; it is not required.
+
+`AI_LOG.md` :: D-10 — Explicitly not built, and why
+  WHY IT EXISTS: The checkpoint asks for it, and it is the decision `ROADMAP.md` section 3
+    is the output of.
+  WHAT IT DOES: Three options — build a thin version of everything, build deep and say
+    nothing about the gaps, or build deep and document every gap with its reason and its
+    blocker. The rationale is that an undocumented gap is evidence about thoroughness and a
+    documented one is evidence about judgement, and judgement is what a time-boxed project
+    is assessed on.
+  CHOICES: The entry records the distinction that fell out of the framing and that I would
+    not have found by listing cuts: some things are **unbuildable on this data** and some
+    were **traded away**, and they need different treatment. Neither dataset publishes a
+    makeup water flow or a CO₂ point, so water balance and air quality are blocked on
+    instrumentation and each names the single meter that would unblock it. The test suite,
+    the dashboards, the work order lifecycle and the router were all buildable and were
+    traded, so each names what it was traded against and goes into the roadmap in priority
+    order.
+  CHOICES: It names why option 1 was the dangerous one rather than the lazy one. The thin
+    version demos best, the model offered it repeatedly and always with a working
+    implementation attached, and it arrives already working so declining it feels like
+    waste. A handful of tests on the easy functions is specifically called out as worse than
+    none, because it converts "no test suite" into "a test suite that passes".
+  CHOICES: The Outcome concedes one trade as indefensible. The test suite is the one I would
+    not make again, and the reason is that three defects surfaced in the final scoring pass
+    that a modest suite would have caught earlier — none visible from any individual layer's
+    verification output, because each layer's script checks that the layer did what it was
+    asked and none checks that what it was asked for was right. The defence I would have
+    offered, that the verification scripts and the harness substitute for tests, is half
+    true: they catch a regression in accuracy and they do not pin behaviour on a fixed
+    input.
+  CHOICES: It also records a structural mistake — treating the not-built list as one
+    document when it is two. Permanent refusals are not deferred work, and two of the five
+    named were only articulated while writing that section, which is late. A prohibition on
+    tuning thresholds to improve a metric should have been written the first time a
+    validation number came out badly, not after the last one did.
+
+### Verification
+
+Eleven entries. Every one carries all six required subsections — Forcing question, Options,
+Rationale, Mine vs delegated, Confidence, Outcome — and two carry an Overrode section. No
+Outcome is a stub: they run from 2,402 to 9,747 characters, with D-08 now the longest after
+three sessions of updates. Named options per entry: 4, 3, 3, 3, 4, 3, 3, 4, 3, 4, 3. D-00 is
+marked as taken at project start in a blockquote at its head, D-08 carries an explicit
+"Updated after Task 7" section, and D-10 cross-references `ROADMAP.md`.
+
+### One factual correction, across three documents
+
+`AI_LOG.md`, `ROADMAP.md` and these notes each claimed "sixteen verification scripts under
+`scripts/`". There are fourteen files in that directory and ten of them are verification
+drivers; the other four are plotting helpers. All three now say ten. The number had been
+carried from document to document without anybody counting, which is exactly the failure
+mode a generated validation document exists to prevent and which prose does not get.
+
+START HERE: `AI_LOG.md` — the Outcome of D-00. It is the only place in the project that
+records the scope decision being right for a reason other than the one it was made for, and
+being wrong about something nobody checked.

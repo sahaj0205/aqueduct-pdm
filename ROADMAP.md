@@ -120,7 +120,7 @@ it comes back. Three kinds, in this order:
 - **Property tests on the monotonicity constraint.** For any input series and any set of
   repair events, the clamped health series never increases between repairs. A property test
   is the right shape here because the invariant is universal.
-*Effort:* medium. *Note:* the sixteen verification scripts under `scripts/` already run each
+*Effort:* medium. *Note:* the ten verification scripts under `scripts/` already run each
 layer over real data and print what its checkpoint claimed, and the harness catches accuracy
 regressions on every run. What is missing is behaviour pinned on a fixed input.
 
