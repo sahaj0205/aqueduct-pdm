@@ -465,7 +465,11 @@ CREATE TABLE IF NOT EXISTS app.failure_modes (
     threshold_rationale   TEXT              NOT NULL CHECK (length(threshold_rationale) > 40),
     degradation_process   TEXT              NOT NULL DEFAULT 'wiener'
                                             CHECK (degradation_process
-                                                   IN ('wiener', 'gamma'))
+                                                   IN ('wiener', 'gamma')),
+    penalty_kw_per_unit   DOUBLE PRECISION  CHECK (penalty_kw_per_unit IS NULL
+                                                   OR penalty_kw_per_unit > 0),
+    penalty_basis         TEXT,
+    CHECK (penalty_kw_per_unit IS NULL OR length(penalty_basis) > 40)
 );
 
 -- Added in checkpoint 5.1, after this table already existed in the running
@@ -480,6 +484,18 @@ ALTER TABLE app.failure_modes
 ALTER TABLE app.failure_modes
     ADD CONSTRAINT failure_modes_degradation_process_check
     CHECK (degradation_process IN ('wiener', 'gamma'));
+
+-- Added in checkpoint 6.2, for the same reason and by the same means. No DEFAULT:
+-- both columns are legitimately NULL for a mode whose cost is not electrical.
+ALTER TABLE app.failure_modes
+    ADD COLUMN IF NOT EXISTS penalty_kw_per_unit DOUBLE PRECISION;
+ALTER TABLE app.failure_modes
+    ADD COLUMN IF NOT EXISTS penalty_basis TEXT;
+ALTER TABLE app.failure_modes
+    DROP CONSTRAINT IF EXISTS failure_modes_penalty_basis_check;
+ALTER TABLE app.failure_modes
+    ADD CONSTRAINT failure_modes_penalty_basis_check
+    CHECK (penalty_kw_per_unit IS NULL OR length(penalty_basis) > 40);
 
 COMMENT ON TABLE app.failure_modes IS
     'One row per distinct way a class of equipment can fail. A chiller does not '
@@ -527,6 +543,26 @@ COMMENT ON COLUMN app.failure_modes.threshold_rationale IS
     'not optional, and checked to be more than a token: a threshold can never be '
     'entered into this table without a justification recorded beside it.';
 
+COMMENT ON COLUMN app.failure_modes.penalty_kw_per_unit IS
+    'Electrical power wasted, in kilowatts, per one unit of this mode''s indicator. '
+    'The bridge from a physical degradation number to money: the advisory layer '
+    'multiplies the current indicator by this to get the excess kilowatts the fault '
+    'is drawing right now, then by the hours it is actually running and the '
+    'electricity tariff in the semantic model. Without it a cost of inaction would '
+    'have to be guessed, and the whole priority ranking would rest on the guess. '
+    'NULL where the mode genuinely has no electrical cost -- a plant losing '
+    'refrigerant charge draws LESS power, not more, because it is failing to make '
+    'the water rather than paying to make it, and its real cost is lost comfort '
+    'which this building does not price. NULL is therefore a statement, not a gap.';
+
+COMMENT ON COLUMN app.failure_modes.penalty_basis IS
+    'How penalty_kw_per_unit was arrived at, including the operating point it was '
+    'measured at. Required whenever the coefficient is present and checked to be '
+    'more than a token, on the same principle as threshold_rationale: a number that '
+    'converts degrees into dollars can never enter this table without the arithmetic '
+    'recorded beside it. Every coefficient here was measured on a fault-free run '
+    'rather than assumed from a handbook.';
+
 COMMENT ON COLUMN app.failure_modes.degradation_process IS
     'Which stochastic process the remaining-life layer fits to this mode''s '
     'indicator once degradation has been confirmed. ''wiener'' is Brownian motion '
@@ -547,7 +583,8 @@ COMMENT ON COLUMN app.failure_modes.degradation_process IS
 
 INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expression,
                                applies_when, failure_threshold, indicator_unit,
-                               threshold_rationale, degradation_process) VALUES
+                               threshold_rationale, degradation_process,
+                               penalty_kw_per_unit, penalty_basis) VALUES
 
 ('coil-valve-leak-by', 'brick:Air_Handling_Unit', 'Cooling coil valve leak-by',
  -- Reads the shut-valve baseline, not the coil-effectiveness one. That baseline
@@ -570,7 +607,18 @@ INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expres
  -- Wiener. A valve seat erodes one way, but this indicator is not the erosion --
  -- it is how cold the air got, which also depends on how much water happened to
  -- be in the coil and how hard the fan was blowing. Day-to-day falls are real.
- 'wiener'),
+ 'wiener',
+ 0.928,
+ 'One kelvin of unwanted supply air depression removes m_dot * cp * 1 K of heat. '
+ 'Mean supply airflow measured over the 16,353 fault-free samples where the '
+ 'chilled water valve is actually commanded shut -- the only instants this '
+ 'indicator is defined at -- is 2.0192 m3/s, which at 1.2 kg/m3 and 1.005 kJ/kgK '
+ 'is 2.435 kW of cooling nobody asked for. Converted to electricity at this '
+ 'chiller''s commissioned 1.3402 kW/ton, which is 0.3811 kW electrical per kW '
+ 'thermal, giving 0.928 kW per kelvin. Counts the chiller electricity only. The '
+ 'overcooled air is also reheated back to setpoint downstream, which would roughly '
+ 'double the figure, but this building has no reheat instrument so that half is '
+ 'left out rather than estimated.'),
 
 ('chiller-condenser-fouling', 'brick:Chiller', 'Condenser fouling',
  '{residual:@asset.cdw_leaving_temp.condenser-heat-rejection}',
@@ -589,7 +637,14 @@ INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expres
  -- gets cleaner mid-season. The accumulated deposit is the state being tracked and
  -- it is genuinely one-directional, so a process that forbids negative increments
  -- is the physically correct one rather than a convenience.
- 'gamma'),
+ 'gamma',
+ 1.876,
+ 'A chiller pays roughly 2.5 percent of its compressor power per kelvin of extra '
+ 'lift, and excess leaving condenser water is what raises the lift. Mean compressor '
+ 'power over the 30,078 fault-free samples where this machine is actually running '
+ 'is 75.04 kW, so 2.5 percent of it is 1.876 kW per kelvin. The 2.5 percent is a '
+ 'handbook rule of thumb rather than a measurement on this machine, and it is the '
+ 'weakest link in this coefficient; the 75.04 kW it multiplies is measured.'),
 
 ('chiller-efficiency-loss', 'brick:Chiller', 'Compressor efficiency loss',
  '({residual:@asset.power.chiller-efficiency} / 1000.0) / '
@@ -609,7 +664,15 @@ INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expres
  -- Wiener. kW/ton excess is the sum of several independent causes -- fouling,
  -- charge, wear, and the accuracy of the flow meter it is computed from -- and a
  -- genuinely better week is possible without anyone repairing anything.
- 'wiener'),
+ 'wiener',
+ 48.34,
+ 'The indicator is already excess electrical power per ton of cooling, so the only '
+ 'thing needed to turn it into kilowatts is how many tons the machine is actually '
+ 'making. Mean load over the 30,078 fault-free samples where it is running is 48.34 '
+ 'tons, so one kW/ton of excess is 48.34 kW. This is the most directly measured '
+ 'coefficient in the table -- no conversion factor and no rule of thumb, just the '
+ 'measured mean load. It understates the penalty on a hot afternoon, when the '
+ 'machine is at its 135-ton peak and the same indicator costs 135 kW.'),
 
 ('fan-bearing-degradation', 'brick:Air_Handling_Unit', 'Fan and bearing degradation',
  '{residual:@asset.sf_power.fan-similarity}',
@@ -626,7 +689,14 @@ INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expres
  -- is dominated by how well the similarity-law fit happens to match the day's
  -- operating point, and that error changes sign. Measured on the fault-free run,
  -- 45 of 116 daily changes in this indicator are downward.
- 'wiener'),
+ 'wiener',
+ 0.001,
+ 'This indicator is already electrical watts drawn above what the similarity-law '
+ 'baseline predicts at matched speed and matched airflow, so the conversion is a '
+ 'unit change and nothing else: one watt of excess shaft power is one thousandth of '
+ 'a kilowatt. Included with a coefficient of exactly 0.001 rather than special-cased '
+ 'in code, so that every mode goes through the same arithmetic and a reader does not '
+ 'have to check whether this one is handled differently.'),
 
 ('chiller-refrigerant-loss', 'brick:Chiller', 'Refrigerant charge loss',
  '{point:@asset.chw_supply_temp} - {point:chw-plant-1.pri_supply_temp_spt}',
@@ -645,7 +715,16 @@ INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expres
  -- does wobble, which argues the other way; gamma is chosen because the physical
  -- state is irreversible and because a charge-loss prediction that can forecast
  -- recovery would be predicting something no technician has ever seen.
- 'gamma'),
+ 'gamma',
+ -- NULL, and this is the interesting one. A short-charged chiller draws LESS power,
+ -- not more: it is failing to make the water rather than paying extra to make it,
+ -- and the lower lift actually reduces compressor draw. Its real cost is chilled
+ -- water above setpoint, which becomes lost cooling capacity and warm occupants, and
+ -- this building prices neither. Giving it a positive coefficient would have made
+ -- the cost of inaction wrong in sign; giving it a small one would have been an
+ -- invention. So it is NULL, the advisory says the cost is not electrical, and the
+ -- priority for this mode falls back to severity alone.
+ NULL, NULL),
 
 ('filter-loading', 'brick:Air_Handling_Unit', 'Filter loading',
  NULL,
@@ -664,7 +743,12 @@ INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expres
  -- Gamma, on the same grounds as condenser fouling: dust caught in a filter stays
  -- caught. Recorded for completeness even though nothing can fit it, so that if a
  -- filter pressure sensor is ever added the process choice is already made.
- 'gamma')
+ 'gamma',
+ -- NULL because the indicator itself is NULL. A loaded filter absolutely does cost
+ -- fan energy -- that is the whole reason 250 Pa is the change-out criterion -- but
+ -- with no differential pressure instrument there is no indicator to multiply, so a
+ -- coefficient here would convert a number that does not exist.
+ NULL, NULL)
 
 ON CONFLICT (mode_id) DO UPDATE SET
     brick_class          = EXCLUDED.brick_class,
@@ -674,7 +758,248 @@ ON CONFLICT (mode_id) DO UPDATE SET
     failure_threshold    = EXCLUDED.failure_threshold,
     indicator_unit       = EXCLUDED.indicator_unit,
     threshold_rationale  = EXCLUDED.threshold_rationale,
-    degradation_process  = EXCLUDED.degradation_process;
+    degradation_process  = EXCLUDED.degradation_process,
+    penalty_kw_per_unit  = EXCLUDED.penalty_kw_per_unit,
+    penalty_basis        = EXCLUDED.penalty_basis;
+
+
+-- =====================================================================
+-- APP — intervention library
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS app.intervention_library (
+    intervention_id   TEXT              PRIMARY KEY,
+    applies_to_fault  TEXT              NOT NULL,
+    applies_to_class  TEXT              CHECK (applies_to_class IS NULL
+                                               OR applies_to_class IN
+                                                  ('sensor', 'equipment',
+                                                   'control', 'ambiguous')),
+    description       TEXT              NOT NULL CHECK (length(description) > 20),
+    duration_hours    DOUBLE PRECISION  NOT NULL CHECK (duration_hours > 0),
+    skills            TEXT[]            NOT NULL CHECK (cardinality(skills) > 0),
+    parts             TEXT[]            NOT NULL,
+    cost_usd          NUMERIC(10,2)     NOT NULL CHECK (cost_usd >= 0),
+    basis             TEXT              NOT NULL CHECK (length(basis) > 30),
+    UNIQUE NULLS NOT DISTINCT (applies_to_fault, applies_to_class)
+);
+
+COMMENT ON TABLE app.intervention_library IS
+    'What to actually DO about each fault this system can report. An advisory that '
+    'names a failing machine and stops there hands the diagnosis back to the person '
+    'who asked for it: they still have to decide whether this is an hour with a '
+    'screwdriver or a weekend with a crane, and that decision is what determines '
+    'whether the work gets scheduled. It is a table rather than code for the same '
+    'reason app.failure_modes is -- a site with different labour rates or a different '
+    'parts store changes rows, not Python. It is also the denominator of the priority '
+    'ranking: priority is the cost of doing nothing divided by the cost of acting, and '
+    'the cost of acting is duration times the labour rate plus parts, which is exactly '
+    'what these rows hold.';
+
+COMMENT ON COLUMN app.intervention_library.applies_to_fault IS
+    'The fault this intervention answers, named the same way the detector that found '
+    'it names it: a mode_id from app.failure_modes for a degradation fault, or a '
+    'rule_id for a rule firing. Deliberately NOT a foreign key to app.failure_modes, '
+    'because rule ids are not failure modes and half these rows would be '
+    'unrepresentable.';
+
+COMMENT ON COLUMN app.intervention_library.applies_to_class IS
+    'Which fault class this row is the answer for, or NULL for any class. This column '
+    'is the payoff of the sensor-versus-equipment discrimination in checkpoint 5.4, '
+    'and it is where that work turns into a different van being dispatched. A '
+    'saturated cooling valve classified as a sensor fault needs a reference probe and '
+    'ninety minutes; the same saturated valve classified as an equipment fault needs a '
+    'coil inspection and most of a day. Same symptom, same rule id, 3.2 times the cost. '
+    'Lookup prefers an exact class match and falls back to the NULL row.';
+
+COMMENT ON COLUMN app.intervention_library.duration_hours IS
+    'Wrench time for one technician, excluding travel and excluding waiting for parts. '
+    'Feeds the effort denominator of the priority ranking.';
+
+COMMENT ON COLUMN app.intervention_library.skills IS
+    'Trades required. Present because it changes who can be sent, not for display: a '
+    'refrigerant recovery needs a certified technician and cannot be handed to the '
+    'building engineer whatever the priority says.';
+
+COMMENT ON COLUMN app.intervention_library.parts IS
+    'Materials needed, possibly empty. An empty array is meaningful and common -- '
+    'brushing condenser tubes or recalibrating a sensor consumes nothing -- and it is '
+    'what distinguishes work that can start this afternoon from work that waits on a '
+    'delivery.';
+
+COMMENT ON COLUMN app.intervention_library.cost_usd IS
+    'Parts and materials only. Labour is computed from duration_hours and the labour '
+    'rate in the semantic model, so a site with different wages does not need these '
+    'rows edited.';
+
+COMMENT ON COLUMN app.intervention_library.basis IS
+    'Where the duration and cost estimates come from. Required on the same principle '
+    'as threshold_rationale and penalty_basis. EVERY ESTIMATE IN THIS TABLE IS A '
+    'PLANNING FIGURE AND NEEDS REPLACING WITH REAL CONTRACTOR QUOTES; the basis column '
+    'is where that shows, rather than the numbers looking authoritative.';
+
+
+-- --- seed -------------------------------------------------------------
+
+INSERT INTO app.intervention_library (intervention_id, applies_to_fault,
+                                      applies_to_class, description, duration_hours,
+                                      skills, parts, cost_usd, basis) VALUES
+
+-- ---- degradation modes -----------------------------------------------
+('brush-condenser-tubes', 'chiller-condenser-fouling', NULL,
+ 'Isolate and drain the condenser, brush the tube bundle mechanically, treat the '
+ 'water side, refill and verify the approach temperature has returned to its '
+ 'commissioned value before closing the work order.',
+ 8.0, ARRAY['chiller technician', 'water treatment'],
+ ARRAY['tube brushes', 'condenser water biocide', 'gaskets'], 850.00,
+ 'One shift for a single-bundle machine of this size, the standard interval task in '
+ 'a chiller maintenance contract. Parts are consumables only.'),
+
+('replace-coil-valve', 'coil-valve-leak-by', NULL,
+ 'Isolate the chilled water branch, replace the cooling coil control valve and '
+ 'actuator, stroke it end to end and confirm zero flow at the commanded-shut '
+ 'position.',
+ 4.0, ARRAY['pipefitter', 'controls technician'],
+ ARRAY['150 mm modulating control valve', 'electric actuator', 'flange gaskets'],
+ 2400.00,
+ 'Half a shift with the branch already isolated. Valve and actuator priced at trade '
+ 'list for a two-inch modulating assembly.'),
+
+('overhaul-compressor', 'chiller-efficiency-loss', NULL,
+ 'Compressor teardown: inspect and replace bearings and seals, verify impeller '
+ 'clearances, change oil and filters, then re-run the machine against its '
+ 'commissioning kW/ton at matched load and lift to confirm the efficiency came back.',
+ 32.0, ARRAY['chiller technician', 'certified refrigerant handler', 'rigger'],
+ ARRAY['bearing set', 'shaft seals', 'oil charge', 'oil filter', 'refrigerant top-up'],
+ 14500.00,
+ 'Four shifts including recovery and recharge. The most expensive intervention here '
+ 'and the reason the efficiency threshold is set at the economic-replacement point '
+ 'rather than lower -- at 40 percent excess the energy saved pays this back in a '
+ 'season.'),
+
+('replace-fan-bearings', 'fan-bearing-degradation', NULL,
+ 'Lock out the supply fan, replace both shaft bearings, check belt tension and '
+ 'sheave alignment, clean the impeller, and confirm power at matched airflow has '
+ 'returned toward the similarity-law baseline.',
+ 6.0, ARRAY['mechanic', 'electrician'],
+ ARRAY['bearing pair', 'drive belts', 'grease'], 480.00,
+ 'Most of a shift, since the fan must be locked out and the section opened. Bearings '
+ 'and belts are stocked items.'),
+
+('recharge-refrigerant', 'chiller-refrigerant-loss', NULL,
+ 'Leak-test the circuit under pressure, repair whatever is found, evacuate, and '
+ 'recharge to the nameplate mass. Verify chilled water reaches setpoint at full '
+ 'command before signing off.',
+ 12.0, ARRAY['certified refrigerant handler', 'chiller technician'],
+ ARRAY['refrigerant charge', 'filter drier', 'leak sealant kit'], 6200.00,
+ 'A day and a half, because leak-finding dominates and the repair itself is usually '
+ 'short. Refrigerant priced per kilogram at 2024 rates; the figure moves a lot with '
+ 'the refrigerant and the regulatory year.'),
+
+('replace-filter-bank', 'filter-loading', NULL,
+ 'Change the filter bank and record the clean-filter pressure drop as the new '
+ 'reference.',
+ 2.0, ARRAY['building engineer'], ARRAY['MERV 13 filter bank'], 320.00,
+ 'Two hours for a full bank. Recorded for completeness -- this building has no '
+ 'filter pressure instrument, so no advisory can ever reach this row.'),
+
+-- ---- the same rule, two classes, two completely different jobs -------
+-- These two rows are the point of the applies_to_class column. Both answer
+-- apar-20, a cooling valve that has run fully open and stayed there.
+('calibrate-supply-air-sensor', 'apar-20', 'sensor',
+ 'Check the supply air temperature sensor against a calibrated reference probe in '
+ 'the same airstream, re-trim or replace it, and confirm the control loop settles '
+ 'with the valve back on its normal duty.',
+ 1.5, ARRAY['controls technician'], ARRAY['replacement RTD sensor'], 120.00,
+ 'Ninety minutes including the reference reading and the loop check. This is the '
+ 'cheap outcome and taking it requires believing the discrimination in checkpoint '
+ '5.4 -- dispatched as an equipment fault instead, the same symptom costs 3.2 times '
+ 'as much once labour and parts are both counted, and four times as much in '
+ 'technician-hours alone.'),
+
+('inspect-coil-capacity', 'apar-20', 'equipment',
+ 'Survey the coil for capacity loss: check the water side for fouling and air side '
+ 'for blockage, verify the valve strokes fully and the chilled water arriving is at '
+ 'the temperature the coil was selected for, then decide between cleaning and '
+ 'replacement.',
+ 6.0, ARRAY['pipefitter', 'controls technician'],
+ ARRAY['coil cleaning chemicals'], 260.00,
+ 'Most of a shift, most of it diagnosis rather than repair. 3.2 times the cost of the '
+ 'sensor outcome above for exactly the same reported symptom -- four times the '
+ 'technician-hours, partly offset because the sensor job buys a replacement RTD and '
+ 'this one buys only cleaning chemicals.'),
+
+-- ---- remaining rule firings, class-independent ------------------------
+('investigate-free-cooling-balance', 'apar-7', NULL,
+ 'Verify the mixed air and supply air sensors against each other with both coils '
+ 'confirmed shut, and check the supply fan heat assumption against measured power.',
+ 2.0, ARRAY['controls technician'], ARRAY[]::TEXT[], 0.00,
+ 'Two hours of sensor cross-checking. No parts unless a sensor is condemned.'),
+
+('investigate-coil-no-cooling', 'apar-16', NULL,
+ 'Confirm chilled water is available at the coil at the expected temperature and '
+ 'flow, then stroke the valve through its full range while watching the air-side '
+ 'temperature drop.',
+ 3.0, ARRAY['pipefitter', 'controls technician'], ARRAY[]::TEXT[], 0.00,
+ 'Half a shift of diagnosis. Deliberately carries no parts: this rule says the coil '
+ 'is not delivering, not what to replace.'),
+
+('rebalance-outdoor-air', 'apar-18', NULL,
+ 'Re-measure outdoor air fraction at the design airflow, verify the damper linkage '
+ 'and its position feedback, and re-trim the minimum position to the ventilation '
+ 'requirement.',
+ 4.0, ARRAY['test and balance technician', 'controls technician'],
+ ARRAY['damper linkage kit'], 180.00,
+ 'Half a shift for a single mixing box, at test-and-balance rates.'),
+
+('check-mixing-box-sensors', 'apar-27', NULL,
+ 'Mixed air hotter than both the return and outdoor air it is made from is '
+ 'physically impossible, so check the three sensors against one another and against '
+ 'a reference probe before touching any hardware.',
+ 2.0, ARRAY['controls technician'], ARRAY['replacement RTD sensor'], 120.00,
+ 'Two hours. The rule detects an impossibility, so a sensor is the first suspect and '
+ 'usually the last.'),
+
+('check-economizer-changeover', 'apar-6', NULL,
+ 'Verify the economizer changeover logic and the return and supply air sensors, '
+ 'since supply air warmer than return air during free cooling means either the '
+ 'dampers are not where the controller thinks or two sensors disagree.',
+ 3.0, ARRAY['controls technician'], ARRAY[]::TEXT[], 0.00,
+ 'Half a shift of logic and sensor checking.'),
+
+('verify-chiller-efficiency-inputs', 'chiller-kw-per-ton-residual', NULL,
+ 'Before condemning the machine, verify the flow meter and the two chilled water '
+ 'temperature sensors the kW/ton calculation depends on, since a flow meter reading '
+ 'low makes a healthy chiller look inefficient.',
+ 3.0, ARRAY['chiller technician', 'controls technician'], ARRAY[]::TEXT[], 0.00,
+ 'Half a shift. Placed before any mechanical work because the calculated efficiency '
+ 'is only as good as the flow measurement underneath it.'),
+
+('inspect-condenser-approach', 'chiller-excess-lift', NULL,
+ 'Measure the condenser approach temperature and the cooling tower supply, to '
+ 'separate a fouled condenser from a tower that is returning warm water.',
+ 3.0, ARRAY['chiller technician'], ARRAY[]::TEXT[], 0.00,
+ 'Half a shift of measurement. This is the manual version of the cross-asset '
+ 'reasoning in checkpoint 6.1, and it is here because this building has no cooling '
+ 'tower detector to do it automatically.'),
+
+('investigate-capacity-shortfall', 'chiller-capacity-shortfall', NULL,
+ 'Chilled water above setpoint with the compressor at full command means the plant '
+ 'is out of capacity. Check charge, condenser cleanliness and tower performance in '
+ 'that order, and stage another chiller if one is available.',
+ 4.0, ARRAY['chiller technician', 'certified refrigerant handler'],
+ ARRAY[]::TEXT[], 0.00,
+ 'Half a shift of diagnosis, which then leads to one of the mode-specific rows '
+ 'above. Kept separate because the shortfall is a symptom with several causes.')
+
+ON CONFLICT (intervention_id) DO UPDATE SET
+    applies_to_fault = EXCLUDED.applies_to_fault,
+    applies_to_class = EXCLUDED.applies_to_class,
+    description      = EXCLUDED.description,
+    duration_hours   = EXCLUDED.duration_hours,
+    skills           = EXCLUDED.skills,
+    parts            = EXCLUDED.parts,
+    cost_usd         = EXCLUDED.cost_usd,
+    basis            = EXCLUDED.basis;
 
 
 -- =====================================================================

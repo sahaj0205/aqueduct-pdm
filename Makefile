@@ -141,6 +141,13 @@ diagnosis:
 rootcause:
 	uv run python scripts/run_rootcause.py
 
+# Build the full advisory queue and print three advisories end to end -- one
+# equipment, one sensor which is also the demoted consequential one, and one more
+# equipment. Every number shown traces to a query or a computation, and the report
+# checks field by field that nothing arrived empty without a reason.
+advisories:
+	uv run python scripts/run_advisories.py
+
 # Serve the API on :8000
 api:
 	uv run uvicorn api.main:app --reload --port 8000

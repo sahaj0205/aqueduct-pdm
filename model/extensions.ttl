@@ -61,6 +61,36 @@ criticality independently of cost: a cheap asset serving 200 people can outrank
 an expensive one serving nobody.""" ;
     rdfs:range xsd:integer .
 
+mvn:electricityTariffUSDPerKWh a owl:DatatypeProperty ;
+    rdfs:label "electricity tariff (USD per kWh)" ;
+    rdfs:comment """What a kilowatt-hour costs at this site. Asserted on the site
+rather than per asset, because a building buys electricity once.
+
+This is the property that turns a physical degradation number into money. The
+failure mode table records how many excess kilowatts one unit of each indicator
+represents; multiplying by the hours the equipment actually runs and by this rate
+gives the cost of leaving the fault alone, which is the numerator of the advisory
+priority. Without it, priority would have to rank faults by how alarming their
+numbers look, and a fan wasting 30 watts would compete with a chiller wasting 30
+kilowatts on equal terms.
+
+A flat rate, which is a simplification worth naming: real commercial tariffs have
+time-of-use energy rates and a monthly demand charge on the peak, and a fault that
+pushes the peak can cost far more than its energy alone. Modelling that needs a
+tariff schedule this project does not have.""" ;
+    rdfs:range xsd:decimal .
+
+mvn:labourRateUSDPerHour a owl:DatatypeProperty ;
+    rdfs:label "labour rate (USD per hour)" ;
+    rdfs:comment """Fully loaded cost of one technician-hour at this site. The
+intervention library records how long each job takes and what its parts cost but
+deliberately not what the labour costs, so that a site with different wages
+changes this one number rather than every row of that table.
+
+Forms the denominator of the advisory priority together with parts: priority is
+the cost of doing nothing divided by the cost of acting.""" ;
+    rdfs:range xsd:decimal .
+
 mvn:designValue a owl:DatatypeProperty ;
     rdfs:label "design value" ;
     rdfs:comment """The value this point is designed to hold or reach, in the SI

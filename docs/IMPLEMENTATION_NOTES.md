@@ -6145,3 +6145,290 @@ which is the argument for demote-over-hide, arrived at from the wrong side.
 START HERE: `analytics/diagnosis/rootcause.py` — the plausibility map and its
 admission rule are the whole checkpoint; the traversal and the ranking exist to
 serve them.
+
+
+## Checkpoint 6.2 — Advisory generation
+
+### WHAT WE DID
+
+The system can now produce work orders instead of numbers. Every layer before this
+one ends in a measurement — a residual, a health score, a prediction interval, a
+fault class — and none of those is something a maintenance team can be dispatched
+on. An advisory now arrives as the whole argument in one piece: which machine,
+what is wrong with it, whether the trouble is the machine or the instrument
+measuring it, when it is expected to fail and with what spread, which readings
+support that and how far each of them moved, who upstream might really be at
+fault, which rooms and how many people are affected, what leaving it alone costs
+in dollars over the next quarter, what fixing it costs in technician-hours and
+parts, and the specific job to raise. The queue is then ordered by dollars saved
+per dollar spent, so the first thing an operator sees is the work with the best
+return rather than the loudest alarm. Two things make this different from a
+conventional alarm list. Every dollar figure traces back to a coefficient measured
+on a fault-free run and a rate written down in the semantic model, so a number can
+be argued with rather than only believed. And where a figure genuinely cannot be
+computed, the advisory says so and is ranked on what is known, instead of a zero
+standing in for an unknown.
+
+### HOW IT WORKS
+
+`scripts/schema.sql :: app.failure_modes.penalty_kw_per_unit` and `penalty_basis`
+  WHY IT EXISTS: The bridge from physics to money, and without it every priority in
+    the system would rest on a guess. The health layer measures degradation in
+    kelvin, watts and kilowatts per ton; a maintenance budget is in dollars. This
+    column says how many excess kilowatts one unit of each mode's indicator
+    represents.
+  WHAT IT DOES: One coefficient per failure mode, each measured on a fault-free run
+    at that machine's own average operating point, with the arithmetic recorded
+    beside it in a column the database requires to be more than a token. Condenser
+    fouling is 1.876 kW per kelvin, from 2.5 percent of the 75.04 kW mean compressor
+    power measured over 30,078 running samples. Compressor efficiency loss is 48.34
+    kW per kW/ton, which is simply the measured mean load. Coil valve leak-by is
+    0.928 kW per kelvin, from the 2.0192 m³/s mean airflow measured over the 16,353
+    samples where the valve is actually commanded shut, converted to electricity at
+    the machine's commissioned efficiency. Fan bearing wear is 0.001, a unit change.
+  CHOICES: Two of the six modes are deliberately NULL and that is the interesting
+    part. Refrigerant charge loss is NULL because a short-charged chiller draws LESS
+    power, not more — it is failing to make the water rather than paying extra to
+    make it — so a positive coefficient would have got the sign of the cost wrong.
+    Filter loading is NULL because its indicator is NULL: there is no differential
+    pressure instrument to multiply.
+  ⚠ JUDGEMENT CALL: The coil leak coefficient counts the chiller electricity only.
+    Overcooled air is reheated back to setpoint downstream, which would roughly
+    double the figure, but this building has no reheat instrument, so that half is
+    left out rather than estimated. The advisory therefore understates the cost of
+    that fault, which is stated in the basis column rather than quietly split.
+
+`model/extensions.ttl :: mvn:electricityTariffUSDPerKWh`, `mvn:labourRateUSDPerHour`
+  WHY IT EXISTS: A cost of inaction needs a price for a kilowatt-hour and a cost of
+    acting needs a price for an hour of somebody's time. Both are business inputs
+    like replacement cost, so they belong in the model where they can be edited with
+    their reasoning attached, not as constants inside the advisory code.
+  WHAT IT DOES: Declares the two properties in the extension vocabulary and asserts
+    them on a site node — 0.128 USD/kWh, the 2024 US commercial average, and 95.00
+    USD per fully loaded technician-hour. Asserted once at site level because a
+    building buys electricity and labour once, and because every advisory must price
+    against the same rates or the ranking compares incomparable numbers.
+  CHOICES: The tariff is flat, with no time-of-use rate and no demand charge, which
+    is recorded in the comment as an understatement: a chiller losing efficiency on
+    the hottest afternoon of the year is exactly the fault a demand charge would
+    punish, and the real bill would be worse than this project reports.
+
+`model/building_extensions.ttl :: occupants per zone`
+  WHY IT EXISTS: The downstream half of the graph trace terminates on the five
+    occupied zones, and until now they carried no occupancy at all, so the trace
+    could name the rooms but not the people in them.
+  WHAT IT DOES: Asserts 40 occupants on each of the five zones. The five sum to the
+    200 already on the air handler, so the asset-level figure and the zone-level
+    figures are consistent by construction and either can be checked against the
+    other.
+  CHOICES: Uniform across the five zones because nothing in the source data
+    distinguishes them — LBNL publishes a zone temperature per zone and an occupancy
+    schedule for the unit as a whole, with no headcount and no floor area. Recorded
+    as estimated in the comment.
+
+`scripts/schema.sql :: app.intervention_library`
+  WHY IT EXISTS: An advisory that names a failing machine and stops there hands the
+    problem back to whoever asked. It is also the denominator of the ranking: the
+    cost of acting is duration times the labour rate plus parts, which is exactly
+    what these rows hold.
+  WHAT IT DOES: Sixteen seeded rows, each with the job in words, its wrench time, the
+    trades required, the materials, the parts cost and a basis for the estimates.
+    Keyed on the fault the way the detector that found it names it — a mode id for a
+    degradation fault, a rule id for a rule firing — and NOT a foreign key to
+    app.failure_modes, because rule ids are not failure modes and half the rows would
+    be unrepresentable.
+  CHOICES: The `applies_to_class` column is the point of the table. Two rows answer
+    the same fault, `apar-20`, a cooling valve that has run fully open: classified as
+    a sensor fault it is ninety minutes with a reference probe, classified as an
+    equipment fault it is six hours of coil survey. Same symptom, same rule id, 3.2
+    times the cost, and the only thing choosing between them is checkpoint 5.4. The
+    lookup prefers an exact class match and falls back to the class-independent row.
+
+`analytics/advisories/generate.py :: classify_fault(...)`
+  WHY IT EXISTS: Fixes a real defect that only became visible once advisories were
+    assembled. The classifier from checkpoint 5.4 answers per ASSET per window, which
+    is the right question for it and the wrong granularity for an advisory, because a
+    machine can carry two unrelated faults at once.
+  WHAT IT DOES: Decides the class per fault. A rule firing takes the asset's class
+    directly, because a rule reports a symptom and "why" is exactly what the
+    classifier answers. A failure mode is equipment degradation by construction —
+    the health layer measured a physical quantity trending to a threshold and the
+    changepoint detector confirmed the onset. Unless the mode's own indicator is
+    computed from the very measurement the classifier accuses, in which case the
+    trend may be an artefact of the lying instrument and the mode inherits the sensor
+    verdict.
+  CHOICES: The check is textual — the accused point id against the mode's indicator
+    expression with `@asset` substituted — which is exact enough because those
+    expressions name their points explicitly.
+  CHANGED FROM BEFORE: The first version handed every fault on an asset the asset's
+    class. On the 2038 air handler run that labelled the supply fan's bearing wear a
+    SENSOR fault, because the supply air thermometer on the same machine is drifting.
+    The two faults have nothing to do with each other and the label would have sent
+    somebody with a reference probe to a worn bearing.
+
+`analytics/advisories/generate.py :: contributing_signals(...)`
+  WHY IT EXISTS: The evidence a technician can go and check for themselves. Reads raw
+    measurements rather than residuals on purpose: residuals are the better detection
+    signal and are reported separately as the diagnosis evidence, but an advisory has
+    to be checkable against the building automation system a technician can actually
+    open, and that system shows raw values.
+  WHAT IT DOES: Compares every point on the asset between the advisory window and a
+    fault-free reference window, ranks by how many of its own reference standard
+    deviations it moved, and returns the top six with both values and the movement.
+    Points whose mean quality score in either window is below 50 are dropped and
+    counted, and the count is reported.
+  CHOICES: The quality gate is 50, matching the threshold the rule engine and the
+    fault classifier already use, so three layers cannot disagree about what
+    untrusted means.
+  ⚠ JUDGEMENT CALL: I originally omitted the quality filter, and it broke the report
+    in a way worth recording. The air handler's supply air static pressure SETPOINT
+    is corrupt in every synthesised run: it should be a constant 400.4 Pa and instead
+    sits pinned at −99698.47 Pa, about minus one atmosphere, for 14,176 of the 34,560
+    samples in the 2038 window. Ranked on movement alone it was the largest mover on
+    the asset by a factor of ten thousand and crowded every real signal out of the
+    advisory. The quality layer from checkpoint 3.1 had already scored it 0 out of
+    100 on all 17,280 samples and raised out_of_range advisories against it — the
+    detection worked, and the advisory layer simply was not reading the verdict.
+
+`analytics/advisories/generate.py :: prognosis(...)` and `Prognosis.sentence`
+  WHY IT EXISTS: The remaining-life sentence, and the guarantee that an advisory
+    never invents one. A planner reading "likely to fail in 40 to 120 days" and a
+    planner reading "cannot bound this" make different decisions, and collapsing the
+    second into a vague version of the first is the easiest way to make the whole
+    system untrustworthy.
+  WHAT IT DOES: Reads the latest row checkpoint 5.2 published on or before the
+    advisory date and renders it as "likely to fail in X to Y days, median Z, from N
+    post-onset samples". When there is no row, or the interval is unbounded, it
+    reports the refusal and its reason in the place the interval would have gone.
+  CHOICES: `probability_by(days)` interpolates across the three stored quantiles
+    rather than recomputing the first-passage distribution, and that is deliberate
+    with a cost. app.rul_estimates stores P10, P50 and P90 and not the distribution
+    behind them, so an exact figure would mean refitting the process here — and an
+    advisory that refits is an advisory that can contradict the remaining-life page
+    it is summarising. Agreement with what the system already published matters more
+    than the last few percent of accuracy.
+
+`analytics/advisories/generate.py :: severity(...)`
+  WHY IT EXISTS: How urgent this is, on a scale that can rank a chiller against an
+    air handler.
+  WHAT IT DOES: Four inputs, each put on nought to one before weighting because they
+    are measured in incompatible things. Rate of decline in health points per day
+    from a least-squares fit over the last 28 days; urgency from the published median
+    time to failure against the 90-day horizon; criticality from the tier; occupancy
+    from the headcount as a fraction of the building's largest.
+  CHOICES: Weights are 0.35 slope, 0.35 urgency, 0.15 criticality, 0.15 occupancy.
+    The two the system MEASURED carry 0.7 between them and the two that are business
+    context carry 0.3, because tier and headcount should shade a ranking rather than
+    decide it: a tier 1 asset that is not degrading is not urgent. The slope
+    saturates at one health point per day, which takes a machine from new to failed
+    in a quarter and is about as fast as anything here degrades. The 28-day fit
+    window makes the number the CURRENT rate rather than the average since onset, so
+    a fault that has plateaued stops being urgent.
+  ⚠ JUDGEMENT CALL: The urgency term is zero when there is no prediction, rather
+    than a guess. A refused advisory is therefore ranked on its rate of decline and
+    what it serves, and can still reach the top of the queue on those alone — it just
+    cannot borrow urgency from a prediction that was never made.
+
+`analytics/advisories/generate.py :: duty_fraction(...)`
+  WHY IT EXISTS: An excess-power penalty is only paid while the machine is on, and
+    these machines are off a great deal — the air handler is occupied 53.8 percent of
+    the time.
+  WHAT IT DOES: Counts the fraction of samples in the window where the asset's duty
+    indicator is above a threshold, trying compressor power, then the occupancy
+    schedule, then fan power.
+  CHOICES: Costing a fault at 24 hours a day would overstate every advisory by
+    roughly a factor of two, uniformly — so it would not even have the decency to
+    change the ranking. Falls back to the whole window when no duty point exists,
+    which errs toward overstating cost.
+
+`analytics/advisories/generate.py :: cost_of_inaction(...)`
+  WHY IT EXISTS: The numerator of the priority, and the place the project's claim
+    that nothing is hand-waved either holds or fails.
+  WHAT IT DOES: Two terms. ENERGY is the mode's current indicator times the measured
+    kilowatts-per-unit coefficient times the running hours over the horizon times the
+    site tariff. CONSEQUENTIAL is the chance of reaching the failure threshold inside
+    the horizon, read off the published prediction interval, times replacement cost
+    minus repair cost — that difference being the real penalty for waiting, since the
+    repair is owed either way and running a machine to failure converts it into a
+    purchase.
+  CHOICES: The energy term is held flat at today's indicator rather than projected
+    along the degradation trend. That understates an accelerating fault, and the
+    alternative would make the figure depend on a fit the refusal layer may have
+    declined to publish.
+  ⚠ JUDGEMENT CALL: When NEITHER term can be computed the result is marked
+    unpriceable rather than returned as zero dollars, and the priority becomes None
+    rather than 0.00. Zero is a claim — it says the fault is free to ignore — and a
+    cooling valve saturated at severity 1.00 serving two hundred people is not free
+    to ignore just because this building does not meter what it costs. The rejected
+    alternative was to price comfort by inventing a dollars-per-degree-hour rate,
+    which is exactly the hand-waving the checkpoint forbids.
+
+`analytics/advisories/generate.py :: recommend(...)` and `Intervention.effort_usd`
+  WHY IT EXISTS: Turns the fault into a job with a price, and is where the
+    sensor-versus-equipment discrimination stops being an academic result.
+  WHAT IT DOES: Looks up the intervention library preferring a row written for this
+    fault CLASS and falling back to the class-independent one, then prices the effort
+    as duration times the site labour rate plus parts. Returns None rather than a
+    placeholder when nothing matches, so a fault with no recorded response shows as a
+    gap in the library instead of arriving with an invented recommendation.
+
+`analytics/advisories/generate.py :: rank_key(...)` and `queue(...)`
+  WHY IT EXISTS: The order an operator reads.
+  WHAT IT DOES: Two tiers. Priced advisories first, sorted on dollars saved per
+    dollar spent; unpriced ones after, sorted on severity. Consequential advisories
+    are demoted within whichever tier they are in, using the same 40 percent cut and
+    the same clamp under the cause as checkpoint 6.1.
+  CHOICES: Two tiers rather than one number, because a priority in dollars-per-dollar
+    and a severity on nought to one are not the same quantity and combining them
+    would invent a comparison. The operator sees the boundary and knows the second
+    group is ordered on how bad the fault is rather than what it costs. The demotion
+    is re-applied here rather than reused from 6.1 because an advisory's economic
+    priority does not exist until its intervention has been priced, which happens
+    after the cross-asset pass has already run on severity.
+
+`analytics/advisories/generate.py :: build(...)` — the health/prediction contradiction
+  WHY IT EXISTS: Assembling every field in one object, and one thing that only became
+    visible by doing so.
+  WHAT IT DOES: Runs the steps in the order the argument needs them, since severity
+    needs the prediction, the cost needs the prediction and the duty, and the priority
+    needs both the cost and the intervention. It also compares health against the
+    prediction and attaches a note when they contradict each other.
+  ⚠ JUDGEMENT CALL: That note exists because of a genuine inconsistency between two
+    earlier checkpoints, which I am flagging rather than fixing because the fix
+    belongs in 4.4 or 5.2. The fan bearing advisory reports health 63 of 100 beside a
+    median time to failure of 0 days. Both are the system's own published numbers,
+    and they disagree because they read the same indicator through different
+    smoothing: health through the isotonic clamp, which fits 33.2 W on 23 September
+    2038, and the prediction through a trailing median held at its running maximum,
+    which sees the 178.6 W raw spike that day and concludes the 88.9 W threshold is
+    already crossed. The advisory says so and tells the reader to treat the
+    remaining-life figure as unreliable. This matters beyond one row: that advisory
+    is currently first in the queue at priority 65.15, and 68,400 of its 68,405 USD
+    cost of inaction comes from a 90 percent failure probability that rests on the
+    suspect number.
+
+`scripts/run_advisories.py :: completeness(...)`
+  WHY IT EXISTS: The checkpoint asks for three advisories with every field populated,
+    and that is checked here rather than asserted in prose.
+  WHAT IT DOES: Walks the advisory's fields, splits the empty ones into those that are
+    legitimately absent for a recorded reason — a rule firing has no mode id and no
+    health score — and those that are not, and fails the run on any of the second
+    kind. Reports 19 of 22, 19 of 22 and 21 of 22 populated across the three, with
+    every empty field explained.
+
+### The verification, in one paragraph
+
+Six advisories, ordered by dollars saved per dollar spent: the fan bearing at 65.15,
+condenser fouling at 18.89, compressor efficiency loss at 16.21, a nearly healthy
+second chiller at 0.00, and two unpriced air-side rule firings, the last of them the
+demoted consequential one. Every dollar figure decomposes on screen — 30,418.85 USD
+for the fouling advisory is 218.85 of electricity, from 0.492 indicator units times
+1.876 kW per unit over 1,854 running hours at 85.8 percent duty and 0.128 USD/kWh,
+plus 30,200 of exposure, from a 10.0 percent chance of crossing the threshold inside
+90 days against 302,000 USD of replacement over repair. The same fault looked up
+under two classes returns two different jobs at 262.50 and 830.00 USD, which is what
+the discrimination in checkpoint 5.4 is worth in dispatch terms.
+
+START HERE: `analytics/advisories/generate.py` — `cost_of_inaction` and `rank_key`
+are the two functions that decide what an operator sees first, and everything else in
+the file exists to feed them numbers that can be traced.

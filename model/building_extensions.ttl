@@ -109,6 +109,26 @@ chiller:Condenser_Water_System brick:hasPart site:CDW_Loop .
 # edit here, and nothing computes them.
 #
 
+site:Building
+    mvn:electricityTariffUSDPerKWh 0.128 ;
+    mvn:labourRateUSDPerHour 95.00 ;
+    rdfs:comment """Site-level economics. Both are estimates and both need
+replacing with the actual numbers from a utility bill and a maintenance contract.
+
+0.128 USD per kWh is the 2024 US commercial average retail rate. It is a flat
+energy rate with no demand charge, which understates the cost of any fault that
+raises the monthly peak -- a chiller losing efficiency on the hottest afternoon of
+the year is exactly such a fault, and the real bill would be worse than this
+project reports.
+
+95 USD per hour is a fully loaded contractor rate for a commercial HVAC
+technician, meaning wages plus overhead plus vehicle, not a wage.
+
+Asserted on a site node rather than on any asset because a building buys
+electricity and labour once, and because every advisory has to price its work
+against the same rate or the priority ranking is comparing incomparable
+numbers.""" .
+
 sdahu:AHU
     mvn:criticalityTier 1 ;
     mvn:replacementCostUSD 95000.00 ;
@@ -116,8 +136,33 @@ sdahu:AHU
     mvn:occupantsServed 200 ;
     rdfs:comment """Tier 1: it is the only air handler in the modelled scope, so
 if it stops, all five zones lose conditioned air immediately with nothing to pick
-up the load. Occupants estimated at 40 per zone across the five zones it
-serves.""" .
+up the load. Occupants estimated at 40 per zone across the five zones it serves,
+and asserted per zone below rather than only in total, so that a fault traced to
+one zone can report the people in that zone rather than the whole building.""" .
+
+#
+# Occupants per zone. The five zones are the only nodes in this model that are
+# downstream of the air handler, so they are what a "who does this affect" trace
+# terminates on, and until now they carried no occupancy at all -- the trace could
+# name the zones but not the people in them.
+#
+# Forty each, which is the per-zone figure the air handler's comment above already
+# assumed, now written where a traversal can read it. The five sum to the 200 on
+# the air handler, so the asset-level number and the zone-level numbers are
+# consistent by construction and either can be checked against the other.
+#
+sdahu:Zone_1 mvn:occupantsServed 40 .
+sdahu:Zone_2 mvn:occupantsServed 40 .
+sdahu:Zone_3 mvn:occupantsServed 40 .
+sdahu:Zone_4 mvn:occupantsServed 40 .
+sdahu:Zone_5 mvn:occupantsServed 40 ;
+    rdfs:comment """Estimated, not measured. The LBNL air handler dataset publishes
+a zone temperature per zone and an occupancy schedule for the unit as a whole, but
+no headcount and no floor area, so there is nothing in the source data to derive a
+per-zone occupancy from. Forty per zone is a plausible density for an office floor
+plate of this size and is uniform across the five zones because nothing in the data
+distinguishes them. If real headcounts arrive, these five numbers are the only
+edit; every occupant figure the advisory layer reports is summed from them.""" .
 
 chiller:Simulated_Chiller_Plant
     mvn:criticalityTier 1 ;
