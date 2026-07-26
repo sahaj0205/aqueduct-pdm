@@ -5879,3 +5879,269 @@ START HERE: `AI_LOG.md` — the Outcome of D-07. It is the only place in the log
 records the ARGUMENT for a decision changing while the decision stayed put: the
 reason to prefer an interpretable model turned out to be that its parameters give
 you something to refuse on, which is not why I chose it.
+
+
+## Checkpoint 6.1 — Cross-asset root cause
+
+### WHAT WE DID
+
+The system can now tell the difference between a machine that is broken and a
+machine that merely looks broken because something feeding it is broken. Until
+now every layer examined one piece of equipment at a time, on its own evidence,
+which is the right way to detect a fault and the wrong way to decide who to send
+somebody to see. A chiller that has lost cooling capacity sends warmer water
+down the loop, and the air handler it feeds then cannot get its supply air cold
+enough however wide it opens its valve — so the air handler, judged on its own
+readings, is failing, and a technician sent there finds a coil working perfectly.
+The platform now traces each finding back along the pipes recorded in the
+semantic model, checks whether anything upstream has a fault of a kind that could
+physically produce this particular symptom, and if so marks the downstream item
+as a consequence, names the machine to actually visit, and ranks the consequence
+below its own cause. It ranks it lower rather than removing it, which matters
+because the inference can be wrong and the operator is the only one in a position
+to notice: two faults on connected machines in the same fortnight are very often
+a coincidence, and an operator who once finds a genuine fault hidden behind a
+guess stops believing the queue is complete. Everything the advisory layer, the
+API and the dashboard will show is ordered by this ranking, so without it the
+first thing an operator sees could be the machine that is fine.
+
+### HOW IT WORKS
+
+`analytics/diagnosis/rootcause.py :: OpenFault`
+  WHY IT EXISTS: Cross-asset reasoning has to range over findings from three
+    different layers that share no vocabulary — the rule engine reports episodes
+    of a physics rule being violated, the health layer reports failure modes with
+    a confirmed degradation trend, and the classifier reports a fault class. A
+    layer that had to know about all three shapes would need changing every time
+    a detector was added.
+  WHAT IT DOES: Flattens any finding to the five things cross-asset reasoning
+    actually needs: which asset, what the finding is called, when it was first
+    and last seen, and how bad it is on a nought-to-one scale. The name is
+    whichever identifier the detector that found it uses — a failure mode id like
+    `chiller-condenser-fouling` or a rule id like `apar-20` — and `source` records
+    which kind it is so an advisory can say where it came from.
+  CHOICES: Severity is deliberately made comparable across detectors: a rule
+    episode contributes its peak severity directly, and a degradation fault
+    contributes the fraction of the way to failure it has travelled, so health 63
+    becomes 0.37. Without a common scale one queue could not hold both.
+
+`analytics/diagnosis/rootcause.py :: open_failure_modes(conn, window)`
+  WHY IT EXISTS: The degradation side of the queue has to come from what the
+    health layer already committed to the database, not from a fresh computation,
+    or the advisory queue and the health page can end up disagreeing about which
+    modes are open on the same asset.
+  WHAT IT DOES: Takes the most recent scored day for each asset and failure mode
+    inside the window, keeps only those whose degradation onset was confirmed and
+    whose health has fallen below full, and turns each into an open finding. The
+    fault is dated from its confirmed onset to the last day it was scored.
+  CHOICES: Requires a confirmed onset, so an indicator drifting without
+    confirmation cannot reach an operator through this door — that is the same
+    gate checkpoint 5.3 applies before publishing a remaining-life number, and
+    the two must not disagree. Reports the isotonic-clamped indicator rather than
+    the raw daily value, because health is computed from the clamped one and
+    printing the raw one next to a health score produces readings that look
+    contradictory: on 23 September 2038 the fan indicator's raw value is 178.6 W
+    against an 88.9 W failure threshold while health is 63, which only makes
+    sense once you know the clamped value that day is 33.2 W.
+
+`analytics/diagnosis/rootcause.py :: Propagation` and `PROPAGATIONS`
+  WHY IT EXISTS: Topology says two machines are connected. It cannot say whether
+    a particular fault on one can produce a particular symptom on the other, and
+    that is a physical claim which has to be written down somewhere it can be
+    read and argued with rather than buried in a branch inside the detector.
+  WHAT IT DOES: Six rows, each naming an upstream fault, a downstream symptom,
+    the medium that carries the effect between them, and the mechanism in one
+    sentence. All six are the same physical chain — a chiller that cannot make
+    cold enough water, and a coil that consequently cannot reach its supply air
+    setpoint — entered once per pair of detectors that can observe each end,
+    because the map is keyed on what the detectors are called.
+  CHOICES: There is an explicit admission rule, and it is what keeps this from
+    being a list of opinions: **a cause must be a fault that degrades the medium
+    the downstream asset consumes.** Here the medium is chilled water and the
+    property is its temperature. Compressor efficiency loss is therefore excluded
+    even though it is the most frequently detected chiller fault in this project —
+    a chiller burning more electricity per ton is still delivering water at
+    setpoint, and an air handler downstream cannot tell and does not care. The
+    two chiller rules that report surplus lift and surplus power are excluded on
+    the same grounds. Each exclusion is written beside the map with its reason.
+  ⚠ JUDGEMENT CALL: The cooling-coil leak-by mode is excluded in the opposite
+    direction and this is the exclusion most likely to look like an omission.
+    Warmer chilled water makes supply air warmer; leak-by is supply air being
+    colder than it should be. An upstream capacity loss therefore SUPPRESSES that
+    symptom rather than causing it, and linking the two would be backwards. The
+    alternative — treating any air-side symptom as potentially water-caused —
+    would have made the target scenario easier to demonstrate and would have been
+    wrong.
+
+`analytics/diagnosis/rootcause.py :: nodes_by_asset(mapping)` and `faulted_nodes`
+  WHY IT EXISTS: Traversal happens over graph nodes and faults are detected
+    against database assets, and the two are not one-to-one. The air handler is
+    one asset in the database and eleven nodes in the graph — a coil, two fans,
+    three dampers, five zones — and only the coil is on the receiving end of the
+    chilled water loop. Starting the traversal from the wrong node finds nothing
+    upstream and looks exactly like a building with no upstream faults.
+  WHAT IT DOES: Inverts the node-to-asset mapping so every node of an asset can
+    be used as a traversal start, and marks each open fault onto every node of
+    its own asset.
+  CHOICES: A fault is marked on all of its asset's nodes rather than on the one
+    part it belongs to. Guessing which part would need a failure-mode-to-node
+    mapping that nothing in the model supplies, and getting it wrong would
+    silently break the traversal rather than fail loudly. Marking the whole asset
+    is also the honest reading of what the detectors claim — they name an asset,
+    not a part.
+
+`analytics/diagnosis/rootcause.py :: upstream_open_faults(...)`
+  WHY IT EXISTS: This is the topology half of the inference and the reason the
+    chilled water loop had to be modelled as a graph edge back in checkpoint 2.2.
+    Anything not returned here is not a candidate cause, which is what stops the
+    layer blaming an unrelated machine that happens to be degrading in the same
+    week.
+  WHAT IT DOES: Runs `open_faults_upstream.rq` from every graph node belonging to
+    the symptom's asset, with the other assets' faults asserted into a throwaway
+    copy of the graph, then unions the results and keeps the shortest hop count
+    for each upstream asset. The asset's own faults are excluded from the marks.
+  CHOICES: Self-exclusion is not cosmetic — without it a fault could be offered
+    as the cause of its own symptom on the same machine and explain itself away.
+    Hop counts come back from the query wrapper rather than being recomputed, and
+    the verification cross-checks all seven upstream assets against
+    `app.asset_edges`, which was built by an independent breadth-first walk in
+    checkpoint 2.3. They agree on every one.
+
+`model/graph.py :: open_faults_upstream(graph, asset, open_faults)`
+  WHY IT EXISTS: The typed wrapper around the SPARQL query. Unchanged in purpose.
+  CHANGED FROM BEFORE: It used to accept exactly one fault identifier per graph
+    node, which was fine when nothing in the project produced faults at all. A
+    real asset carries several at once — a chiller can be fouled and short of
+    charge simultaneously — and each has to be considered as a separate candidate
+    cause, so the value may now be a sequence of identifiers. A bare string is
+    still accepted and still means one fault; the normalisation is explicit
+    rather than duck-typed because a string is itself a sequence of
+    one-character strings, so guessing would have asserted one triple per letter.
+
+`analytics/diagnosis/rootcause.py :: Concurrency` and `concurrency(symptom, cause)`
+  WHY IT EXISTS: A cause that was not in force cannot have produced the symptom,
+    and a cause nobody has looked at for a year should not be leaned on even if
+    the mechanism is sound. Both are needed, and they are different questions.
+  WHAT IT DOES: Rejects a candidate whose first evidence comes after the symptom
+    was last seen — that is causality, not a threshold. Otherwise it measures two
+    things: how many days the two were observed at the same time, and, when they
+    never were, how long the cause had gone unobserved before the symptom
+    started. It rejects the candidate if that gap exceeds thirty days, and
+    otherwise carries both numbers through to the advisory so the operator can
+    see which kind of evidence the link rests on.
+  CHOICES: Thirty days is placed against the shortest run-to-failure in this
+    project, the coil leak at 45 days, so a month of silence still sits inside
+    the same failure episode that produced the evidence. It needs tuning against
+    real maintenance intervals rather than simulated run lengths.
+  ⚠ JUDGEMENT CALL: My first version required the two findings to be observed on
+    overlapping days, and that was wrong — not too strict, but modelling the
+    wrong thing. A fault is open from detection until repair, and
+    `app.maintenance_events`, the table that records a repair, is empty for every
+    asset in this project. A condenser fouled in July is certainly still fouled
+    in September; requiring simultaneous observation means a cause stops being
+    able to explain anything the moment its own sensor coverage lapses. I found
+    this because the demonstration failed, which is worth flagging honestly: the
+    fix was to correct a model that was wrong, not to relax a threshold until the
+    answer came out, and the freshness limit that replaced it is a real constraint
+    that rejects stale causes — it is why the same chiller fault cannot explain an
+    air handler symptom two years later.
+
+`analytics/diagnosis/rootcause.py :: attribute(graph, mapping, faults)`
+  WHY IT EXISTS: The single entry point that decides, for every open fault,
+    whether something upstream explains it. Everything above this — advisories,
+    the API, the dashboard's demoted rows — reads its output.
+  WHAT IT DOES: For each fault, looks up which upstream fault names could
+    produce it, traverses the graph for upstream assets actually carrying one of
+    those, checks the timing, and keeps the best surviving candidate. All three
+    conditions are required and they are independent: the graph says connected,
+    the map says physically possible, the timing says in force.
+  CHOICES: Ties break on hop distance first and the cause's severity second, so a
+    chiller two hops away is preferred over a cooling tower four hops away that
+    would explain the same thing. The near cause is the one to send somebody to,
+    and if it is itself a consequence of the far one, the same pass says so.
+
+`analytics/diagnosis/rootcause.py :: demote(own, cause_priority)` and `rank(...)`
+  WHY IT EXISTS: Marking an advisory consequential changes nothing an operator
+    experiences unless it changes where the advisory sits in the queue. This is
+    the part that does, and it is also where the demote-versus-hide decision is
+    actually implemented.
+  WHAT IT DOES: Cuts a consequential advisory to 40 percent of its own priority
+    and then, separately, forces it at least 5 percent below its cause's. The
+    queue is sorted on the result. Chains are resolved by recursion, so a symptom
+    caused by a fault that is itself caused by something further upstream is
+    demoted below the middle link's already-demoted priority rather than its
+    original one — without that, a two-step chain could leave the last symptom
+    outranking the link above it.
+  CHOICES: Two mechanisms rather than one because they do different jobs. The
+    multiplier expresses that a consequence deserves less attention than a cause
+    in general; the clamp guarantees the specific ordering this module promises,
+    which a multiplier alone cannot — a severe symptom fed by a mild cause can
+    still land on top of it. When the cause has no positive priority the clamp is
+    skipped, since clamping to zero would hide the symptom, which is the exact
+    behaviour the module is arranged to avoid. `rank` takes the priorities from
+    its caller rather than computing them: this module knows about topology and
+    mechanism and has no business deciding what a fault is worth. Checkpoint 6.2
+    will pass in a cost of inaction; this checkpoint's verification passes in
+    severity.
+  ⚠ JUDGEMENT CALL: 0.4 is a placement, not a fitted number. It is chosen so that
+    a demoted symptom whose own priority is more than two and a half times a piece
+    of routine work still outranks that work — a consequence must stop competing
+    with its cause for the top of the queue without falling to the bottom of it,
+    because it might be a genuine independent fault. The alternative I rejected
+    was a rank band, which would have guaranteed the ordering without any
+    arithmetic but would also have pushed a severe symptom below every unrelated
+    trivial advisory in the building.
+
+`scripts/run_rootcause.py :: main` and the three situations
+  WHY IT EXISTS: The verification, and the place where the honesty about what
+    this dataset can and cannot show is recorded.
+  WHAT IT DOES: Builds the queue three times through the same code. The first two
+    run on entirely unmodified data. The third runs on the SAME window as the
+    first with exactly one fault added, so the demotion that appears can only have
+    come from that fault.
+  CHOICES: Situation 1 is the strongest available negative rather than a weak
+    one: the air handler's cooling valve really is saturating, the chiller really
+    does have a fault open across the same period, and the graph really does
+    connect them — every condition holds except the mechanism, and the mechanism
+    is what says no. That is a better test of the map than a pair of assets that
+    fail on timing or topology as well.
+  ⚠ JUDGEMENT CALL: Situation 3's concurrency is composed and this is the one
+    thing in the checkpoint a reader should look at hardest. The target scenario
+    cannot be observed in this data at all: the two LBNL systems are independent
+    simulations, so the air handler's chilled water does not come from this
+    chiller, and no air handler run in the dataset is fed by a starved chiller.
+    The calendars make it doubly impossible — every chiller run ends on 7
+    September and the saturated valve does not sustain until 11 September, so the
+    two ends of the chain never share a single day. Rather than report the
+    checkpoint unverifiable, situation 3 takes the chiller's REAL detected
+    condenser fouling — real confirmed onset, real health score of 84, real
+    indicator of 0.492 of 3.0 degC — and moves its dates forward by two whole
+    years in a four-line function. Nothing inside either fault is altered and the
+    topology is not touched. Whole years, because the simulator places every
+    scenario a whole number of years from its 2018 source window precisely so
+    day-of-year and time-of-day survive the move. The alternative was to declare
+    the scenario untestable, which would have left the most important inference in
+    the layer unexercised.
+
+### The verification, in one paragraph
+
+Same window, same code, one fault added. Without the fouling fault the queue is
+led by the air handler's saturated cooling valve at priority 1.000 and nothing is
+attributed to anything. With it, the valve advisory drops to 0.152 at position 4,
+below the chiller at 0.160, marked consequential, linked to `chiller-1` two hops
+upstream through the chilled water loop, with the mechanism and the 5.8-day
+evidence age printed beside it — and still present in a queue of six.
+
+The attribution is also, on this particular run, WRONG, and that is the most
+useful thing in the checkpoint. Checkpoint 5.4 classifies the air handler's fault
+on this same run as a SENSOR fault: the supply air thermometer is drifting high
+and the controller is saturating the valve chasing a temperature that is not
+real. So the queue has just blamed a chiller for a thermometer. Because the
+advisory is demoted rather than suppressed, it is still on screen with its own
+evidence attached and an operator can overrule it. Had it been hidden, a drifting
+sensor would have disappeared behind a chiller that had nothing to do with it —
+which is the argument for demote-over-hide, arrived at from the wrong side.
+
+START HERE: `analytics/diagnosis/rootcause.py` — the plausibility map and its
+admission rule are the whole checkpoint; the traversal and the ranking exist to
+serve them.

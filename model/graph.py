@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 from collections import Counter, deque
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -212,20 +213,29 @@ def constraint_members(graph: Graph, constraint: URIRef | None = None) -> list[C
 
 
 def open_faults_upstream(
-    graph: Graph, asset: URIRef, open_faults: dict[URIRef, str]
+    graph: Graph, asset: URIRef, open_faults: dict[URIRef, str | Sequence[str]]
 ) -> list[FaultRow]:
     """Which upstream assets currently carry a fault.
 
     The fault marks are asserted into a copy of the graph and thrown away with
     it, so no fault state ever persists into the model. `open_faults` maps an
-    asset node to its fault identifier and comes from the rule engine, never from
-    the groundtruth schema -- which this code cannot read.
+    asset node to the fault identifiers open on it, and comes from the rule
+    engine, never from the groundtruth schema -- which this code cannot read.
+
+    A node may carry several faults at once: a chiller can be fouled AND short of
+    charge, and cross-asset diagnosis has to consider each as a separate candidate
+    cause. A bare string is still accepted and means a single fault, so the value
+    is normalised rather than required to be a sequence -- a string is itself a
+    sequence of one-character strings, so guessing here would assert one triple
+    per letter.
     """
     scratch = Graph()
     for triple in graph:
         scratch.add(triple)
-    for node, fault_id in open_faults.items():
-        scratch.add((node, MVN["hasOpenFault"], Literal(fault_id)))
+    for node, fault_ids in open_faults.items():
+        ids = (fault_ids,) if isinstance(fault_ids, str) else tuple(fault_ids)
+        for fault_id in ids:
+            scratch.add((node, MVN["hasOpenFault"], Literal(fault_id)))
 
     rows = scratch.query(load_query("open_faults_upstream"), initBindings={"asset": asset})
     hops = _hops_from(scratch, asset, BRICK["feeds"], reverse=True)

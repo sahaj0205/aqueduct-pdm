@@ -134,6 +134,13 @@ refusal:
 diagnosis:
 	uv run python scripts/run_diagnosis.py
 
+# Build the advisory queue and trace every open fault upstream across the chilled
+# water loop. Prints three queues: two on unmodified data where the plausibility map
+# declines to link anything, and the chiller-fouling scenario where the air handler
+# advisory is marked consequential, linked to the chiller and ranked below it.
+rootcause:
+	uv run python scripts/run_rootcause.py
+
 # Serve the API on :8000
 api:
 	uv run uvicorn api.main:app --reload --port 8000
