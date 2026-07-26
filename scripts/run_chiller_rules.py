@@ -20,14 +20,20 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
 import psycopg
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from analytics.rules import chiller  # noqa: F401 - importing registers the rules
-from analytics.rules.chiller import MIN_EVALUABLE_TONS, points_used
+from analytics.rules.chiller import (
+    CHILLERS,
+    MIN_EVALUABLE_TONS,
+    OFF,
+    RUNNING,
+    chiller_state,
+    load_window,
+    points_used,
+)
 from analytics.rules.evaluate import (
     MODE_SWITCH_DELAY_MINUTES,
     OCCUPANCY_DELAY_MINUTES,
@@ -37,12 +43,10 @@ from analytics.rules.evaluate import (
     suppression_mask,
     sustained,
 )
-from analytics.rules.readings import load_asset_readings, resolve_dsn
+from analytics.rules.readings import resolve_dsn
 from model.loader import load_merged_graph
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-
-RUNNING, OFF = "running", "off"
 
 # Windows to evaluate. `clean` marks those with no injected chiller-side fault.
 #
@@ -57,40 +61,6 @@ WINDOWS: tuple[tuple[str, str, str, bool], ...] = (
     ("cooling_tower_fouling  [HELD OUT]", "2038-05-10T06:00:00+00:00", "2038-09-07T06:00:00+00:00", True),
     ("clean_chiller", "2039-05-10T06:00:00+00:00", "2039-09-07T06:00:00+00:00", True),
 )
-
-CHILLERS = ("chiller-1", "chiller-2", "chiller-3")
-
-
-def chiller_state(values: pd.DataFrame, asset: str) -> pd.Series:
-    """Running or off, from the compressor rather than from an occupancy schedule.
-
-    A chiller is treated as running when its status is on, it is drawing real
-    power and it is actually moving chilled water. All three are required because
-    the status point alone stays at 1 all year on chiller 1, so on its own it
-    would never mark the machine as off and the start-up delay would never apply.
-    """
-    status = values.get(f"{asset}.status")
-    power = values.get(f"{asset}.power")
-    flow = values.get(f"{asset}.chw_flow")
-    if status is None or power is None or flow is None:
-        return pd.Series(OFF, index=values.index)
-    running = (status > 0.5) & (power > 1000.0) & (flow > 0.001)
-    return pd.Series(np.where(running, RUNNING, OFF), index=values.index)
-
-
-def load_window(conn, asset: str, t_from: datetime, t_to: datetime):
-    """One chiller's readings plus the plant setpoint the capacity rule needs."""
-    values, quality, flags = load_asset_readings(conn, asset, t_from, t_to)
-    plant_v, plant_q, plant_f = load_asset_readings(conn, "chw-plant-1", t_from, t_to)
-    if values.empty or plant_v.empty:
-        return None
-    keep = ["chw-plant-1.pri_supply_temp_spt"]
-    return (
-        values.join(plant_v[keep], how="left"),
-        quality.join(plant_q[keep], how="left"),
-        flags.join(plant_f[keep], how="left"),
-    )
-
 
 def main() -> int:
     graph, _ = load_merged_graph()

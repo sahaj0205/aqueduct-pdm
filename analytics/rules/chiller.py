@@ -53,8 +53,13 @@ efficiency residual, which is computable exactly as specified.
 
 from __future__ import annotations
 
-import numpy as np
+from datetime import datetime
 
+import numpy as np
+import pandas as pd
+import psycopg
+
+from analytics.rules.readings import load_asset_readings
 from analytics.rules.registry import (
     CostEstimate,
     CostUnit,
@@ -62,6 +67,22 @@ from analytics.rules.registry import (
     Verdict,
     rule,
 )
+
+# ---------------------------------------------------------------------------
+# the plant, and the two states its machines are in
+# ---------------------------------------------------------------------------
+
+# Every chiller in this plant. Three machines share one chilled water loop and one
+# condenser water loop, and the source data is a whole-plant simulation, so anything
+# evaluating "the chillers" has to agree about which three they are.
+CHILLERS = ("chiller-1", "chiller-2", "chiller-3")
+
+# A chiller has no notion of occupancy, so the suppression machinery the air-side rules
+# drive from the building schedule is driven from the machine's own running state
+# instead. The names matter to callers: `OFF` is what gets handed to suppression_mask as
+# its idle state.
+RUNNING, OFF = "running", "off"
+
 
 # ---------------------------------------------------------------------------
 # physical constants
@@ -343,4 +364,63 @@ def points_used(asset_id: str) -> tuple[str, ...]:
         f"{asset_id}.compressor_cmd",
         f"{asset_id}.status",
         "chw-plant-1.pri_supply_temp_spt",
+    )
+
+
+# ---------------------------------------------------------------------------
+# the rules' input contract
+#
+# The two functions below are how a caller gets a chiller into a state these rules can
+# be run against. They live here rather than in whatever script happens to be running
+# them, because both encode a decision the rules were verified against in checkpoint 3.4
+# and a second copy of either would be free to drift from the version the rules work
+# with. They were in scripts/run_chiller_rules.py until checkpoint 7.2 wanted them from
+# validation/ as well and the second importer made the misplacement obvious.
+# ---------------------------------------------------------------------------
+
+
+def chiller_state(values: pd.DataFrame, asset_id: str) -> pd.Series:
+    """Running or off, per instant, from the compressor rather than from a schedule.
+
+    A chiller counts as running when its status point is on AND it is drawing real power
+    AND it is actually moving chilled water. All three are required, and the reason is
+    chiller 1: its status point reads 1 for every sample of the year, so status alone
+    would never mark the machine as off, the start-up delay would never apply, and the
+    rules would be evaluated across every cold start.
+
+    Returns a series aligned to the values it was given, so it can be handed straight to
+    the evaluation driver as the mode series and to suppression_mask with `OFF` as the
+    idle state.
+    """
+    status = values.get(f"{asset_id}.status")
+    power = values.get(f"{asset_id}.power")
+    flow = values.get(f"{asset_id}.chw_flow")
+    if status is None or power is None or flow is None:
+        # A machine missing any of the three cannot be shown to be running, and treating
+        # it as running would let the rules fire on a machine that may be off.
+        return pd.Series(OFF, index=values.index)
+    running = (status > 0.5) & (power > 1000.0) & (flow > 0.001)
+    return pd.Series(np.where(running, RUNNING, OFF), index=values.index)
+
+
+def load_window(
+    conn: psycopg.Connection, asset_id: str, t_from: datetime, t_to: datetime
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame] | None:
+    """One chiller's readings, with the plant setpoint the capacity rule needs joined on.
+
+    The capacity check asks whether the machine is failing to reach the temperature it
+    was asked for, and that setpoint belongs to the chilled water plant rather than to
+    any one chiller, so it has to be brought alongside. Returns nothing when either side
+    of the join is empty for the window, which is how a caller learns the machine has no
+    data in it rather than discovering it as an empty frame three steps later.
+    """
+    values, quality, flags = load_asset_readings(conn, asset_id, t_from, t_to)
+    plant_v, plant_q, plant_f = load_asset_readings(conn, "chw-plant-1", t_from, t_to)
+    if values.empty or plant_v.empty:
+        return None
+    keep = ["chw-plant-1.pri_supply_temp_spt"]
+    return (
+        values.join(plant_v[keep], how="left"),
+        quality.join(plant_q[keep], how="left"),
+        flags.join(plant_f[keep], how="left"),
     )

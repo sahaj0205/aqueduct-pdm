@@ -11,7 +11,15 @@ number under unchanged prose rather than as a document nobody dares regenerate.
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
+from validation.attribution import (
+    CLASSES,
+    ClassOutcome,
+    SuppressionCase,
+    class_matrix,
+    majority_baseline,
+)
 from validation.detect import RULES_ONLY, Sweep
 from validation.groundtruth import FaultEvent, ScenarioLabel, SeverityWindow
 from validation.metrics import (
@@ -24,6 +32,16 @@ from validation.metrics import (
     LeadSummary,
     LeadTime,
 )
+from validation.prognostics import (
+    ALPHA,
+    AlphaLambdaPoint,
+    AlphaLambdaRollUp,
+    Calibration,
+    CoverageRollUp,
+)
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 
 HEADER = """# Validation
 
@@ -198,6 +216,16 @@ def render(
     late: list[tuple[str, str, str, float]],
     heldout: list[HeldOut],
     sources: list[FalsePositiveSource],
+    calibrations: list[Calibration],
+    coverage: list[CoverageRollUp],
+    unscoreable: list[tuple[str, int, str]],
+    total_estimates: int,
+    alpha_points: list[AlphaLambdaPoint],
+    alpha_all: list[AlphaLambdaRollUp],
+    alpha_matched: list[AlphaLambdaRollUp],
+    figure: Path | None,
+    class_outcomes: list[ClassOutcome],
+    suppression: list[SuppressionCase],
     grid_check: list[tuple[str, int, int]],
 ) -> str:
     """The whole document."""
@@ -217,6 +245,12 @@ def render(
         ),
         _section_lead_time(summaries, leads, late),
         _section_held_out(heldout),
+        _section_calibration(
+            calibrations, coverage, unscoreable, total_estimates
+        ),
+        _section_alpha_lambda(alpha_all, alpha_matched, alpha_points, figure),
+        _section_fault_class(class_outcomes),
+        _section_suppression(suppression),
         _section_method(severity_windows, grid_check, sweep),
     ]
     return "\n".join(parts).rstrip() + "\n"
@@ -537,6 +571,435 @@ and the same calendar day.
         "same finding on a fault-free run?"], rows)}
 
 {verdict}
+"""
+
+
+def _section_calibration(
+    calibrations: list[Calibration], rollups: list[CoverageRollUp],
+    unscoreable: list[tuple[str, int, str]], total_estimates: int,
+) -> str:
+    """Interval coverage. The number this section reports is bad and it is reported."""
+    matched = next((r for r in rollups if r.label.startswith("matched mode, against the a")), None)
+    crossing = next((r for r in rollups if r.label.startswith("any mode") and "crossing" in r.label), None)
+    overall = next((r for r in rollups if r.label.startswith("any mode") and "answer" in r.label), None)
+
+    roll_rows = [
+        [
+            r.label, f"{r.series}", f"{r.bounded:,}", f"{r.covered:,}",
+            f"**{pct(r.coverage)}**", f"{r.late:,}", f"{r.early:,}", f"{r.unbounded:,}",
+        ]
+        for r in rollups
+    ]
+    series_rows = []
+    for c in sorted(calibrations, key=lambda c: (not c.matched, c.scenario_id, c.mode_id)):
+        reach = c.reach
+        series_rows.append([
+            f"`{c.scenario_id}`", c.asset_id, f"`{c.mode_id}`",
+            "**yes**" if c.matched else "no",
+            c.reference, f"{c.target}",
+            f"{c.in_horizon}", f"{c.bounded}", f"{c.covered}",
+            f"**{pct(c.coverage, 0)}**", f"{c.late}", f"{c.early}",
+            "n/a" if reach is None else pct(reach.fraction_of_threshold, 0),
+        ])
+
+    groups, scoreable = unscoreable
+    late_total = overall.late if overall else 0
+    early_total = overall.early if overall else 0
+    on_clean = next((n for k, n, _ in groups if "fault-free" in k), 0)
+    unscoreable_rows = [[f"{n:,}", key, why] for key, n, why in groups]
+    excluded_total = sum(n for _k, n, _w in groups)
+
+    return f"""
+## 5. Remaining-life interval calibration
+
+A P10-to-P90 band is a promise: the truth should fall inside it about **80%** of the
+time. Wider than that and the band is too vague to plan around; narrower and the number
+on the screen is not the number the mathematics computed. Neither failure is visible from
+one prediction, or from watching a band narrow. It only shows up by counting.
+
+**It does not come out at 80%. It comes out at {pct(overall.coverage) if overall else "n/a"}
+against the answer key's failure date, and {pct(matched.coverage) if matched else "n/a"} on
+the two series where the mode being scored is the mode that names the injected fault.**
+That is reported here because a calibration section that only appeared when the answer was
+flattering would be worth nothing, and because the shape of the failure turns out to be
+more informative than the headline.
+
+### Coverage, pooled four ways
+
+{table(["population", "series", "estimates with both ends bounded", "covered",
+        "coverage", "missed LATE", "missed EARLY", "one end unbounded"],
+       roll_rows, align="lrrrrrrr")}
+
+**The misses split into two distinct populations, and the split is the finding.** Scored
+against the answer key across every mode, {late_total:,} of {late_total + early_total:,}
+misses put the failure LATER than it turned out to be and {early_total:,} put it earlier.
+But on the {matched.bounded if matched else 0} matched estimates -- the ones where the mode
+being scored is the mode that names the injected fault -- the direction is uniform:
+{matched.late if matched else 0} late and {matched.early if matched else 0} early. The same
+holds against the indicator's own crossing: {crossing.late if crossing else 0} late,
+{crossing.early if crossing else 0} early.
+
+The early misses come from somewhere specific. They are modes whose indicator had ALREADY
+crossed its own failure threshold before the answer key's terminal severity arrived, so the
+model correctly reports zero days remaining while the answer key still has days left to run.
+That is not the model being optimistic; it is the same threshold-versus-terminal-severity
+mismatch as the late misses, seen from the other side. **Where the model is genuinely wrong
+it is wrong late**, which is the dangerous direction for a maintenance system -- it tells a
+planner they have time they do not have.
+
+### Per series, with the number that changes how to read it
+
+{table(["run", "machine", "mode", "names the injected fault", "failure date used",
+        "target", "estimates in horizon", "bounded", "covered", "coverage",
+        "late", "early", "how far the indicator got toward its own threshold"],
+       series_rows, align="llllllrrrrrrr")}
+
+The rightmost column is the one that separates two very different problems.
+
+**On the two matched series the indicator never got near its own failure threshold.** The
+coil valve leak reached 57% of the way there and the condenser fouling reached 16%, over
+runs the answer key calls failures. So when the model says the crossing is two hundred
+days off while the answer key's terminal severity arrives in nineteen, the model is not
+obviously wrong -- it is answering the question it was built to answer, which is when the
+indicator will reach a threshold that has a physical justification recorded next to it.
+The answer key's date is a different event: the last rung of the measured severity ladder.
+**Most of the 0% on the matched population is those two events being weeks apart, not the
+band being miscalibrated.**
+
+**Where the model's own event did happen, the band still misses, and still late.** The
+efficiency indicator on the fouling run crossed its threshold on its own, and there the
+coverage against that crossing is {pct(crossing.coverage) if crossing else "n/a"} over
+{crossing.bounded if crossing else 0} bounded estimates. Two days before the indicator
+actually crossed, the published median was still nearly ten times the true remaining life.
+**That is a genuine calibration failure and it is not explained away by the threshold.** It
+rests on {crossing.bounded if crossing else 0} estimates, which is a small sample and is
+stated as one.
+
+The likely mechanism, stated as a hypothesis rather than a result because this harness does
+not test it: the drift rate is fitted over every post-onset daily increment with equal
+weight, so a fault whose rate rises late in its life is projected forward at its average
+rate rather than its current one, and the average is lower. Nothing here isolates that from
+the alternatives, and the fix belongs with the degradation model.
+
+### Estimates that cannot be calibrated at all
+
+The platform published {total_estimates:,} remaining-life estimates. **{scoreable:,} of them
+are scoreable against the answer key** and {excluded_total:,} are not; the two add to
+{scoreable + excluded_total:,}, which is the whole population, because every estimate falls
+into exactly one group below. Reconciling that is not pedantry -- a coverage figure whose
+denominator cannot be tied back to what the system actually published is not a measurement,
+and an earlier version of this table did not close.
+
+{table(["estimates", "group", "why they cannot be scored"], unscoreable_rows,
+       align="rll")}
+
+One of those rows belongs beside section 1. **{on_clean:,} estimates were published on a
+machine with no fault injected into it** -- the remaining-life layer naming a failure date
+for a chiller that was working. That is the same false positive section 1 attributes to the
+efficiency channel, followed one layer downstream, and it is the clearest illustration of
+why the false-alarm rate is the first number in this document rather than the last.
+"""
+
+
+def _section_alpha_lambda(
+    rollup: list[AlphaLambdaRollUp],
+    matched_rollup: list[AlphaLambdaRollUp],
+    points: list[AlphaLambdaPoint],
+    figure: Path | None,
+) -> str:
+    """The prognostics accuracy cone, as a table and a figure."""
+    rows = []
+    for entry, matched in zip(rollup, matched_rollup, strict=True):
+        rows.append([
+            f"{entry.lam:.1f}",
+            f"{matched.within}/{matched.n}" if matched.n else "-",
+            f"{entry.within}/{entry.n}" if entry.n else "-",
+            pct(entry.hit_rate, 0) if entry.n else "-",
+            f"{entry.band_hits}/{entry.n}" if entry.n else "-",
+            (f"{entry.median_relative_error * 100:+.0f}%"
+             if entry.median_relative_error is not None else "-"),
+        ])
+    total = len(points)
+    hits = sum(1 for p in points if p.within)
+    matched_points = [p for p in points if p.matched]
+    matched_hits = sum(1 for p in matched_points if p.within)
+    link = (
+        f"\n![Alpha-lambda accuracy]({figure.relative_to(REPO_ROOT).as_posix()})\n"
+        if figure is not None else ""
+    )
+    return f"""
+## 6. Alpha-lambda accuracy
+
+The standard prognostics accuracy question, and the reason it is a cone rather than a
+tolerance: is the published median within {ALPHA * 100:.0f}% of the true remaining life,
+checked at each fraction of the way from injection to terminal severity. {ALPHA * 100:.0f}%
+of ninety days is eighteen days of slack; {ALPHA * 100:.0f}% of five days is one. So the
+acceptable region closes on zero as the end approaches, and a prediction can pass early and
+fail late without the model having changed. That is the property the metric exists to expose.
+
+The fraction 1.0 is left out on purpose: at the failure date the true remaining life is
+zero, so the accepted band has zero width and every prediction fails by construction. That
+is arithmetic, not a result.
+
+**{matched_hits} of {len(matched_points)} checks pass on the series that name the injected
+fault, and {hits} of {total} across every series scored.**
+
+{table(["fraction of life elapsed", f"within {ALPHA * 100:.0f}%, matched series",
+        f"within {ALPHA * 100:.0f}%, all series", "hit rate, all series",
+        "P10-P90 contained the truth", "median relative error of P50"],
+       rows, align="rrrrrr")}
+
+**The early rows are empty by design, not by omission.** The remaining-life layer refuses to
+publish anything until the changepoint detector has confirmed degradation, and on these runs
+that confirmation lands between a third and two-thirds of the way through the fault's life.
+So there is nothing to check at 0.1 or 0.2: the system was declining to answer, which
+section 3 counts as detection latency and this section cannot score at all. An accuracy
+metric that filled those rows in would be scoring predictions the platform never made.
+
+The last column is the diagnosis, and it changes sign. Early in the measurable range the
+median error is large and positive -- the prediction is long. Late in the range it goes to
+-100%, which is one specific thing: the indicator has already crossed its own threshold, so
+the model reports zero days remaining while the answer key still has a few days to run. Both
+directions come from the same place, which is that the threshold and the terminal severity
+are different events. What the metric does not show anywhere is a prediction that is merely
+imprecise; the errors are structured, not scattered.
+{link}
+Read the figure rather than the table if you only look at one. The dashed line is the truth
+falling to zero, the shaded wedge is the accepted band closing with it, the solid line is
+the published median and the vertical bars are P10 to P90. An upward triangle marks an
+estimate where the model declined to bound the upper end at all, which is an answer and is
+drawn rather than omitted.
+
+Two things to expect when you open it. On the two panels that name the injected fault, the
+accepted wedge is too thin to see: the predictions run into the hundreds of days while the
+truth is around ten, and at the scale the predictions force, the wedge collapses onto the
+axis. That is the result, not a plotting defect. And on the bypass panels the median sits
+flat on zero, which is the already-crossed case described above -- the indicator passed its
+threshold early in the run and the model has been saying "no life left" ever since.
+"""
+
+
+def _section_fault_class(outcomes: list[ClassOutcome]) -> str:
+    """The sensor-versus-equipment confusion matrix, and the guessing baseline."""
+    matrix = class_matrix(outcomes)
+    commonest, majority_hits, majority_total = majority_baseline(outcomes)
+    scored = [o for o in outcomes if o.scoreable and o.truth is not None]
+    correct = sum(1 for o in scored if o.correct)
+    misses = [o for o in scored if o.correct is False]
+
+    header = ["true class \\ said"] + [f"**{c}**" for c in CLASSES]
+    rows = []
+    for truth in CLASSES:
+        if not any(o.truth == truth for o in scored):
+            continue
+        row = [f"**{truth}**"]
+        for predicted in CLASSES:
+            n = matrix.get((truth, predicted), 0)
+            row.append(f"**{n}**" if n and truth == predicted else str(n))
+        rows.append(row)
+
+    detail_rows = [
+        [
+            f"`{o.scenario_id}`", o.asset_id,
+            f"`{o.injected_fault}`" if o.injected_fault else "none injected",
+            o.truth or "-", f"**{o.predicted}**", o.confidence,
+            o.subject or "-", f"{o.violated}/{o.relations}",
+            "yes" if o.degrading else "no",
+            ("held out" if o.held_out else
+             ("correct" if o.correct else ("WRONG" if o.correct is False else "-"))),
+        ]
+        for o in outcomes
+    ]
+
+    healthy = [
+        o for o in outcomes
+        if o.truth is None and o.skipped_reason.startswith("fault-free")
+    ]
+    healthy_rows = [
+        [f"`{o.scenario_id}`", o.asset_id, f"**{o.predicted}**",
+         f"{o.violated}/{o.relations}", "yes" if o.degrading else "no"]
+        for o in healthy
+    ]
+    wrongly_faulted = [o for o in healthy if o.predicted != "ambiguous"]
+
+    air = [o for o in scored if o.asset_id.startswith("ahu")]
+    water = [o for o in scored if o.asset_id.startswith("chiller")]
+    air_relations = max((o.relations for o in air), default=0)
+    water_relations = max((o.relations for o in water), default=0)
+    miss_note = "\n\n".join(
+        f"- **`{o.scenario_id}` on {o.asset_id}** had true class `{o.truth}` and came out "
+        f"`{o.predicted}`, blaming `{o.subject}`, with {o.violated} of the machine's "
+        f"{o.relations} relations violated. The classifier's own reasoning: {o.reason}."
+        for o in misses
+    )
+
+    return f"""
+## 7. Sensor versus equipment
+
+A supply air temperature above its setpoint is produced by a coil that cannot cool and by
+a thermometer reading high, and from the symptom alone the two are identical. Getting them
+the wrong way round dispatches a technician with a wrench to a fault that needs a
+calibration kit, or a calibration technician to a machine that is genuinely failing. In
+this project's own intervention library the two responses to that one symptom differ by
+more than three times in cost, so the discrimination is worth money and not only tidiness.
+
+**{correct} of {len(scored)} injected faults were classified correctly.** Before reading
+that as a result, read the next number: a classifier that ignored the data and always
+answered `{commonest}` would score {majority_hits} of {majority_total}. What makes the
+figure worth having is not the total, it is which cases are in it -- the drifting
+thermometer and the jammed damper are exactly the two a majority guess gets wrong, and
+both are right, including which physical part to blame.
+
+{table(header, rows, align="l" + "r" * len(CLASSES))}
+
+### The miss, and what it says about the relation set
+
+{miss_note if miss_note else "There were none."}
+
+The pattern behind that is worth more than the score. This test works by asking whether one
+sensor reading consistently wrong would make every violated relation hold again, and it can
+only answer no if the suspect appears in enough relations to be contradicted. **The air
+handler contributes up to {air_relations} relations; a chiller contributes up to
+{water_relations}.** On a chiller, electrical power participates in two of those three, so
+once a fully developed fault has pushed two relations out at once, a single bias on the
+power meter accounts for both and there is nothing left to falsify it with. The reasoning
+above says exactly that in the classifier's own words: 99 percent of the violation
+reconciled, across the two relations that point appears in.
+
+This is the same falsifiability problem checkpoint 5.4 hit on the air side and solved by
+adding the condition-normalised baselines as extra relations, which took supply air
+temperature from one relation to three. The chiller never received that treatment. So the
+honest reading of this section is not that the discrimination works; it is that **the
+discrimination works where the relation set is rich enough to falsify a suspect, and the
+count of relations is the thing to look at.** Adding chiller baselines is a
+configuration change, not a code change, and it is in `ROADMAP.md`.
+
+### Every classification, individually
+
+{table(["run", "machine", "injected fault", "true class", "said", "confidence",
+        "subject named", "relations violated", "degrading", "verdict"],
+       detail_rows)}
+
+### What it says when nothing is wrong
+
+The classifier has no "healthy" verdict; it returns one of four classes whenever it is
+asked. So it is worth knowing what it answers on the fault-free runs, and the answer is not
+uniform:
+
+{table(["run", "machine", "said", "relations violated", "degrading"], healthy_rows,
+       align="llrrr")}
+
+{
+    f"**{len(wrongly_faulted)} of {len(healthy)} healthy machines were given a fault "
+    f"class**, and in each case with zero relations violated -- the verdict comes entirely "
+    f"from the degradation flag, which on those machines is the false positive section 1 "
+    f"attributes to the efficiency channel. This is that same defect surfacing a third "
+    f"time, now as a diagnosis. The two machines with no degradation flag came out "
+    f"`ambiguous`, which is the closest thing this taxonomy has to saying nothing is wrong."
+    if wrongly_faulted else
+    "Every healthy machine came out `ambiguous`, which is the closest thing this taxonomy "
+    "has to saying nothing is wrong."
+}
+
+### The window this is scored over, and how it was chosen
+
+Each machine is classified over **the last 28 days of its run**, against the three-week
+commissioning window at that run's start as the healthy reference.
+
+The window was chosen on operational grounds and not by which window scored best, and the
+distinction matters because they are not the same window. In production this classifier
+runs on a window ending now, which is what "the most recent 28 days" reproduces, and 28
+matches the window the advisory layer already fits its health slope over, so the project
+has one notion of "recently" rather than two. A longer window covering the whole
+post-injection stretch was tried. It is measurably worse on the air handler -- across three
+months reaching from winter into summer the cooling coil valve's average position drifts far
+enough from its command that a leaking valve is reported as an actuator refusing orders --
+and measurably better on the chiller. Choosing per equipment class would be fitting the
+harness to the answer key, so one rule is applied and the run it gets wrong is reported as
+wrong.
+
+The reference is each run's own commissioning window because that exists for every run. A
+fault-free run at the same time of year is the stronger choice and is what checkpoint 5.4
+used, but two of the air-handler runs sit in late winter and early spring and the only
+fault-free air-handler run is a summer one. The check that the substitution does not change
+the answer is the coil-leak run, the one case where both references cover the same 28 days:
+both return `equipment`.
+
+This window is deliberately NOT restricted to severity level 1, which makes these figures
+easier than the detection figures in section 2. The classifier works by asking which
+relations have stopped holding; at level 1 on several of these runs nothing has visibly
+stopped holding yet, so asking it to name a fault it cannot see measures the detector again
+rather than the classifier. Detection is scored where detection is hard. Attribution is
+scored where attribution is asked.
+"""
+
+
+def _section_suppression(cases: list[SuppressionCase]) -> str:
+    """Whether the demoted advisory was demoted for a true reason."""
+    rows = [
+        [
+            case.label,
+            f"`{case.scenario_id}`",
+            f"{case.window[0]:%Y-%m-%d} to {case.window[1]:%Y-%m-%d}",
+            "composed" if case.composed else "real",
+            str(case.open_faults),
+            str(len(case.demotions)),
+            f"**{case.verdict}**",
+            "yes" if case.ordering_holds else "**NO**",
+        ]
+        for case in cases
+    ]
+    refusals = [c for c in cases if c.verdict == "CORRECT REFUSAL"]
+    wrong = [c for c in cases if c.verdict == "WRONG ATTRIBUTION"]
+    detail = "\n".join(
+        f"- **{case.label}** — {case.reason}." for case in cases
+    )
+    return f"""
+## 8. Cross-asset suppression correctness
+
+The cross-asset layer marks a downstream symptom consequential when an upstream machine has
+an open fault whose mechanism could produce it, and then ranks that advisory below the
+advisory it blames. That is an inference, and the whole design of the layer -- demote,
+never hide -- is a bet on the inference being wrong sometimes. This section checks whether
+it was.
+
+**What the answer key can settle, and what it cannot.** It can say what fault was injected
+into which machine, so it can FALSIFY a consequential label: if a fault was injected
+directly into the machine carrying the symptom, that symptom had a cause of its own and did
+not need an upstream one. It cannot confirm a cross-asset link in the positive direction,
+and the reason is in the source data. The two LBNL systems are independent simulations --
+the air handler's chilled water comes from a boundary condition inside its own simulation,
+not from this chiller -- so no run in this dataset contains a genuine chiller-caused air
+handler symptom for the layer to get right. That absence is why checkpoint 6.1 had to
+compose its target scenario, and it is stated rather than worked around.
+
+{table(["situation", "run", "window", "data", "open faults", "demoted", "verdict",
+        "demoted advisory ranked below its cause"], rows)}
+
+{detail}
+
+**{len(refusals)} correct refusals and {len(wrong)} wrong attribution.** The refusals are
+not filler. In both of those windows an upstream machine has an open fault and the timing
+overlaps, so topology and concurrency both permit a link; the plausibility map declines
+anyway, because the open upstream faults there cost power rather than capacity and cannot
+warm the water the coil is fed with. A demotion layer that never declines to demote is
+indistinguishable from one that demotes everything, so the negative cases are what make the
+positive one mean anything.
+
+**And the positive one is wrong.** On the composed window the air handler's saturated
+cooling valve is blamed on the chiller's condenser fouling two hops upstream -- and the
+answer key says the fault injected into that run was a supply air temperature sensor drift,
+injected directly into the air handler. The symptom needed no upstream explanation. Section
+7 reaches the same conclusion independently: the classifier names that machine's fault a
+sensor fault, on the machine's own evidence, with no knowledge of the answer key.
+
+This is the case the demote-rather-than-hide decision was made for. The advisory is ranked
+below its supposed cause, and it is still on the operator's screen, carrying the sensor
+badge and the reconciliation evidence that contradicts the attribution. Had the layer
+suppressed it instead, a real fault would have been removed from the queue on the strength
+of an inference that was wrong, and nothing on the screen would have said so. The ordering
+mechanism is correct in all three situations; the inference it is applied to is wrong in
+the one case this dataset can produce.
 """
 
 

@@ -53,8 +53,6 @@ import psycopg
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from run_chiller_rules import CHILLERS, OFF, chiller_state, load_window
-
 from analytics.diagnosis.rootcause import (
     CAUSE_MARGIN,
     DEMOTION_FACTOR,
@@ -69,7 +67,13 @@ from analytics.diagnosis.rootcause import (
 )
 from analytics.rules import apar, chiller  # noqa: F401 - importing registers the rules
 from analytics.rules.apar import POINTS_USED
-from analytics.rules.chiller import points_used
+from analytics.rules.chiller import (
+    CHILLERS,
+    OFF,
+    chiller_state,
+    load_window,
+    points_used,
+)
 from analytics.rules.evaluate import episodes, run_rules, sustained
 from analytics.rules.mode import SIGNALS, classify_frame
 from analytics.rules.readings import (

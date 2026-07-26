@@ -46,19 +46,8 @@ import pandas as pd
 import psycopg
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-for extra in (REPO_ROOT, REPO_ROOT / "scripts"):
-    if str(extra) not in sys.path:
-        sys.path.insert(0, str(extra))
-
-# Imported from scripts/ on purpose. `chiller_state` is the definition of "this
-# machine is running" that checkpoint 3.4 verified the chiller rules against -- status
-# on, real power draw and real flow, all three, because the status point alone reads 1
-# all year on chiller 1. `load_window` is the join that brings the plant supply-air
-# setpoint alongside one chiller's own points, which the capacity rule needs. Copying
-# either into this file would create a second definition free to drift from the one
-# the rules were shown to work with, and the harness would then be scoring something
-# subtly different from what the project ships.
-from run_chiller_rules import CHILLERS, OFF, chiller_state, load_window
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from analytics.baselines.fit import (
     RUNS,
@@ -73,7 +62,20 @@ from analytics.health.modes import (
 )
 from analytics.rules import apar, chiller  # noqa: F401 - importing registers them
 from analytics.rules.apar import POINTS_USED
-from analytics.rules.chiller import points_used
+
+# `chiller_state` is the definition of "this machine is running" that checkpoint 3.4
+# verified the chiller rules against -- status on, real power draw and real flow, all
+# three, because the status point alone reads 1 all year on chiller 1. `load_window` is
+# the join that brings the plant setpoint alongside one chiller's own points, which the
+# capacity rule needs. Both live beside the rules they serve, so this module and
+# scripts/ are running the same definitions rather than two copies free to drift.
+from analytics.rules.chiller import (
+    CHILLERS,
+    OFF,
+    chiller_state,
+    load_window,
+    points_used,
+)
 from analytics.rules.evaluate import (
     episodes,
     run_rules,

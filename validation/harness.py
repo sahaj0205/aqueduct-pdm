@@ -33,6 +33,13 @@ if str(REPO_ROOT) not in sys.path:
 from analytics.rules.readings import resolve_dsn
 from model.loader import load_merged_graph
 from validation import report
+from validation.attribution import (
+    classify_runs,
+    majority_baseline,
+    run_suppression,
+    score_classifications,
+    score_suppression,
+)
 from validation.detect import sweep as run_sweep
 from validation.groundtruth import load_answer_key, severity_one_windows
 from validation.metrics import (
@@ -50,6 +57,18 @@ from validation.metrics import (
     lead_times,
     scored_span,
 )
+from validation.plots import alpha_lambda_figure
+from validation.prognostics import (
+    ALPHA,
+    alpha_lambda,
+    alpha_lambda_rollup,
+    coverage_rollups,
+    crossing_dates,
+    interval_calibration,
+    load_estimates,
+    threshold_reach,
+    uncalibratable,
+)
 
 OUTPUT = REPO_ROOT / "VALIDATION.md"
 
@@ -65,11 +84,27 @@ def main() -> int:
     generated = datetime.now(UTC)
     graph, _ = load_merged_graph()
 
-    # ---- detection, as the restricted role -------------------------------
+    # ---- detection, prognostics and attribution, as the restricted role ---
+    #
+    # Everything that produces a number happens inside this block, over a connection
+    # the database denies access to schema groundtruth. The answer key is not opened
+    # until the block has closed.
     print("=== running every scenario end to end ===")
     with psycopg.connect(resolve_dsn()) as conn:
         sweep = run_sweep(conn, graph, log=log)
-    print(f"  {len(sweep.findings)} findings across {len(sweep.observed)} windows")
+        print(f"  {len(sweep.findings)} findings across {len(sweep.observed)} windows")
+
+        estimates = load_estimates(conn)
+        crossings = crossing_dates(conn)
+        reaches = threshold_reach(conn)
+        print(f"  {len(estimates)} published remaining-life estimates, "
+              f"{len(crossings)} indicator threshold crossings observed")
+
+        print("=== classifying every run: sensor, equipment, control or ambiguous ===")
+        classifications = classify_runs(conn, sweep, log=log)
+
+        print("=== cross-asset suppression over three windows ===")
+        suppression_runs = run_suppression(conn, graph, log=log)
 
     # ---- the answer key, as the admin role ------------------------------
     labels, events = load_answer_key()
@@ -97,6 +132,16 @@ def main() -> int:
     sources = false_positive_sources(days, sweep, labels)
     span = scored_span(days)
 
+    calibrations = interval_calibration(estimates, events, crossings, reaches)
+    coverage = coverage_rollups(calibrations)
+    unscoreable = uncalibratable(estimates, events)
+    alpha_points = alpha_lambda(estimates, events)
+    alpha_all = alpha_lambda_rollup(alpha_points, matched_only=False)
+    alpha_matched = alpha_lambda_rollup(alpha_points, matched_only=True)
+    figure = alpha_lambda_figure(alpha_points)
+    class_outcomes = score_classifications(classifications, events)
+    suppression = score_suppression(suppression_runs, events)
+
     # ---- write ----------------------------------------------------------
     document = report.render(
         generated=generated,
@@ -116,11 +161,25 @@ def main() -> int:
         late=late,
         heldout=heldout,
         sources=sources,
+        calibrations=calibrations,
+        coverage=coverage,
+        unscoreable=unscoreable,
+        total_estimates=len(estimates),
+        alpha_points=alpha_points,
+        alpha_all=alpha_all,
+        alpha_matched=alpha_matched,
+        figure=figure,
+        class_outcomes=class_outcomes,
+        suppression=suppression,
         grid_check=grid_check,
     )
     OUTPUT.write_text(document)
 
     summarise(days, alarms, matrix, outcomes, summaries, heldout, sources)
+    summarise_prognostics(
+        coverage, unscoreable, len(estimates), alpha_all, alpha_matched,
+        class_outcomes, suppression, figure,
+    )
     print(f"\nwrote {OUTPUT.relative_to(REPO_ROOT)} "
           f"({len(document.splitlines())} lines, {len(document):,} bytes)")
     return 0
@@ -183,6 +242,61 @@ def summarise(days, alarms, matrix, outcomes, summaries, heldout, sources) -> No
     if heldout and not any(h.attributable for h in heldout):
         print("  VERDICT: the held-out fault was NOT detected. Every finding on that "
               "run also fires on a fault-free run at the same point of the calendar.")
+
+
+def summarise_prognostics(
+    coverage, unscoreable, total_estimates, alpha_all, alpha_matched,
+    class_outcomes, suppression, figure,
+) -> None:
+    """Sections 5 to 8 on the terminal, in the same order the document has them."""
+    print("\n=== 5. RUL INTERVAL CALIBRATION  (nominal coverage 80%) ===")
+    print(f"  {'population':<62}{'bnd':>6}{'cov':>6}{'coverage':>10}"
+          f"{'late':>6}{'early':>6}")
+    for entry in coverage:
+        print(f"  {entry.label:<62}{entry.bounded:>6}{entry.covered:>6}"
+              f"{report.pct(entry.coverage):>10}{entry.late:>6}{entry.early:>6}")
+    groups, scoreable = unscoreable
+    print(f"  published estimates: {total_estimates:,}, of which {scoreable:,} scoreable "
+          f"and {sum(n for _k, n, _w in groups):,} not:")
+    for key, n, _why in groups:
+        print(f"    {n:>5}  {key}")
+
+    print(f"\n=== 6. ALPHA-LAMBDA ACCURACY  (within +/-{ALPHA * 100:.0f}%) ===")
+    print(f"  {'lambda':>7}{'matched':>12}{'all series':>13}{'hit rate':>11}"
+          f"{'P10-P90 hit':>13}{'median rel err':>16}")
+    for entry, matched in zip(alpha_all, alpha_matched, strict=True):
+        err = (
+            "n/a" if entry.median_relative_error is None
+            else f"{entry.median_relative_error * 100:+.0f}%"
+        )
+        print(f"  {entry.lam:>7.1f}{f'{matched.within}/{matched.n}':>12}"
+              f"{f'{entry.within}/{entry.n}':>13}"
+              f"{report.pct(entry.hit_rate, 0):>11}"
+              f"{f'{entry.band_hits}/{entry.n}':>13}{err:>16}")
+    if figure is not None:
+        print(f"  wrote {figure.relative_to(REPO_ROOT)}")
+
+    print("\n=== 7. SENSOR VERSUS EQUIPMENT ===")
+    scored = [o for o in class_outcomes if o.scoreable and o.truth is not None]
+    correct = sum(1 for o in scored if o.correct)
+    commonest, hits, total = majority_baseline(class_outcomes)
+    print(f"  correct on {correct} of {len(scored)} injected faults; a classifier that "
+          f"always answered '{commonest}' would score {hits} of {total}")
+    for outcome in class_outcomes:
+        if not outcome.scoreable:
+            mark = outcome.skipped_reason[:44]
+        else:
+            mark = "correct" if outcome.correct else "WRONG"
+        print(f"    {outcome.scenario_id:<30}{outcome.asset_id:<11}"
+              f"truth {outcome.truth or '-':<10}said {outcome.predicted:<11}{mark}")
+
+    print("\n=== 8. CROSS-ASSET SUPPRESSION CORRECTNESS ===")
+    for case in suppression:
+        print(f"    {case.label:<62}{case.verdict:<20}"
+              f"ordering {'holds' if case.ordering_holds else 'BROKEN'}")
+        for symptom_asset, symptom_fault, cause_asset, cause_fault in case.demotions:
+            print(f"      demoted {symptom_asset}/{symptom_fault} under "
+                  f"{cause_asset}/{cause_fault}")
 
 
 if __name__ == "__main__":

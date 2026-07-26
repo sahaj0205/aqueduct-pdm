@@ -7618,3 +7618,332 @@ the same machine on the same day of the year, so neither can be credited to the 
 
 START HERE: `validation/detect.py` — everything the report says rests on what this module
 decides counts as a detection and which machine-days count at all.
+
+
+## Checkpoint 7.2 — Prognostic metrics, attribution and suppression correctness
+
+### What we did
+
+The harness now scores the four things that were still taking themselves on trust. It
+checks whether the prediction interval means what it claims — a band that says "eighty
+percent confident" should contain the truth four times in five, and nothing until now had
+counted. It checks whether the predicted remaining life is within a fifth of the real
+remaining life at each stage of a fault's life, which is the standard way this is reported
+in the prognostics literature, and draws it. It checks whether the platform names the right
+KIND of fault, sensor against equipment against control, which is the difference between
+dispatching a calibration kit and dispatching a wrench. And it checks whether the one
+advisory the cross-asset layer demoted was demoted for a true reason.
+
+Three of those four came out badly, and the document now says so with the numbers. That is
+the capability that was actually added: not four more figures, but the ability to be shown
+wrong by the data. The interval coverage is nowhere near its nominal eighty percent, the
+predicted remaining life is outside the twenty-percent band almost everywhere it can be
+checked, and the cross-asset attribution is wrong on the only case this dataset can
+produce. Each of those had been suspected in earlier checkpoints and none had been
+measured. Two of them turn out to have the same underlying cause, which only became
+visible because both were measured at once.
+
+### How it works
+
+`validation/prognostics.py` :: `MODE_FOR_FAULT`
+  WHY IT EXISTS: Decides whether a remaining-life number is a prediction ABOUT the injected
+    fault or merely a prediction made DURING it. Only the first kind can be calibrated, and
+    without this distinction the coverage figure silently compares a fan-bearing forecast
+    against the date a thermometer's bias reached its terminal value.
+  WHAT IT DOES: Maps each injected fault to the configured degradation mode that names it,
+    with a sentence of justification, and records `None` where nothing does.
+  CHOICES: Only two of the six injected faults have a mode that names them. The other four
+    absences are each listed with a reason rather than skipped: a leaking bypass valve
+    produces no wear model, a drifting thermometer should not have one, a jammed damper
+    reaches its terminal state instantly, and the cooling tower is held out. So the matched
+    population is two series, and that is the headline limitation of the whole section.
+
+`validation/prognostics.py` :: `load_estimates`
+  WHY IT EXISTS: The 1,117 remaining-life estimates the platform has published, which are
+    what gets calibrated.
+  WHAT IT DOES: Reads every row of the stored estimate history.
+  CHOICES: Read back rather than recomputed, which is the opposite of the decision made for
+    onset detection in 7.1, and the difference is the point. The stored onset is a
+    retrospective estimate and therefore the wrong quantity for measuring warning time.
+    These rows are not like that — each is exactly what the system published on that date
+    from data available on that date, which is the thing being calibrated.
+
+`validation/prognostics.py` :: `crossing_dates` and `threshold_reach`
+  WHY IT EXISTS: Between them they supply the single number that decides how to read every
+    coverage figure in the section, and without it the results look like a broken model.
+  WHAT IT DOES: `crossing_dates` finds when each mode's clamped indicator first reached its
+    own failure threshold — the event the prediction is actually about, as distinct from the
+    answer key's terminal-severity date. `threshold_reach` finds how far the indicator ever
+    got, as a fraction of that threshold.
+  CHOICES: The fraction is reported as a column beside every coverage row. On the two
+    matched series it comes out at 57 percent and 16 percent, meaning the indicator never
+    got close to failing during runs the answer key calls failures. A band putting the
+    crossing two hundred days out is then correct about its own event and wrong about the
+    answer key's, and most of the zero-percent coverage is those two events being weeks
+    apart rather than the interval being miscalibrated.
+  ⚠ JUDGEMENT CALL: Coverage is reported against BOTH definitions of failure rather than
+    picking one. Reporting only the answer key's date would blame the model for a threshold
+    placement decision; reporting only the indicator crossing would let it define its own
+    exam. The alternative I rejected was moving the failure thresholds so the two events
+    coincide, which is exactly the threshold tuning the working agreement forbids.
+
+`validation/prognostics.py` :: `interval_calibration` and `_calibrate`
+  WHY IT EXISTS: The checkpoint's headline requirement — what fraction of true failure times
+    fell inside the P10-to-P90 band.
+  WHAT IT DOES: For each series, converts each estimate's two quantiles into a calendar
+    window by adding them to the date the estimate was made, and counts how often the target
+    date falls inside it. Counts misses separately by direction: the whole band after the
+    target, or the whole band before it.
+  CHOICES: Only estimates made between injection and the target are counted. An estimate
+    made after the equipment already reached the target is not a prediction of it — the band
+    lies entirely in the future and the target is in the past, so it can only ever miss. 306
+    of the published estimates fall after their own target because the replay continues to
+    the end of every run, and including them would have reported a calibration failure that
+    was really a scoping error.
+  CHOICES: Direction of miss is counted because it turned out to be the most useful column
+    in the section. On the matched series every miss is late, 41 of 41. Across all series
+    against the answer key it is 42 late and 91 early, and the early ones all come from
+    modes whose indicator had already crossed its own threshold, so the model says zero days
+    left while the answer key still has days to run. Same cause, opposite sign.
+
+`validation/prognostics.py` :: `uncalibratable`
+  WHY IT EXISTS: A coverage figure whose denominator cannot be tied back to what the system
+    published is not a measurement. This function accounts for every estimate.
+  WHAT IT DOES: Puts each of the 1,117 estimates into exactly one bucket — scoreable, or one
+    of six named reasons it is not — and returns the groups alongside the scoreable count.
+    185 scoreable, 932 not, and the two add to the total.
+  CHANGED FROM BEFORE: The first version tested only some of the exclusions, so its groups
+    did not add up and the report quoted a "scoreable" figure of 161 that was the sum of two
+    different reference populations double-counting the same estimates. Two exclusions were
+    missing: estimates on a machine coupled to the faulted one, which is 176 of them, and
+    estimates made before injection. The arithmetic now closes and the report says it does.
+  CHOICES: One of the buckets is worth the whole function: 145 estimates were published on a
+    machine with no fault injected into it. That is the remaining-life layer naming a failure
+    date for a chiller that was working, and it is the same false positive section 1
+    attributes to the efficiency channel, one layer downstream.
+
+`validation/prognostics.py` :: `alpha_lambda` and `alpha_lambda_rollup`
+  WHY IT EXISTS: The accuracy question the prognostics literature asks, so this project's
+    result can be compared against published ones rather than only against itself.
+  WHAT IT DOES: At each fraction of the way from injection to terminal severity, takes the
+    estimate published on that date or the most recent earlier one, and asks whether its
+    median is within twenty percent of how much life was really left. The tolerance is
+    relative, so it narrows in absolute terms as the end approaches — twenty percent of
+    ninety days is eighteen days of slack and twenty percent of five days is one.
+  CHOICES: Twenty percent is the conventional alpha and is kept rather than tuned. The
+    fraction 1.0 is excluded because at the failure date the true remaining life is zero, so
+    the accepted band has zero width and everything fails by construction.
+  CHOICES: The two earliest fractions come out empty, and that is reported as a finding
+    rather than a gap. The remaining-life layer refuses to publish anything until degradation
+    is confirmed, and on these runs confirmation lands between a third and two-thirds of the
+    way through the fault's life. An accuracy metric that filled those rows in would be
+    scoring predictions the platform never made.
+
+`validation/plots.py` :: `alpha_lambda_figure`
+  WHY IT EXISTS: The checkpoint asks for a plot, and the accepted region is a cone rather
+    than a fixed tolerance, which a table of hit rates hides.
+  WHAT IT DOES: One panel per series, matched series first. Draws the true remaining life
+    falling to zero, the twenty-percent wedge closing around it, the published median, and a
+    vertical bar for each P10-to-P90 interval. An upward triangle marks an estimate where
+    the model declined to bound the upper end.
+  CHOICES: An unbounded upper end is drawn to the top of the axis with a marker rather than
+    omitted, because "the model declined to bound this" is an answer and a gap in the line
+    looks like missing data.
+  CHOICES: Written as SVG rather than PNG, unlike every other plot in the project. The
+    reason is that VALIDATION.md links to it: `docs/plots/*.png` is gitignored because those
+    files are diagnostic aids regenerated on demand, so a PNG would leave a broken image in
+    a committed document. An SVG is text, which is the same reason checkpoint 6.6's plant
+    schematic is committed in that form, and here it is also the smaller file.
+  CHOICES: Linear y-axis, deliberately, even though it makes the wedge invisible on the two
+    matched panels — the predictions run to hundreds of days against a truth of about ten, so
+    the wedge collapses onto the axis. A log axis would make the panel prettier and would
+    hide the magnitude of the error, so the report warns the reader instead.
+
+`validation/attribution.py` :: `TRUE_CLASS`
+  WHY IT EXISTS: A confusion matrix built on unstated labels measures nothing. This is the
+    true class of each injected fault with the reason for each, and two of the six are
+    arguable.
+  CHOICES: A jammed outdoor air damper is labelled CONTROL rather than EQUIPMENT. The jam
+    itself is mechanical, but this project's definition of a control fault is an actuator
+    that will not track its command, which is exactly what a jammed damper is. Labelling it
+    equipment would also make the control class untestable, since it is the only fault in
+    the set that produces an actuator-feedback gap.
+  CHOICES: Both leaking valves are EQUIPMENT rather than CONTROL, on the reasoning that the
+    valve POSITION still obeys its command — what has failed is the seat.
+
+`validation/attribution.py` :: `classify_runs`
+  WHY IT EXISTS: Runs the fault classifier once per machine per run so its answers can be
+    scored. It reads no labels at all, including where to look.
+  WHAT IT DOES: For each run, poses the isolation problem over a window of recent history
+    against the run's own commissioning window as the healthy reference, then asks the
+    classifier for a class, a confidence and a subject.
+  ⚠ JUDGEMENT CALL: The first version took the observation window's start from the injected
+    onset. That is a leak — the harness telling the classifier when the fault began — and it
+    would have made the accuracy figure partly a measurement of the answer key. Removing it
+    changed a result: with the window running from the platform's own detected onset to the
+    end of the run, the coil valve leak came out CONTROL rather than EQUIPMENT, because over
+    three months reaching from winter into summer the coil valve's average position drifts
+    far enough from its command to look like an actuator refusing orders.
+  ⚠ JUDGEMENT CALL: The window is the last 28 days of the run, and it was chosen on
+    operational grounds rather than by which window scored best. Two candidates were tried.
+    The recent-28-day window gets the air handler right on all three faults and the chiller
+    fouling wrong; the whole-post-injection window gets the fouling right and the coil leak
+    wrong. Choosing per equipment class would be fitting the harness to the answer key, so
+    one rule is applied and the run it gets wrong is reported as wrong. 28 also matches the
+    window the advisory layer fits its health slope over, so the project has one notion of
+    "recently", and a window ending now is what the classifier would see in production.
+  ⚠ JUDGEMENT CALL: The reference is each run's own three-week commissioning window rather
+    than a fault-free run at the same time of year, which is what checkpoint 5.4 used and is
+    the stronger choice. Two of the air-handler runs sit in late winter and early spring and
+    the only fault-free air-handler run is a summer one, so a seasonally matched reference
+    does not exist for them and both runs would have had to be dropped — including the coil
+    valve leak, which is one half of the discrimination this section exists to measure. The
+    check on the substitution is the coil-leak run, the one case where both references cover
+    the same 28 days: both return EQUIPMENT.
+  CHOICES: The window is NOT restricted to severity level 1, which makes these figures
+    easier than the detection figures, and the report says so. The classifier works by asking
+    which relations between measurements have stopped holding; at level 1 on several runs
+    nothing has visibly stopped holding, so asking it to name a fault it cannot see measures
+    the detector again rather than the classifier.
+
+`validation/attribution.py` :: `score_classifications`, `class_matrix`, `majority_baseline`
+  WHY IT EXISTS: Attaches the answer key's label after the fact, builds the matrix, and
+    computes what a classifier that ignored the data entirely would have scored.
+  WHAT IT DOES: A classification is scoreable only where a fault was injected into that
+    exact machine. Machines coupled to a faulted one, machines on fault-free runs and the
+    held-out run are carried through as unscoreable with the reason attached rather than
+    dropped.
+  CHOICES: The majority baseline is reported next to the accuracy because without it the
+    accuracy is not interpretable. Four of five correct, against three of five for a
+    classifier that always answered "equipment" — a thin margin, and what makes it worth
+    having is which cases are in it. The drifting thermometer and the jammed damper are the
+    two a majority guess gets wrong, and both are right, down to naming the correct physical
+    part.
+
+`validation/attribution.py` :: `run_suppression` and `score_suppression`
+  WHY IT EXISTS: Checks whether the one demoted advisory was demoted for a true reason.
+  WHAT IT DOES: `run_suppression` puts three windows through the cross-asset layer — two
+    entirely real, and one that is the same window as the first with a single era-shifted
+    chiller fault added — and records what was demoted and whether every demoted advisory
+    landed below the advisory it blames. `score_suppression` then applies a falsification
+    test: if the answer key injected a fault directly into the machine carrying the symptom,
+    the symptom had a cause of its own and the consequential label is wrong.
+  CHOICES: Falsification only, because that is the only direction this answer key can settle.
+    The two LBNL systems are independent simulations, so no run in this dataset contains a
+    genuine chiller-caused air handler symptom for the layer to get right. A link the answer
+    key does not contradict is reported as "unfalsified", not as confirmed.
+  CHOICES: The two real windows are the negative cases and they carry as much weight as the
+    positive one. Both have faults open on other machines and overlapping timing, and the
+    plausibility map declines anyway because the open water-side faults cost power rather
+    than capacity. A demotion layer that never declines to demote is indistinguishable from
+    one that demotes everything.
+
+`validation/report.py` :: `_section_calibration`, `_section_alpha_lambda`,
+`_section_fault_class`, `_section_suppression`
+  WHY IT EXISTS: Four new sections, inserted before the method appendix. Same rule as before:
+    no number is a literal, everything is interpolated, so a regression appears as a changed
+    number under unchanged prose.
+  CHANGED FROM BEFORE: `render` grew from eleven arguments to nineteen. Two prose bugs were
+    caught by reading the generated output rather than the code — a sentence that pooled the
+    late-miss counts from two different reference populations and reported 54 of 145 where
+    the answer-key row says 42, and the double-counted "scoreable" figure described above.
+    Both were arithmetic that looked right in the source and was wrong on the page.
+
+`validation/harness.py` :: `main` and `summarise_prognostics`
+  CHANGED FROM BEFORE: The restricted-connection block now also loads the estimate history,
+    runs the classifier over every run and puts three windows through the cross-asset layer.
+    The answer key is still not opened until that block has closed. Getting this wrong was
+    the near miss of this checkpoint: the first version called into the answer key inside the
+    block because the classifier needed to know the injection dates, and the fix was to make
+    the classifier take its window from the platform's own detected onset instead.
+
+`Makefile` — no change; `make validate` already regenerates everything.
+
+### The four results, and the one cause behind two of them
+
+Everything below is in the generated document.
+
+**Interval calibration is bad and the shape of the failure is informative.** Nominal
+coverage is 80 percent. Against the answer key's failure date it is 10.1 percent across
+148 bounded estimates, and 0 percent on the two series where the mode names the injected
+fault. But the indicator on those two series only ever reached 57 percent and 16 percent of
+its own failure threshold, so a band putting the crossing hundreds of days out is right
+about its own event and wrong about the answer key's. Where the model's own event did
+happen, coverage is 1 of 13 and the misses are late — that part is a genuine calibration
+failure on a small sample, and it is stated as one.
+
+**Alpha-lambda accuracy: 0 of 8 checks pass on the matched series, 1 of 35 overall.** The
+median relative error is large and positive early in the measurable range and goes to −100
+percent late, which is the already-crossed case. The errors are structured, not scattered.
+
+**Sensor versus equipment: 4 of 5, against a majority-guess baseline of 3 of 5.** The one
+miss is condenser fouling called a power-meter fault, and it exposes something more useful
+than the score: the air handler contributes up to five relations and a chiller up to three,
+electrical power appears in two of those three, so a single bias on the power meter can
+reconcile a fully developed fouling fault and nothing is left to falsify it with. This is
+the same falsifiability problem checkpoint 5.4 solved on the air side by adding baselines
+as extra relations. The chiller never received that treatment, and adding it is a
+configuration change rather than a code change.
+
+**Cross-asset suppression: two correct refusals and one wrong attribution.** The demoted
+advisory is ranked below its named cause in all three situations, so the mechanism is
+correct; the inference it is applied to is wrong in the one case this dataset can produce,
+and section 7 reaches that conclusion independently from the machine's own evidence.
+
+**Two of these have one cause.** The false positive on the efficiency channel that section 1
+identified is now visible in three more places: 145 remaining-life estimates published for a
+chiller that was working, two of four healthy machines given a fault class with zero
+relations violated, and the finding on the held-out run that turns out to be the same
+artefact. It is one defect in one indicator, and it propagates through detection, prediction
+and diagnosis.
+
+START HERE: `validation/prognostics.py` — the `threshold_reach` column is what turns a
+coverage figure that looks like a broken model into a statement about two different
+definitions of failure, and every reading of section 5 depends on it.
+
+
+### Checkpoint 7.2 addendum — debt cleared
+
+One item of carried-forward debt, cleared on request rather than as part of a numbered
+checkpoint. No behaviour changed and nothing was added; code moved to where it belongs.
+
+`analytics/rules/chiller.py` :: `CHILLERS`, `RUNNING`, `OFF`, `chiller_state`, `load_window`
+  WHY IT EXISTS: These five are the chiller rules' input contract — which machines the
+    plant has, what states they are in, how to decide which state a machine is in at each
+    instant, and how to assemble the readings the rules need. They had been living in
+    `scripts/run_chiller_rules.py` since checkpoint 3.4, which was defensible while that
+    script was their only caller. Checkpoint 7.2 gave them a second caller in
+    `validation/detect.py`, which then had to reach into `scripts/` across a package
+    boundary via a `sys.path` insert. That import worked and was wrong: a verification
+    script is a consumer of the analytics layer, not a place other packages should be
+    importing definitions out of.
+  WHAT IT DOES: `chiller_state` decides per instant whether a machine is running, and
+    requires all three of status on, real power draw and real chilled water flow. All
+    three are needed because chiller 1's status point reads 1 for every sample of the
+    year, so status alone would never mark it off, the start-up delay would never apply,
+    and the rules would be evaluated across every cold start. `load_window` loads one
+    chiller's readings and joins on the plant's chilled water supply setpoint, which
+    belongs to the plant rather than to any one chiller and which the capacity rule needs;
+    it returns nothing rather than an empty frame when the window holds no data, so a
+    caller learns that immediately instead of three steps later.
+  CHANGED FROM BEFORE: Identical code, new home. `scripts/run_chiller_rules.py` and
+    `scripts/run_rootcause.py` now import all five from `analytics.rules.chiller`, and
+    `validation/detect.py` does too — so its `sys.path` no longer includes `scripts/` at
+    all. The redundant `numpy` and `pandas` imports the script no longer needed came out
+    with them, and `load_asset_readings` moved from the script's imports to the module's.
+  CHOICES: `validation/attribution.py` still imports `collect`, `era_shift` and three
+    window constants from `scripts/run_rootcause.py`, so one scripts-boundary crossing
+    remains and is not addressed here. It is a different shape of problem: `collect` is a
+    genuine analytics step that belongs beside the cross-asset layer, while `era_shift`
+    and the composed-window constants are specific to checkpoint 6.1's demonstration and
+    have no home in `analytics/`. Splitting them is a larger change than this request, so
+    it is left recorded rather than half-done.
+
+VERIFIED, and the verification is the point of a pure move: `VALIDATION.md` regenerated
+after the change is byte-identical to the version generated before it, apart from the
+generated-on timestamp. `scripts/run_chiller_rules.py` still reports 0 false positives per
+asset-day across all 605 fault-free asset-days and 0 rule reports on the held-out cooling
+tower fault, matching checkpoint 3.4. `scripts/run_rootcause.py` still produces the same
+three queues, with the traversal agreeing with `app.asset_edges` on all seven upstream
+machines and `ahu-1/apar-20` demoted from 1.000 to 0.152 under the chiller in situation 3.
+`uv run ruff check .` passes.
