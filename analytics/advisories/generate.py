@@ -105,14 +105,15 @@ MIN_EFFORT_USD = 1.0
 # Fifty, matching the gate the rule engine and the fault classifier already use, so
 # the three layers cannot disagree about what "untrusted" means.
 #
-# This is not a nicety. The air handler's supply air static pressure SETPOINT is
-# corrupt in every synthesised run in this project -- it should be a constant 400.4
-# Pa and instead sits pinned at -99698.47 Pa, about minus one atmosphere, for 14,176
-# of the 34,560 samples in the 2038 window. Ranked on movement without a quality
-# filter it is the single largest mover on the asset by a factor of ten thousand, and
-# it crowded every real signal off the advisory. The quality layer had already scored
-# it 0 out of 100 on all 17,280 samples and raised out_of_range advisories against it;
-# this filter is simply the advisory layer finally reading that verdict.
+# This filter catches readings that cannot be believed AT A MOMENT: a sensor that has
+# stopped moving, left its physical envelope, or gone quiet. It is not the filter that
+# catches a column which never meant what its name said -- that is app.points.usable,
+# applied alongside it, and the two are genuinely independent. The air handler's supply
+# air static pressure proves the point: it averages 89.5 out of 100 and passes this
+# gate comfortably, because its readings are consistent, punctual and inside their
+# envelope. They are simply recorded in inches of water in 20 of the 21 source files
+# and in Pascals in the other, so the stitched series is meaningless. No per-sample
+# quality score can see that, and it took the usable flag to exclude it.
 MIN_TRUSTED_QUALITY = 50
 
 # When health and the prediction flatly contradict each other, the advisory withholds
@@ -509,7 +510,7 @@ def contributing_signals(
     window: tuple[datetime, datetime],
     reference: tuple[datetime, datetime],
     limit: int = 6,
-) -> tuple[list[Signal], int]:
+) -> tuple[list[Signal], int, int]:
     """The asset's readings that moved most, in units of their own quiet spread.
 
     Every point on the asset is compared between the advisory's window and a
@@ -525,12 +526,31 @@ def contributing_signals(
     are reported by the diagnosis layer's own evidence; these are what the
     technician can go and look at.
 
-    ONLY TRUSTED READINGS GET IN. Both windows require a mean quality score at or
-    above the trusted threshold, and points failing that in either window are dropped
-    and counted. Sending somebody to investigate a reading the quality layer has
-    already condemned wastes the visit twice over -- once on the wrong signal, and
-    once more on the credibility of everything else in the advisory. The count is
-    returned so the exclusion appears in the report rather than happening quietly.
+    TWO FILTERS, ANSWERING TWO DIFFERENT QUESTIONS.
+
+    `app.points.usable` asks whether the column means what its name says at all. It
+    is a fact about the source dataset, decided once, and three of this building's
+    107 points fail it -- the outdoor airflow that is a constant design figure rather
+    than a measurement, and the two supply air static pressure points whose unit
+    differs between the fault-free source file and the 20 fault files, so that every
+    stitched trajectory splices two conventions together. No per-row processing can
+    repair that, so those points are excluded here by construction rather than by
+    each consumer noticing.
+
+    The quality score asks whether a particular reading can be believed right now,
+    and answers per sample. Both windows must average at or above the trusted
+    threshold.
+
+    Neither subsumes the other, and supply air static pressure is exactly the case
+    that proves it: it scores 89.5 on average and sails through the quality gate,
+    because its readings are consistent, punctual and inside their physical envelope
+    -- they are simply in the wrong unit. Ranked on movement it then reads as a 386
+    sigma shift, the largest mover on the asset, and it led the evidence list of every
+    air handler advisory. A reading can be entirely trustworthy and still be
+    meaningless.
+
+    Exclusions are counted and returned so they appear in the report rather than
+    happening quietly.
     """
     rows = conn.execute(
         """
@@ -552,7 +572,8 @@ def contributing_signals(
              GROUP BY 1
         )
         SELECT o.point_id, p.name, p.unit_si, q.mean, o.mean, q.sd,
-               least(coalesce(o.quality, 0), coalesce(q.quality, 0)) AS quality
+               least(coalesce(o.quality, 0), coalesce(q.quality, 0)) AS quality,
+               p.usable, p.unusable_reason
           FROM observed o
           JOIN quiet q ON q.point_id = o.point_id
           JOIN app.points p ON p.point_id = o.point_id
@@ -565,17 +586,27 @@ def contributing_signals(
         },
     ).fetchall()
 
-    signals, excluded = [], 0
-    for pid, name, unit, ref, obs, sd, quality in rows:
+    signals: list[Signal] = []
+    unusable_count = 0
+    untrusted_count = 0
+    for pid, name, unit, ref, obs, sd, quality, usable, unusable_reason in rows:
+        if not usable:
+            log.debug("%s excluded from advisory signals: %s", pid, unusable_reason)
+            unusable_count += 1
+            continue
         if float(quality) < MIN_TRUSTED_QUALITY:
             log.debug("%s excluded from advisory signals: quality %.1f", pid, quality)
-            excluded += 1
+            untrusted_count += 1
             continue
         signals.append(
             Signal(point_id=pid, label=name, unit=unit,
                    reference=float(ref), observed=float(obs), sigma=float(sd))
         )
-    return sorted(signals, key=lambda s: -abs(s.sigmas))[:limit], excluded
+    return (
+        sorted(signals, key=lambda s: -abs(s.sigmas))[:limit],
+        unusable_count,
+        untrusted_count,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1076,7 +1107,11 @@ class Advisory:
 
     # why we believe it
     signals: tuple[Signal, ...]
-    signals_excluded: int  # points dropped because the quality layer condemned them
+    # Two exclusion counts, not one, because they answer different questions: the
+    # first is source data that does not mean what it says, the second is readings
+    # that cannot be believed right now. See contributing_signals.
+    signals_excluded_unusable: int
+    signals_excluded_untrusted: int
     diagnosis_evidence: tuple[str, ...]
 
     # who it reaches
@@ -1090,6 +1125,10 @@ class Advisory:
     consequential: bool
     demoted_from: float | None
     notes: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def signals_excluded(self) -> int:
+        return self.signals_excluded_unusable + self.signals_excluded_untrusted
 
     @property
     def priority(self) -> float | None:
@@ -1182,7 +1221,7 @@ def build(
         economics=economics,
     )
     intervention = recommend(conn, fault.fault_id, fault_class)
-    signals, excluded = contributing_signals(
+    signals, excluded_unusable, excluded_untrusted = contributing_signals(
         conn, fault.asset_id, window, reference
     )
 
@@ -1216,7 +1255,8 @@ def build(
         window=window,
         forecast=forecast,
         signals=tuple(signals),
-        signals_excluded=excluded,
+        signals_excluded_unusable=excluded_unusable,
+        signals_excluded_untrusted=excluded_untrusted,
         diagnosis_evidence=diagnosis_evidence,
         trace=trace(
             graph, nodes[fault.asset_id], mapping, facts, fault.asset_id,
@@ -1349,7 +1389,10 @@ def as_payload(advisory: Advisory, priority: float | None) -> dict:
             }
             for s in advisory.signals
         ],
-        "signals_excluded": advisory.signals_excluded,
+        "signals_excluded": {
+            "unusable_source_data": advisory.signals_excluded_unusable,
+            "untrusted_readings": advisory.signals_excluded_untrusted,
+        },
         "diagnosis_evidence": list(advisory.diagnosis_evidence),
         "trace": {
             "upstream": [{"asset": a, "hops": h} for a, h in advisory.trace.upstream],

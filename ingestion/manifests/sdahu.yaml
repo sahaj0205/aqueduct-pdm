@@ -100,6 +100,11 @@ points:
   resample: mean
   note: >-
     DEFECT: same 60x discrepancy as SA_CFM, loaded as ft3/hour. WORSE: this column is a CONSTANT 357,730.44 for all 525,540 minutes of the year while the outdoor air damper swings 0 to 1, so it is not a measurement of outdoor airflow at all -- it looks like a design minimum-outdoor-air figure (5,962 CFM once scaled). Do not use it as a sensor reading; MixedAirBalance deliberately uses damper position instead.
+  usable: false
+  unusable_reason: >-
+    Constant 357,730.44 for every minute of the year while the outdoor air damper
+    swings across its full range, so it is a design figure and not a measurement of
+    anything. MixedAirBalance uses damper position instead.
 - column: SA_SP
   point_id: ahu-1.sa_static_p
   asset_id: ahu-1
@@ -116,6 +121,14 @@ points:
     two continuously, so no per-row conversion can recover the intended value. Found by the quality
     scorer in checkpoint 3.1; see docs/IMPLEMENTATION_NOTES.md 3.1. Nothing computes anything from this
     point and nothing should until the loader can carry a per-file unit and the data is reloaded.
+  usable: false
+  unusable_reason: >-
+    The source dataset uses two different units for this column: the fault-free file
+    reports Pascals (401.8 to 410.6) and all 20 fault files report inches of water
+    (-1.6 to 7.1). Every stitched trajectory splices the two conventions together and
+    the synthesised scenarios blend them continuously, so no per-row conversion can
+    recover the intended value. Fixing it needs a per-file unit in the loader and a
+    reload.
 - column: SA_SPSPT
   point_id: ahu-1.sa_static_p_spt
   asset_id: ahu-1
@@ -131,6 +144,12 @@ points:
     at -99,698 Pa -- a physically impossible negative duct pressure. The real setpoint never changes: it
     is 400.4 Pa in every file, just written three different ways. Nothing computes anything from this
     point and nothing should.
+  usable: false
+  unusable_reason: >-
+    Same per-file unit defect as sa_static_p, in the opposite direction and negated,
+    so the fault files land at -99,698 Pa -- a physically impossible negative duct
+    pressure. The real setpoint is 400.4 Pa in every file, written three different
+    ways.
 - column: SF_CS
   point_id: ahu-1.sf_speed_cmd
   asset_id: ahu-1

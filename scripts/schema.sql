@@ -97,10 +97,26 @@ CREATE TABLE IF NOT EXISTS app.points (
                                         OR max_roc_per_min > 0),
     sample_interval_s  INTEGER   CHECK (sample_interval_s IS NULL
                                         OR sample_interval_s > 0),
+    usable             BOOLEAN   NOT NULL DEFAULT TRUE,
+    unusable_reason    TEXT,
     CHECK (expected_min IS NULL
            OR expected_max IS NULL
-           OR expected_min < expected_max)
+           OR expected_min < expected_max),
+    CHECK (usable OR length(unusable_reason) > 40)
 );
+
+-- Added in checkpoint 6.3 debt clearing. CREATE TABLE IF NOT EXISTS does nothing to
+-- a table that already exists, so the columns are added separately. DEFAULT TRUE is
+-- what makes this safe on the 107 rows that predate them: a point is usable unless
+-- somebody has recorded a reason it is not.
+ALTER TABLE app.points
+    ADD COLUMN IF NOT EXISTS usable BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE app.points
+    ADD COLUMN IF NOT EXISTS unusable_reason TEXT;
+ALTER TABLE app.points DROP CONSTRAINT IF EXISTS points_unusable_reason_check;
+ALTER TABLE app.points
+    ADD CONSTRAINT points_unusable_reason_check
+    CHECK (usable OR length(unusable_reason) > 40);
 
 CREATE INDEX IF NOT EXISTS points_asset_id_idx ON app.points (asset_id);
 
@@ -126,6 +142,29 @@ COMMENT ON COLUMN app.points.max_roc_per_min IS
 COMMENT ON COLUMN app.points.sample_interval_s IS
     'Expected seconds between readings. Used to detect gaps — a missing hour '
     'is only detectable if the expected cadence is known.';
+
+COMMENT ON COLUMN app.points.usable IS
+    'FALSE when the source data for this point is known to be defective in a way no '
+    'per-row processing can repair, so nothing may compute anything from it. This is '
+    'a statement about the DATASET, not about the instrument or the equipment, and it '
+    'is deliberately separate from the quality score: quality asks whether a '
+    'particular reading can be believed right now, and answers per sample. This asks '
+    'whether the column means what its name says at all, and answers once. '
+    'A reading can be perfectly consistent, arrive on time, sit inside its physical '
+    'envelope and score 100 — and still be in the wrong unit for 20 of the 21 source '
+    'files it was stitched from, which is exactly the case here. Three of the 107 '
+    'points are FALSE. All three were already documented as DO NOT USE in prose in '
+    'the ingestion manifests; this column is that prose made machine-readable, so a '
+    'consumer honours it by construction instead of by having read the comment.';
+
+COMMENT ON COLUMN app.points.unusable_reason IS
+    'What is wrong with the source data, in enough detail to fix it or to argue that '
+    'it cannot be fixed. Required whenever usable is FALSE and checked to be more '
+    'than a token, on the same principle as failure_modes.threshold_rationale: a '
+    'point can never be silently written off. Surfaced by the API next to the point '
+    'so a chart can grey it out and say why rather than simply omitting it, because a '
+    'measurement that vanishes without explanation is the thing an engineer will '
+    'spend an afternoon looking for.';
 
 
 -- =====================================================================

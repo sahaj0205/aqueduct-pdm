@@ -55,6 +55,18 @@ class PointSummary(BaseModel):
     unit_si: str
     expected_min: float | None
     expected_max: float | None
+    usable: bool = Field(
+        default=True,
+        description=(
+            "False when the source data for this point is known to be defective in a "
+            "way no per-row processing can repair. Distinct from the quality score: "
+            "quality asks whether a reading can be believed right now, this asks "
+            "whether the column means what its name says at all. Published so a "
+            "chart can grey the point out AND say why -- a measurement that vanishes "
+            "without explanation is what an engineer spends an afternoon looking for."
+        ),
+    )
+    unusable_reason: str | None = None
 
 
 class AssetDetail(AssetSummary):

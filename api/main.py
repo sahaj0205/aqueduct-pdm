@@ -184,7 +184,8 @@ def get_asset(asset_id: str, conn: Conn) -> AssetDetail:
     if not rows:
         raise HTTPException(status_code=404, detail=f"no asset {asset_id!r}")
     points = conn.execute(
-        "SELECT point_id, name, brick_class, unit_si, expected_min, expected_max "
+        "SELECT point_id, name, brick_class, unit_si, expected_min, expected_max, "
+        "       usable, unusable_reason "
         "  FROM app.points WHERE asset_id = %s ORDER BY point_id",
         (asset_id,),
     ).fetchall()
@@ -197,6 +198,7 @@ def get_asset(asset_id: str, conn: Conn) -> AssetDetail:
             PointSummary(
                 point_id=p[0], name=p[1], brick_class=p[2], unit_si=p[3],
                 expected_min=p[4], expected_max=p[5],
+                usable=p[6], unusable_reason=p[7],
             )
             for p in points
         ],

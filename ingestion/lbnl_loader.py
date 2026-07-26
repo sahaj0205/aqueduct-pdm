@@ -25,11 +25,14 @@ window before writing it.
 
 from __future__ import annotations
 
+import argparse
 import logging
+import math
 import os
 import sys
 import time
 from datetime import date, datetime, timedelta, timezone
+from itertools import pairwise
 from pathlib import Path
 
 import pandas as pd
@@ -40,6 +43,10 @@ from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_DIR = REPO_ROOT / "ingestion" / "manifests"
+
+# The manifests that describe a source SYSTEM. Named rather than globbed because
+# point_bounds.yaml shares the directory and is a different shape entirely.
+SYSTEM_MANIFESTS = ("chiller", "sdahu")
 
 log = logging.getLogger("lbnl_loader")
 _UREG = pint.UnitRegistry()
@@ -136,6 +143,13 @@ def upsert_assets(conn: psycopg.Connection, manifest: dict) -> int:
 
 
 def upsert_points(conn: psycopg.Connection, manifest: dict) -> int:
+    """Sync the point catalogue from the manifest.
+
+    Carries `usable` and `unusable_reason` through from the manifest, which is what
+    makes a point marked DO NOT USE in the manifest actually unusable to everything
+    downstream instead of only to whoever read the comment. Defaults to usable, so a
+    point says nothing unless the manifest says something.
+    """
     interval_s = manifest["timestamps"]["resample_interval_s"]
     rows = [
         (
@@ -146,6 +160,8 @@ def upsert_points(conn: psycopg.Connection, manifest: dict) -> int:
             p["unit_native"],
             p["unit_si"],
             interval_s,
+            p.get("usable", True),
+            p.get("unusable_reason"),
         )
         for p in manifest["points"]
     ]
@@ -153,15 +169,18 @@ def upsert_points(conn: psycopg.Connection, manifest: dict) -> int:
         cur.executemany(
             """
             INSERT INTO app.points (point_id, asset_id, brick_class, name,
-                                    unit_native, unit_si, sample_interval_s)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                    unit_native, unit_si, sample_interval_s,
+                                    usable, unusable_reason)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (point_id) DO UPDATE SET
                 asset_id          = EXCLUDED.asset_id,
                 brick_class       = EXCLUDED.brick_class,
                 name              = EXCLUDED.name,
                 unit_native       = EXCLUDED.unit_native,
                 unit_si           = EXCLUDED.unit_si,
-                sample_interval_s = EXCLUDED.sample_interval_s
+                sample_interval_s = EXCLUDED.sample_interval_s,
+                usable            = EXCLUDED.usable,
+                unusable_reason   = EXCLUDED.unusable_reason
             """,
             rows,
         )
@@ -181,11 +200,20 @@ def segment_windows(
     Each window will be filled from a different severity file, so the
     boundaries are where the fault steps worse. Remainder days are absorbed by
     the final window so the span is covered exactly.
+
+    THESE DATETIMES ARE DELIBERATELY NAIVE and must stay that way. They are only
+    ever used to slice the source CSVs, whose own timestamp column parses to
+    tz-naive source-local time -- read_segment subtracts the window start from a
+    datetime parsed out of the file and compares the window against the frame
+    index. Attaching a timezone here would make both of those operations raise
+    "can't subtract offset-naive and offset-aware datetimes". Timezone attachment
+    happens later and in one place, in _stamp, at the point where a timestamp is
+    about to be stored.
     """
-    origin = datetime(start.year, start.month, start.day)
+    origin = datetime(start.year, start.month, start.day)  # noqa: DTZ001 - see above
     edges = [origin + timedelta(days=span_days * i // count) for i in range(count)]
     edges.append(origin + timedelta(days=span_days))
-    return list(zip(edges[:-1], edges[1:]))
+    return list(pairwise(edges))
 
 
 def read_segment(
@@ -283,9 +311,13 @@ def write_segment(
             values = frame[column].to_numpy(dtype="float64") * scale + offset
             point_id = point["point_id"]
             if pd.isna(values).any():
-                for stamp, value in zip(py_stamps, values):
+                # A gap is written as an explicit NULL rather than skipped, so the
+                # absence is recorded instead of inferred. isnan rather than the
+                # value != value trick: both test the same thing, but one of them
+                # reads as a mistake and gets "corrected" by the next person.
+                for stamp, value in zip(py_stamps, values, strict=True):
                     copy.write_row(
-                        (stamp, point_id, None if value != value else value)
+                        (stamp, point_id, None if math.isnan(value) else value)
                     )
             else:
                 for stamp, value in zip(py_stamps, values):
@@ -375,8 +407,16 @@ def load_trajectory(
 
 
 def _stamp(day: date, shift: timedelta, utc_offset_hours: int) -> datetime:
-    naive = datetime(day.year, day.month, day.day) + shift
-    return naive.replace(tzinfo=timezone(timedelta(hours=utc_offset_hours)))
+    """A scenario-time timestamp, on the source data's fixed UTC offset.
+
+    The offset is attached in the constructor rather than by building a naive
+    datetime and calling replace afterwards. The two are equivalent here because
+    the zone is a FIXED offset with no daylight rule -- adding `shift` cannot cross
+    a transition that does not exist -- and doing it in one step means there is no
+    moment in this function where a naive datetime could escape by accident.
+    """
+    tz = timezone(timedelta(hours=utc_offset_hours))
+    return datetime(day.year, day.month, day.day, tzinfo=tz) + shift
 
 
 # --------------------------------------------------------------------------
@@ -407,16 +447,52 @@ def load_system(conn: psycopg.Connection, manifest: dict) -> int:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Load the LBNL datasets.")
+    parser.add_argument(
+        "--points-only",
+        action="store_true",
+        help=(
+            "sync the asset and point catalogue from the manifests and stop, without "
+            "reading a single CSV. For picking up a catalogue edit -- a corrected "
+            "name, a bound, a point marked unusable -- without an eighty-million-row "
+            "reload"
+        ),
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
-    manifests = sorted(MANIFEST_DIR.glob("*.yaml"))
-    if not manifests:
-        sys.exit(f"no manifests found in {MANIFEST_DIR}")
+    # The two system manifests, named rather than globbed. point_bounds.yaml also
+    # lives in this directory and is a different shape -- it has no source_root and
+    # no points list -- so a glob picks it up and load_manifest exits on it.
+    manifests = [MANIFEST_DIR / f"{system}.yaml" for system in SYSTEM_MANIFESTS]
+    missing = [p for p in manifests if not p.exists()]
+    if missing:
+        sys.exit(f"manifest(s) not found: {[str(p) for p in missing]}")
 
     started = time.monotonic()
     grand_total = 0
     with psycopg.connect(resolve_dsn()) as conn:
         for path in manifests:
-            grand_total += load_system(conn, load_manifest(path))
+            manifest = load_manifest(path)
+            if args.points_only:
+                n_assets = upsert_assets(conn, manifest)
+                n_points = upsert_points(conn, manifest)
+                conn.commit()
+                unusable = [
+                    p["point_id"] for p in manifest["points"] if not p.get("usable", True)
+                ]
+                log.info(
+                    "%s: %d assets, %d points synced, %d marked unusable%s",
+                    manifest["system"], n_assets, n_points, len(unusable),
+                    f" ({', '.join(unusable)})" if unusable else "",
+                )
+                continue
+            grand_total += load_system(conn, manifest)
+
+    if args.points_only:
+        log.info("catalogue only -- no measurements were read or written")
+        return 0
+
     log.info("=" * 78)
     log.info(
         "loaded %d measurement rows from %d manifests in %.1f minutes",

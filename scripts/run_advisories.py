@@ -141,8 +141,10 @@ def show(heading: str, advisory: Advisory, priority: float | None) -> None:
         print(f"                  {probability * 100:.1f}% chance of crossing the "
               f"threshold within {HORIZON_DAYS:.0f} days")
 
-    print(f"\n  CONTRIBUTING SIGNALS   (measured value, reference value, movement)"
-          f"   {advisory.signals_excluded} point(s) excluded as untrusted")
+    print("\n  CONTRIBUTING SIGNALS   (measured value, reference value, movement)")
+    print(f"    excluded: {advisory.signals_excluded_unusable} point(s) whose source "
+          f"data is known defective, {advisory.signals_excluded_untrusted} whose "
+          f"readings the quality layer condemned")
     for signal in advisory.signals:
         print(f"    {signal.line}")
     for line in advisory.diagnosis_evidence:
@@ -214,6 +216,8 @@ ALLOWED_EMPTY = {
     "demoted_from": "only set on a consequential advisory",
     "notes": "no caveats needed on this advisory",
     "diagnosis_evidence": "no isolation evidence available for this asset",
+    "signals_excluded_unusable": "no unusable points on this asset",
+    "signals_excluded_untrusted": "no untrusted points on this asset",
     "intervention": "no row in app.intervention_library matches this fault",
 }
 

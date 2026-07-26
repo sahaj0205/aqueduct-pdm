@@ -6644,3 +6644,77 @@ five zones and 200 occupants at up to four hops.
 START HERE: `api/main.py` — the nine route handlers, and the `_LATEST_HEALTH`
 fragment above them that decides what "current health" means in a database holding
 eight simulation runs in different years.
+
+### Checkpoint 6.3 addendum — debt cleared
+
+Two items of carried-forward debt, cleared on request rather than as part of a
+numbered checkpoint.
+
+`app.points.usable` and `unusable_reason`, and the manifest keys behind them
+  WHY IT EXISTS: Three of this building's 107 measurements are defective at source in
+    ways no per-row processing can repair, and all three were already documented as
+    DO NOT USE in prose in the ingestion manifests. Prose is not enforcement: the
+    advisory layer read one of them anyway and put it at the top of the evidence list
+    on every air handler advisory. These two columns are that prose made
+    machine-readable.
+  WHAT IT DOES: A boolean on the point catalogue with a required reason, set from a
+    `usable: false` key in the manifest and carried into the database by the loader's
+    existing catalogue upsert. The advisory evidence ranking excludes them; the API
+    publishes both fields so a chart can grey the point out AND say why.
+  CHOICES: This is deliberately NOT folded into the quality score, and the distinction
+    is the whole point. Quality asks whether a particular reading can be believed
+    right now and answers per sample. This asks whether the column means what its name
+    says at all, and answers once. Supply air static pressure is the case that proves
+    neither subsumes the other: it averages 89.5 out of 100 and passes the quality gate
+    comfortably, because its readings are consistent, punctual and inside their
+    physical envelope — they are simply recorded in inches of water in 20 of the 21
+    source files and in Pascals in the other, so the stitched series is meaningless.
+    No per-sample score can see that. A reading can be entirely trustworthy and still
+    mean nothing.
+  ⚠ JUDGEMENT CALL: The instruction was to add a specific exclusion for the known
+    sa_static_p artefact. I generalised it to a declared property of the point instead
+    of a named exclusion in the advisory code, for two reasons. A hardcoded point id
+    in the ranking function would be invisible to the other six consumers of
+    app.points, and it would have needed a second copy the next time somebody noticed
+    the same class of defect — which they already had, twice, in the same manifest.
+    Three points are now flagged, not one: the outdoor airflow column that is a
+    constant design figure rather than a measurement was carrying the same DO NOT USE
+    prose and the same lack of enforcement.
+  CHANGED FROM BEFORE: The AHU evidence list was led by supply air static pressure at
+    −386.8 sigma, an artefact. It is now led by the chilled water valve position at
+    +0.4 sigma, moving 0.310 to 0.445 — which is the actual mechanism of the fault on
+    that run: the controller opening the valve to chase a supply air thermometer that
+    is reading high. Exclusion counts are reported separately for the two reasons, so
+    "3 points whose source data is known defective, 1 whose readings the quality layer
+    condemned" is visible on the advisory rather than a single opaque total.
+
+`ingestion/lbnl_loader.py :: main(--points-only)` and `SYSTEM_MANIFESTS`
+  WHY IT EXISTS: Picking up a catalogue edit needed a way to sync assets and points
+    without re-reading 80 million measurements.
+  WHAT IT DOES: Upserts the asset and point catalogue from the manifests and stops,
+    without opening a single CSV, reporting which points came back marked unusable.
+  CHOICES: The manifest list is now named rather than globbed. `point_bounds.yaml`
+    shares that directory and is a different shape — no `source_root`, no `points` —
+    so the glob picked it up and `load_manifest` would have exited on it. That was a
+    latent breakage in `make load` introduced when the bounds file was added in 3.1,
+    and it is fixed here because the points-only path walks the same list.
+
+The four ruff findings in `ingestion/lbnl_loader.py`
+  WHAT IT DOES: `zip(edges[:-1], edges[1:])` became `itertools.pairwise(edges)`.
+    `None if value != value else value` became `math.isnan(value)` — the same NaN test
+    written so it does not read as a mistake somebody will later "correct". `_stamp`
+    now attaches its fixed UTC offset in the datetime constructor instead of building
+    a naive value and calling replace, which is equivalent because the zone has no
+    daylight rule and leaves no moment where a naive datetime could escape.
+  ⚠ JUDGEMENT CALL: The fourth, DTZ001 on `segment_windows`, is a FALSE POSITIVE and
+    is silenced with a noqa and a reason rather than "fixed". Those datetimes are
+    window boundaries used only to slice the source CSVs, whose timestamp column
+    parses to tz-naive source-local time — `read_segment` subtracts the window start
+    from a datetime parsed out of the file and compares the window against the frame
+    index. Attaching a timezone would make both operations raise "can't subtract
+    offset-naive and offset-aware datetimes". Silencing a rule is the honest fix when
+    obeying it introduces a bug; the docstring now says why naive is required.
+  VERIFIED: both rewritten functions were checked against their previous
+    implementations across 112 cases — 96 combinations of date, offset and trajectory
+    index for `_stamp`, 16 combinations of span and segment count for
+    `segment_windows` — with zero mismatches, and the windows confirmed still tz-naive.
