@@ -6386,26 +6386,45 @@ standing in for an unknown.
     priority does not exist until its intervention has been priced, which happens
     after the cross-asset pass has already run on severity.
 
-`analytics/advisories/generate.py :: build(...)` — the health/prediction contradiction
-  WHY IT EXISTS: Assembling every field in one object, and one thing that only became
-    visible by doing so.
+`analytics/advisories/generate.py :: withhold_if_contradicted(...)`
+  WHY IT EXISTS: Two of the system's own published numbers describe the same thing --
+    how far a mode has travelled toward failure. Health says it directly; the median
+    time to failure says it by implication. When they disagree by the whole range, at
+    least one is wrong and nothing in this layer can tell which. This is the gate that
+    refuses to publish either rather than printing both and letting the reader guess.
+  WHAT IT DOES: When health reports more than half a life remaining and the estimate
+    reports the failure threshold reached inside a tenth of the planning horizon, the
+    prediction is dropped, its place in the advisory carries the contradiction in
+    words, and the advisory continues on health, severity and the energy penalty,
+    which are unaffected.
+  CHOICES: The PREDICTION is what gets dropped, not health, because health is the more
+    robust of the two here: an isotonic fit over the whole window against a running
+    maximum that any single outlier latches onto permanently. Withheld rather than
+    flagged-and-published, because the prediction is not merely displayed -- it feeds
+    the consequential term of the cost of inaction, where a spurious zero-day forecast
+    is worth the asset's entire replacement cost.
+  ⚠ JUDGEMENT CALL: This is a real inconsistency between checkpoints 4.4 and 5.2, and
+    I have contained it here rather than re-engineering either. The air handler's fan
+    indicator reads between 3.4 and 7.5 watts on 30 of the last 34 days of the 2038
+    run, against an 88.9 watt failure threshold, with isolated single-day excursions to
+    245, 406 and 178.6 watts. The isotonic clamp reads that correctly as a machine
+    barely degrading -- 33.2 watts, health 63. The running maximum latched onto the
+    excursions and published a median time to failure of zero days, which was worth
+    68,400 USD of expected replacement cost and put the LEAST degraded mode in this
+    building first in the entire priority queue at 18.89 against the genuinely fouling
+    chiller. With the gate in place the queue is led by the chiller and the fan advisory
+    falls to 0.00 with its prediction withheld and the reason stated. The alternative
+    was to change the level definition in 5.2 or the clamp in 4.4, which would have
+    invalidated the verified numbers in 4.4, 5.1, 5.2 and 5.3; the deeper fix is to make
+    the daily indicator robust to these excursions at source, in 4.3, and that is
+    recorded as outstanding rather than done.
+
+`analytics/advisories/generate.py :: build(...)`
+  WHY IT EXISTS: Assembling every field in one object.
   WHAT IT DOES: Runs the steps in the order the argument needs them, since severity
     needs the prediction, the cost needs the prediction and the duty, and the priority
-    needs both the cost and the intervention. It also compares health against the
-    prediction and attaches a note when they contradict each other.
-  ⚠ JUDGEMENT CALL: That note exists because of a genuine inconsistency between two
-    earlier checkpoints, which I am flagging rather than fixing because the fix
-    belongs in 4.4 or 5.2. The fan bearing advisory reports health 63 of 100 beside a
-    median time to failure of 0 days. Both are the system's own published numbers,
-    and they disagree because they read the same indicator through different
-    smoothing: health through the isotonic clamp, which fits 33.2 W on 23 September
-    2038, and the prediction through a trailing median held at its running maximum,
-    which sees the 178.6 W raw spike that day and concludes the 88.9 W threshold is
-    already crossed. The advisory says so and tells the reader to treat the
-    remaining-life figure as unreliable. This matters beyond one row: that advisory
-    is currently first in the queue at priority 65.15, and 68,400 of its 68,405 USD
-    cost of inaction comes from a 90 percent failure probability that rests on the
-    suspect number.
+    needs both the cost and the intervention. Applies the contradiction gate above
+    before anything consumes the prediction.
 
 `scripts/run_advisories.py :: completeness(...)`
   WHY IT EXISTS: The checkpoint asks for three advisories with every field populated,
@@ -6418,10 +6437,10 @@ standing in for an unknown.
 
 ### The verification, in one paragraph
 
-Six advisories, ordered by dollars saved per dollar spent: the fan bearing at 65.15,
-condenser fouling at 18.89, compressor efficiency loss at 16.21, a nearly healthy
-second chiller at 0.00, and two unpriced air-side rule firings, the last of them the
-demoted consequential one. Every dollar figure decomposes on screen — 30,418.85 USD
+Six advisories, ordered by dollars saved per dollar spent: condenser fouling at 18.89,
+compressor efficiency loss at 16.21, the fan bearing at 0.00 with its contradicted
+prediction withheld, a nearly healthy second chiller at 0.00, and two unpriced
+air-side rule firings, the last of them the demoted consequential one. Every dollar figure decomposes on screen — 30,418.85 USD
 for the fouling advisory is 218.85 of electricity, from 0.492 indicator units times
 1.876 kW per unit over 1,854 running hours at 85.8 percent duty and 0.128 USD/kWh,
 plus 30,200 of exposure, from a 10.0 percent chance of crossing the threshold inside
@@ -6432,3 +6451,196 @@ the discrimination in checkpoint 5.4 is worth in dispatch terms.
 START HERE: `analytics/advisories/generate.py` — `cost_of_inaction` and `rank_key`
 are the two functions that decide what an operator sees first, and everything else in
 the file exists to feed them numbers that can be traced.
+
+
+## Checkpoint 6.3 — API
+
+### WHAT WE DID
+
+Everything the platform computes is now reachable over HTTP, which is what makes a
+user interface possible at all. Nine endpoints cover the equipment list and each
+machine's instruments, health over time, hourly sensor readings, the full history
+of every remaining-life prediction ever made, the operator's work queue with each
+advisory in full, and the pipe-and-duct graph in both directions. The API only
+reads: everything it serves was computed and committed by a script beforehand.
+That boundary is deliberate rather than tidy, because assembling one advisory means
+running the fault-isolation sweep, the physics rules and the health replay over a
+multi-month window, which takes minutes — nothing an operator refreshing a screen
+could wait for. So the advisory queue became a stored table, written once by the
+analytics layer and served instantly. Two guarantees are enforced rather than
+promised: sensor readings are served only from the hourly summary and never from
+the raw table, and the API connects as the restricted database role that has no
+access whatsoever to the labelled answer key, so no endpoint can leak it even by
+mistake.
+
+### HOW IT WORKS
+
+`scripts/schema.sql :: app.advisories`
+  WHY IT EXISTS: The advisory queue has to be readable in milliseconds and is
+    expensive to compute in minutes, so it is stored. Without the table the
+    dashboard would have to recompute the isolation sweep, the rule engine and the
+    health replay on every page load.
+  WHAT IT DOES: One row per open fault. The scalar columns are the ones the queue is
+    filtered and sorted on — status, fault class, severity, priority, the two dollar
+    figures, whether it is consequential and what caused it — and everything else
+    travels in a JSONB payload, so adding a field to an advisory is not a migration.
+  CHOICES: The identifier is deterministic, built from the asset, the fault and the
+    end of the window it was computed over, so re-running the advisory layer over the
+    same window updates the same row instead of accumulating a second copy. `priority`
+    is nullable and NULL is a statement, not a gap, following the same convention as
+    app.rul_estimates: it means the cost of inaction could not be computed, which is
+    emphatically not the same as zero. A CHECK constraint ties `consequential` to the
+    presence of a cause so the flag and the cause can never disagree.
+  ⚠ JUDGEMENT CALL: `status` exists with three values and nothing in this project
+    ever moves a row off `open`. There is no acknowledge or close action, so the
+    filter the API exposes always returns everything. I kept the column because the
+    endpoint contract the checkpoint specifies exposes the filter and because a queue
+    with no way to retire an item is not a queue — but it is dead weight today and the
+    column comment says so rather than implying a workflow that does not exist.
+
+`analytics/advisories/generate.py :: as_payload(advisory, priority)`
+  WHY IT EXISTS: The published shape of an advisory, and the only place it is decided.
+  WHAT IT DOES: Writes the advisory out field by field into nested JSON — asset,
+    fault, forecast, signals, evidence, trace, severity, cost, effort, priority,
+    intervention, notes.
+  CHOICES: Written out explicitly rather than by reflecting over the dataclass. A
+    generic dump would make every internal rename a breaking API change and would
+    silently start publishing any field added for internal use.
+
+`analytics/advisories/generate.py :: write_advisories(...)`
+  WHY IT EXISTS: Commits the queue so the API can serve it.
+  WHAT IT DOES: Deletes every row and inserts the current queue inside one
+    transaction.
+  CHOICES: Replaced rather than merged, for the same reason app.asset_edges is: this
+    is derived output and a stale row is worse than a missing one. An advisory left
+    over from a previous run points a technician at a fault the current evidence no
+    longer supports, and nothing in the queue would mark it out of date. Sharing a
+    transaction means no reader ever sees the queue empty.
+
+`api/db.py :: connection()` and `semantic_graph()`
+  WHY IT EXISTS: The two resources every endpoint needs, with very different costs.
+  WHAT IT DOES: A database connection is opened per request and closed with it — no
+    pool, because a pool is state that has to be sized, monitored and drained and this
+    API serves one dashboard against a local database. The semantic graph is parsed
+    once, lazily, and kept, because merging three Turtle files takes a noticeable
+    fraction of a second and the traversal endpoints would pay it on every call.
+  CHOICES: Caching the graph is only safe because nothing in the API asserts a triple
+    into it. The one place in the project that does assert triples — marking open
+    faults for cross-asset traversal — works on a throwaway copy, which is why this
+    is a shared read-only object rather than a hazard.
+
+`api/models.py` — the Pydantic v2 response models
+  WHY IT EXISTS: The contract the frontend is written against. A field renamed here
+    is a breaking change; a field renamed in the analytics layer is not, and that
+    indirection is the point.
+  WHAT IT DOES: Fourteen models covering the nine endpoints. Every optional field
+    means "the system declines to say" rather than "we forgot", and each one travels
+    beside a text field carrying the reason — a null p50 next to a refusal sentence, a
+    null priority next to the cost basis.
+  CHOICES: `AdvisoryDetail.detail` is passed through as the JSON the advisory layer
+    wrote rather than being re-modelled field by field, which is a deliberate
+    exception to this file's own rule. The payload is deeply nested and its shape is
+    already fixed by `as_payload`; re-declaring forty nested fields would create two
+    contracts to keep in step instead of one.
+
+`api/main.py :: _LATEST_HEALTH`
+  WHY IT EXISTS: Every endpoint that shows an asset shows its current health, and
+    "current" turns out to be the hard part.
+  WHAT IT DOES: Reports each asset's health as of the vintage of that asset's own
+    advisories, falling back to its newest row when it has none.
+  ⚠ JUDGEMENT CALL: The obvious implementation — the newest row per asset — was
+    wrong in a way that made the whole system look broken. This database holds eight
+    independent simulation runs placed in separate calendar eras, so the newest row
+    for the air handler belongs to whichever of its runs sits latest in the calendar,
+    which is the FAULT-FREE run of 2039. The asset list therefore showed health 98
+    beside three open advisories. Anchoring to the window the advisories were computed
+    over makes the two agree: the air handler now reads 63, which is the number its own
+    advisory quotes. Assets with no advisories keep their newest row, which is correct
+    for them because nothing is being claimed about them.
+
+`api/main.py :: get_timeseries(...)`
+  WHY IT EXISTS: The chart data, and the one endpoint with a hard rule attached.
+  WHAT IT DOES: Serves hourly buckets — mean, minimum, maximum, sample standard
+    deviation and count — for named points on one asset, from app.measurements_hourly.
+    The raw measurements table is not referenced anywhere in the file, which is
+    checkable by grep.
+  CHOICES: The standard deviation within each hour is carried alongside the mean
+    because a widening spread is itself an early degradation signal, and a chart that
+    plots only the mean throws it away. Points must belong to the named asset, so a
+    typo returns 400 with the reason rather than an empty chart the caller has to
+    debug.
+
+`api/main.py :: list_advisories(...)`
+  WHY IT EXISTS: The queue, in the order it should be worked.
+  WHAT IT DOES: Filters on status, minimum severity and fault class, and orders
+    priced rows above unpriced ones.
+  CHOICES: The two-tier order is expressed as `priority IS NULL` ascending, then
+    priority descending, then severity descending — which puts every priced row above
+    every unpriced one without pretending a null priority is a number. `severity`
+    filters rather than reorders: an operator narrowing to severity above 0.5 wants
+    fewer rows in the same order, not a different ranking.
+
+`api/main.py :: advisory_summary(...)`
+  WHY IT EXISTS: The strip along the top of the dashboard — asset count, advisory
+    count, how many are consequential, how many unpriced, the breakdown by fault
+    class, the worst health in the building and the totals.
+  CHOICES: Declared BEFORE the parameterised advisory route on purpose. FastAPI
+    matches routes in declaration order, so with `/advisories/{advisory_id}` first
+    this path would be read as an advisory whose id is the word "summary" and 404.
+
+`api/main.py :: _traverse(...)`, `graph_upstream`, `graph_downstream`
+  WHY IT EXISTS: The pipe-and-duct graph, annotated with what is wrong on each node.
+    Upstream is the cause direction; downstream is who suffers.
+  WHAT IT DOES: Traverses from every graph node belonging to the asset and unions the
+    results, keeping the shortest hop count, then joins health and open advisory
+    counts onto each asset reached. Downstream additionally collects the occupied
+    zones and sums the people in them.
+  CHOICES: Every node, not one. The database models a machine as a single asset while
+    the graph models its parts, and the pipes attach to the parts — traversing from the
+    node called AHU alone finds nothing upstream of the air handler, because the
+    chilled water arrives at its cooling coil.
+
+`model/building_extensions.ttl` — the air-side continuation
+  WHY IT EXISTS: Closes a gap in the model that only became visible once the API
+    served a downstream trace.
+  WHAT IT DOES: Adds six authored triples: the cooling coil feeds the supply air fan,
+    and the supply air fan feeds each of the five zones.
+  ⚠ JUDGEMENT CALL: LBNL publishes exactly one flow statement on the air side — the
+    air handler feeds its five zones — and the chilled water loop lands on the cooling
+    coil. Those two facts do not join up, because the coil is a `hasPart` of the air
+    handler, which is containment and not flow. So a traversal from a chiller arrived
+    at the coil and stopped: asked who a failing chiller affects, the platform could
+    answer "the air handler" and could NOT answer "two hundred people". With the six
+    triples the chain runs cooling tower to condenser loop to chiller to chilled water
+    loop to coil to supply fan to zones, and occupant impact is reachable from any
+    water-side fault. Whether the fan sits before or after the coil in this unit is
+    not determinable from the published data and does not matter, because either order
+    gives the same reachability and reachability is all these edges are used for.
+    Verified not to disturb anything: app.asset_edges rebuilds to the same 25 rows
+    with the same hop distances, because every node named maps to ahu-1 and the cache
+    drops self-edges.
+
+### The verification, in one paragraph
+
+All nine endpoints return 200 against live data. `/assets` lists eight machines with
+health anchored to their advisory vintage and occupant counts read from the model.
+`/assets/chiller-1` returns nine instruments with units. `/assets/chiller-1/health`
+returns per-mode and roll-up rows carrying both the raw and clamped indicator and the
+confirmed onset date. `/assets/chiller-1/timeseries` returns 24 hourly buckets from
+app.measurements_hourly with mean, min, max, spread and sample count.
+`/assets/chiller-1/rul-history` returns 138 condenser-fouling estimates and 292
+efficiency-loss estimates with the P10-to-P90 width per date — the series the
+narrowing-interval chart is drawn from. `/advisories` returns the six-row queue with
+two unpriced rows sorted below the four priced ones and the consequential row last.
+`/advisories/summary` returns 6 advisories, 1 consequential, 2 unpriced, 4 equipment
+and 2 sensor, worst health 0 on chiller-1, 314,851.75 USD of cost of inaction against
+38,192.50 USD of effort. `/advisories/{id}` returns the whole payload including the
+cost arithmetic in three lines and the recommended job.
+`/graph/upstream/ahu-1` returns all seven upstream assets at 2 and 4 hops with their
+health and advisory counts; `/graph/downstream/chiller-1` now returns the air handler
+plus five zones and 200 occupants, and `/graph/downstream/ct-1` reaches four assets,
+five zones and 200 occupants at up to four hops.
+
+START HERE: `api/main.py` — the nine route handlers, and the `_LATEST_HEALTH`
+fragment above them that decides what "current health" means in a database holding
+eight simulation runs in different years.

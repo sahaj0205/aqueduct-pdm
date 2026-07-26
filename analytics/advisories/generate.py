@@ -115,6 +115,33 @@ MIN_EFFORT_USD = 1.0
 # this filter is simply the advisory layer finally reading that verdict.
 MIN_TRUSTED_QUALITY = 50
 
+# When health and the prediction flatly contradict each other, the advisory withholds
+# the prediction. These two numbers define "flatly": health saying the machine still
+# has more than half its life left, against a prediction saying the failure threshold
+# is reached inside a tenth of the planning horizon.
+#
+# WHY THIS GATE HAS TO EXIST HERE. Health and remaining life read the same daily
+# indicator through different smoothing -- health through an isotonic clamp fitted
+# over the whole run, the prediction through a trailing seven-day median held at its
+# running maximum. On a clean indicator the two agree. On one with rare enormous
+# outliers they do not, and the air handler's fan indicator is exactly that: over the
+# last five weeks of the 2038 run it reads between 3.4 and 7.5 watts on 30 of 34 days
+# against an 88.9 watt failure threshold, with isolated single-day excursions to 245,
+# 406 and 178.6 watts. The clamp reads that as a machine at 33.2 watts, health 63,
+# barely degrading -- which is right. The running maximum latched onto the excursions
+# and concluded the threshold was already crossed, publishing a median time to failure
+# of zero days.
+#
+# Publishing both numbers side by side and letting the reader choose is not an option:
+# the zero-day prediction was worth 68,400 USD of expected replacement cost and put
+# that advisory first in the whole queue. So the advisory refuses the prediction and
+# says which two numbers disagreed. That is the same instinct as the refusal layer in
+# checkpoint 5.3 -- decline rather than publish something the system's own other
+# measurement refutes -- applied to a contradiction 5.3 cannot see, because 5.3 only
+# ever looks at one of the two.
+CONTRADICTION_HEALTH_ABOVE = 50
+CONTRADICTION_P50_WITHIN_DAYS = HORIZON_DAYS / 10.0
+
 EQUIPMENT = "equipment"
 
 
@@ -240,15 +267,29 @@ class AssetFacts:
     occupants_served: int
 
 
+def _machine_nodes(graph: Graph, nodes: tuple[URIRef, ...]) -> tuple[URIRef, ...]:
+    """An asset's nodes, machines before anything else.
+
+    A node carrying mvn:criticalityTier is a piece of equipment somebody owns and
+    maintains. The air handler's five occupied zones map to the same database asset
+    -- they hold its zone temperature sensors -- and they carry occupancy but no
+    tier, which is exactly the distinction needed here.
+    """
+    tiered = [n for n in nodes if graph.value(n, MVN["criticalityTier"]) is not None]
+    return tuple(tiered) + tuple(n for n in nodes if n not in set(tiered))
+
+
 def _first_value(graph: Graph, nodes: tuple[URIRef, ...], prop: str):
     """The property's value on whichever of an asset's nodes carries it.
 
-    An asset is several graph nodes and the business attributes are asserted on one
-    of them -- the one a human would call the machine. Searching all of them is what
-    lets the caller pass the whole set without also having to know which node the
-    modeller chose to hang the repair cost on.
+    Machine nodes are consulted first, and that ordering is load-bearing rather than
+    tidy. Occupancy is now asserted on the air handler AND on each of its five zones,
+    and the zones map to the same database asset, so an arbitrary iteration order
+    returned 40 occupants for a unit serving 200 -- a fifth of the real figure,
+    feeding straight into the severity score. Preferring the node with a criticality
+    tier picks the machine every time.
     """
-    for node in nodes:
+    for node in _machine_nodes(graph, nodes):
         value = graph.value(node, MVN[prop])
         if value is not None:
             return value
@@ -567,6 +608,16 @@ class Prognosis:
                 "no prediction: the model does not bound the crossing, so there may "
                 "be no failure date at all"
             )
+        if self.p90 <= 0.0:
+            # Every quantile at zero is not a prediction of failure tomorrow, it is a
+            # statement that the indicator has already crossed the threshold. Rendered
+            # as "0 to 0 days, median 0" it reads like a broken calculation, and an
+            # operator would reasonably distrust the rest of the advisory with it.
+            return (
+                f"the failure threshold has ALREADY been reached, as of "
+                f"{self.as_of:%Y-%m-%d}, on {self.n_samples} post-onset samples. This "
+                f"is not a forecast: there is no remaining life left to predict"
+            )
         return (
             f"likely to fail in {self.p10:.0f} to {self.p90:.0f} days, median "
             f"{self.p50:.0f}, from {self.n_samples} post-onset samples as of "
@@ -591,6 +642,54 @@ class Prognosis:
         return float(
             np.interp(days, [self.p10, self.p50, self.p90], [0.10, 0.50, 0.90])
         )
+
+
+def withhold_if_contradicted(
+    forecast: Prognosis, health: int | None
+) -> tuple[Prognosis, str | None]:
+    """Drop a prediction the asset's own health score refutes, and say why.
+
+    Two of the system's own published numbers describe the same thing: how far this
+    mode has travelled toward failure. Health says it directly; the median time to
+    failure says it by implication. When they disagree by the whole range -- health
+    reporting most of a life left while the prediction reports the threshold already
+    reached -- at least one of them is wrong, and nothing in the advisory layer can
+    tell which. The safe answer is neither, so the prediction is withheld with the
+    contradiction stated, and the advisory carries on with health, severity and the
+    energy penalty, all of which are unaffected.
+
+    Withheld rather than flagged-and-published, because the prediction is not merely
+    displayed: it feeds the consequential term of the cost of inaction, and a spurious
+    zero-day forecast is worth the asset's entire replacement cost. Left in, it put
+    the least degraded mode in this building at the top of the priority queue.
+
+    The prediction is what gets dropped rather than health because health is the more
+    robust of the two here -- an isotonic fit over the whole window against a running
+    maximum that any single outlier latches permanently.
+    """
+    if (
+        health is None
+        or forecast.p50 is None
+        or health <= CONTRADICTION_HEALTH_ABOVE
+        or forecast.p50 > CONTRADICTION_P50_WITHIN_DAYS
+    ):
+        return forecast, None
+
+    reason = (
+        f"withheld: the health index puts this mode at {health} of 100, meaning most "
+        f"of its life remains, while the first-passage estimate puts the failure "
+        f"threshold {forecast.p50:.0f} days away. Those two cannot both be true. They "
+        f"read the same daily indicator through different smoothing -- health through "
+        f"an isotonic clamp, the estimate through a running maximum that any single "
+        f"outlier latches onto permanently -- and this indicator carries rare "
+        f"excursions of fifty times its normal value. Neither number is published "
+        f"until that is resolved"
+    )
+    note = f"the remaining-life estimate for this mode was WITHHELD, not missing: {reason}"
+    return (
+        Prognosis(None, None, None, forecast.as_of, forecast.n_samples, reason),
+        note,
+    )
 
 
 def prognosis(
@@ -1069,6 +1168,7 @@ def build(
     indicator = None if health_row is None else health_row[1]
 
     forecast = prognosis(conn, fault.asset_id, mode_id, window[1], refusal)
+    forecast, contradiction = withhold_if_contradicted(forecast, health)
     duty = duty_fraction(conn, fault.asset_id, window)
     max_occupants = max((f.occupants_served for f in facts.values()), default=0)
 
@@ -1094,15 +1194,8 @@ def build(
     # is what makes that visible, so when they contradict each other the advisory
     # says so rather than printing the pair and leaving the reader to notice.
     notes: list[str] = []
-    if health is not None and health > 50 and forecast.p50 is not None and forecast.p50 <= 1.0:
-        notes.append(
-            f"health says {health} of 100 while the prediction says the threshold is "
-            f"already reached. The two read the same indicator through different "
-            f"smoothing -- health through the isotonic clamp, the prediction through a "
-            f"trailing median held at its running maximum -- so a single spike above "
-            f"the threshold ends the prediction while leaving health mid-range. Treat "
-            f"the remaining-life figure on this advisory as unreliable"
-        )
+    if contradiction is not None:
+        notes.append(contradiction)
     if intervention is None:
         notes.append(
             "no intervention recorded in app.intervention_library for this fault -- "
@@ -1200,3 +1293,155 @@ def rank_key(advisory: Advisory, advisories: list[Advisory]) -> tuple:
 def queue(advisories: list[Advisory]) -> list[Advisory]:
     """The operator's queue: priced by money, then unpriced by severity."""
     return sorted(advisories, key=lambda a: rank_key(a, advisories))
+
+
+# ---------------------------------------------------------------------------
+# persistence
+# ---------------------------------------------------------------------------
+
+
+def advisory_id(advisory: Advisory) -> str:
+    """Deterministic identifier, so re-running updates rather than accumulates."""
+    return f"{advisory.asset_id}|{advisory.fault_id}|{advisory.window[1]:%Y%m%d}"
+
+
+def as_payload(advisory: Advisory, priority: float | None) -> dict:
+    """The advisory as JSON, in the shape the API serves and the UI renders.
+
+    Written out field by field rather than by reflecting over the dataclass, so the
+    published shape is a deliberate contract that changes only when somebody edits
+    this function. A generic dump would make every internal rename a breaking API
+    change, and would silently start publishing any field added for internal use.
+    """
+    cause = advisory.trace.cause
+    intervention = advisory.intervention
+    return {
+        "asset": {"id": advisory.asset_id, "name": advisory.asset_name},
+        "fault": {
+            "id": advisory.fault_id,
+            "title": advisory.fault_title,
+            "source": advisory.fault_source,
+            "mode_id": advisory.mode_id,
+            "fault_class": advisory.fault_class,
+            "class_reason": advisory.fault_class_reason,
+        },
+        "health": advisory.health,
+        "window": {
+            "from": advisory.window[0].isoformat(),
+            "to": advisory.window[1].isoformat(),
+        },
+        "forecast": {
+            "sentence": advisory.forecast.sentence,
+            "p10": advisory.forecast.p10,
+            "p50": advisory.forecast.p50,
+            "p90": advisory.forecast.p90,
+            "as_of": None if advisory.forecast.as_of is None
+                     else advisory.forecast.as_of.isoformat(),
+            "n_samples": advisory.forecast.n_samples,
+            "refusal": advisory.forecast.refusal,
+            "probability_within_horizon": advisory.forecast.probability_by(HORIZON_DAYS),
+        },
+        "signals": [
+            {
+                "point_id": s.point_id, "label": s.label, "unit": s.unit,
+                "observed": s.observed, "reference": s.reference,
+                "moved": s.moved, "sigmas": s.sigmas,
+            }
+            for s in advisory.signals
+        ],
+        "signals_excluded": advisory.signals_excluded,
+        "diagnosis_evidence": list(advisory.diagnosis_evidence),
+        "trace": {
+            "upstream": [{"asset": a, "hops": h} for a, h in advisory.trace.upstream],
+            "downstream_assets": list(advisory.trace.impact.assets),
+            "zones": list(advisory.trace.impact.zones),
+            "occupants": advisory.trace.impact.occupants,
+            "cause": None if cause is None else {
+                "asset": cause.cause.asset_id,
+                "fault": cause.cause.fault_id,
+                "title": cause.cause.title,
+                "hops": cause.hops,
+                "medium": cause.propagation.medium,
+                "mechanism": cause.propagation.mechanism,
+                "timing": cause.concurrency.summary,
+            },
+        },
+        "severity": {
+            "score": advisory.severity.score,
+            "terms": advisory.severity.terms,
+            "weights": SEVERITY_WEIGHTS,
+            "slope_per_day": advisory.severity.slope_per_day,
+            "slope_days": advisory.severity.slope_days,
+            "criticality_tier": advisory.severity.criticality_tier,
+            "occupants": advisory.severity.occupants,
+        },
+        "cost": {
+            "horizon_days": HORIZON_DAYS,
+            "total_usd": advisory.cost.total_usd,
+            "energy_usd": advisory.cost.energy_usd,
+            "consequential_usd": advisory.cost.consequential_usd,
+            "excess_kw": advisory.cost.excess_kw,
+            "duty": advisory.cost.duty,
+            "priceable": advisory.cost.priceable,
+            "basis": advisory.cost.basis.split("; "),
+        },
+        "effort_usd": advisory.effort_usd,
+        "priority": priority,
+        "intervention": None if intervention is None else {
+            "id": intervention.intervention_id,
+            "description": intervention.description,
+            "duration_hours": intervention.duration_hours,
+            "skills": list(intervention.skills),
+            "parts": list(intervention.parts),
+            "parts_cost_usd": intervention.parts_cost_usd,
+            "basis": intervention.basis,
+            "matched_on_class": intervention.matched_on_class,
+        },
+        "notes": list(advisory.notes),
+    }
+
+
+def write_advisories(
+    conn: psycopg.Connection, ordered: list[Advisory], generated_at: datetime
+) -> int:
+    """Replace the advisory queue in one transaction.
+
+    Deleted and rewritten rather than merged, for the same reason app.asset_edges is:
+    this table is derived output, and a stale row is worse than a missing one. An
+    advisory left behind from a previous run points a technician at a fault the
+    current evidence no longer supports, and nothing in the queue would mark it as
+    out of date. The delete and the insert share a transaction, so no reader ever
+    sees the queue empty.
+    """
+    import json
+
+    rows = []
+    for advisory in ordered:
+        priority = effective_priority(advisory, ordered)
+        cause = advisory.trace.cause
+        rows.append(
+            (
+                advisory_id(advisory), advisory.asset_id, advisory.fault_id,
+                advisory.mode_id, advisory.fault_source, advisory.fault_class,
+                generated_at, advisory.window[0], advisory.window[1],
+                advisory.health, advisory.severity.score, priority,
+                advisory.cost.total_usd, max(MIN_EFFORT_USD, advisory.effort_usd),
+                advisory.consequential,
+                None if cause is None else cause.cause.asset_id,
+                None if cause is None else cause.cause.fault_id,
+                json.dumps(as_payload(advisory, priority)),
+            )
+        )
+    with conn.transaction():
+        conn.execute("DELETE FROM app.advisories")
+        with conn.cursor() as cursor:
+            cursor.executemany(
+                "INSERT INTO app.advisories (advisory_id, asset_id, fault_id, mode_id, "
+                "  fault_source, fault_class, generated_at, window_from, window_to, "
+                "  health, severity, priority, cost_usd, effort_usd, consequential, "
+                "  cause_asset, cause_fault, detail) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+                "        %s, %s, %s)",
+                rows,
+            )
+    return len(rows)

@@ -93,6 +93,42 @@ site:CDW_Loop brick:feeds chiller:Chiller_3 .
 chiller:Condenser_Water_System brick:hasPart site:CDW_Loop .
 
 #
+# THE AIR-SIDE CONTINUATION. Also authored, and added in checkpoint 6.3 to close a
+# gap that only showed up once the API served a downstream trace.
+#
+# LBNL publishes exactly one flow statement on the air side -- sdahu:AHU feeds each
+# of the five zones -- and section 1 above lands the chilled water on
+# sdahu:Cooling_Coil. Those two facts do not join up. The coil is a brick:hasPart of
+# the air handler, which is CONTAINMENT and not flow, so a traversal following
+# brick:feeds from a chiller arrives at the coil and stops there. Asked who a failing
+# chiller affects, the platform could answer "the air handler" and could not answer
+# "two hundred people", which is the answer that decides whether the work gets
+# scheduled tonight or next quarter.
+#
+# The missing statements are the air path itself: the coil conditions air, the supply
+# fan moves it, the zones receive it. With them the chain runs
+#
+#   Cooling_Tower -> CDW_Loop -> Chiller -> CHW_Loop -> Cooling_Coil
+#                            -> Supply_Air_Fan -> Zone_1..5
+#
+# so occupant impact is reachable from any water-side fault, six hops out at the
+# furthest.
+#
+# Whether the fan sits before or after the coil in this unit is not determinable from
+# the published data and does not matter here: either order gives the same
+# reachability, and reachability is all these edges are used for. No hop count in
+# app.asset_edges changes, because every node named below already maps to ahu-1 and
+# the edge cache drops self-edges.
+#
+sdahu:Cooling_Coil brick:feeds sdahu:Supply_Air_Fan .
+
+sdahu:Supply_Air_Fan brick:feeds sdahu:Zone_1 .
+sdahu:Supply_Air_Fan brick:feeds sdahu:Zone_2 .
+sdahu:Supply_Air_Fan brick:feeds sdahu:Zone_3 .
+sdahu:Supply_Air_Fan brick:feeds sdahu:Zone_4 .
+sdahu:Supply_Air_Fan brick:feeds sdahu:Zone_5 .
+
+#
 # ---------------------------------------------------------------------------
 # 2. ASSET ATTRIBUTES
 # ---------------------------------------------------------------------------

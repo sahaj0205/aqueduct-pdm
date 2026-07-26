@@ -764,6 +764,105 @@ ON CONFLICT (mode_id) DO UPDATE SET
 
 
 -- =====================================================================
+-- APP — advisories
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS app.advisories (
+    advisory_id    TEXT              PRIMARY KEY,
+    asset_id       TEXT              NOT NULL
+                                     REFERENCES app.assets(asset_id) ON DELETE CASCADE,
+    fault_id       TEXT              NOT NULL,
+    mode_id        TEXT              REFERENCES app.failure_modes(mode_id)
+                                     ON DELETE SET NULL,
+    fault_source   TEXT              NOT NULL
+                                     CHECK (fault_source IN ('failure_mode', 'rule')),
+    fault_class    TEXT              NOT NULL
+                                     CHECK (fault_class IN ('sensor', 'equipment',
+                                                            'control', 'ambiguous')),
+    status         TEXT              NOT NULL DEFAULT 'open'
+                                     CHECK (status IN ('open', 'acknowledged',
+                                                       'closed')),
+    generated_at   TIMESTAMPTZ       NOT NULL,
+    window_from    TIMESTAMPTZ       NOT NULL,
+    window_to      TIMESTAMPTZ       NOT NULL,
+    health         SMALLINT          CHECK (health IS NULL
+                                            OR health BETWEEN 0 AND 100),
+    severity       DOUBLE PRECISION  NOT NULL CHECK (severity BETWEEN 0 AND 1),
+    priority       DOUBLE PRECISION  CHECK (priority IS NULL OR priority >= 0),
+    cost_usd       DOUBLE PRECISION  NOT NULL CHECK (cost_usd >= 0),
+    effort_usd     DOUBLE PRECISION  NOT NULL CHECK (effort_usd > 0),
+    consequential  BOOLEAN           NOT NULL,
+    cause_asset    TEXT,
+    cause_fault    TEXT,
+    detail         JSONB             NOT NULL,
+    UNIQUE (asset_id, fault_id, window_to),
+    CHECK (window_from <= window_to),
+    CHECK (consequential = (cause_asset IS NOT NULL))
+);
+
+CREATE INDEX IF NOT EXISTS advisories_status_priority_idx
+    ON app.advisories (status, priority DESC NULLS LAST);
+CREATE INDEX IF NOT EXISTS advisories_asset_idx ON app.advisories (asset_id);
+
+COMMENT ON TABLE app.advisories IS
+    'The operator''s work queue, one row per open fault. Written by the advisory '
+    'layer and read by the API and the dashboard. It exists as a table rather than '
+    'being computed per request because building one advisory means running the '
+    'isolation sweep, the rule engine and the health replay over a multi-month '
+    'window -- minutes of work, not milliseconds. A dashboard cannot wait for that '
+    'and neither can an operator. The scalar columns are the ones the queue is '
+    'filtered and sorted on; everything else lives in detail so that adding a field '
+    'to an advisory is not a migration.';
+
+COMMENT ON COLUMN app.advisories.advisory_id IS
+    'Deterministic, built from the asset, the fault and the end of the window it was '
+    'computed over. Deliberately not a generated identity: re-running the advisory '
+    'layer over the same window must UPDATE the same row rather than accumulate a '
+    'second copy, and a surrogate key would make that a lookup instead of a conflict '
+    'target.';
+
+COMMENT ON COLUMN app.advisories.fault_id IS
+    'What the detector that found this called it -- a mode_id for a degradation '
+    'trend, a rule_id for a rule firing. mode_id beside it is non-NULL only in the '
+    'first case, which is also why health can be NULL: health is scored per failure '
+    'mode and a rule firing has none.';
+
+COMMENT ON COLUMN app.advisories.status IS
+    'open, acknowledged or closed. NOTHING IN THIS PROJECT YET MOVES A ROW OFF open '
+    '-- there is no acknowledge or close action, so every row is open and the filter '
+    'on this column always returns everything. The column is here because the API '
+    'contract exposes the filter and because a queue with no way to retire an item '
+    'is not a queue; the transition belongs with whatever raises real work orders.';
+
+COMMENT ON COLUMN app.advisories.severity IS
+    '0 to 1, from the rate of health decline, how soon the prediction says it fails, '
+    'the criticality tier and the occupants served. Always present -- it can be '
+    'computed for any fault.';
+
+COMMENT ON COLUMN app.advisories.priority IS
+    'Expected cost of inaction divided by cost of acting: dollars saved per dollar '
+    'spent. NULL means the cost of inaction could not be computed at all, which is a '
+    'statement and not a gap -- the same convention as app.rul_estimates. A NULL here '
+    'is NOT zero: zero would claim the fault is free to ignore. Rows with NULL are '
+    'ranked among themselves by severity, below every priced row.';
+
+COMMENT ON COLUMN app.advisories.consequential IS
+    'TRUE when cross-asset reasoning found an upstream fault that plausibly produces '
+    'this symptom, in which case cause_asset and cause_fault name it and the priority '
+    'has already been demoted below that cause''s. The CHECK constraint ties the flag '
+    'to the presence of a cause so the two can never disagree. Consequential rows are '
+    'never hidden from the queue, only ranked lower -- see AI_LOG.md entry D-09.';
+
+COMMENT ON COLUMN app.advisories.detail IS
+    'The whole advisory as JSON: the contributing signals with their actual and '
+    'reference values, the diagnosis evidence, the remaining-life sentence or the '
+    'reason there is none, the graph trace upstream and downstream with occupant '
+    'counts, the arithmetic behind every dollar figure, the recommended intervention, '
+    'and any caveats. An advisory a technician cannot audit without re-querying the '
+    'raw data has failed at its job, so the audit trail travels with the row.';
+
+
+-- =====================================================================
 -- APP — intervention library
 -- =====================================================================
 

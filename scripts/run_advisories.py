@@ -26,12 +26,15 @@ to show what the sensor-versus-equipment discrimination is actually worth in
 dispatch terms.
 
     uv run python scripts/run_advisories.py
+    uv run python scripts/run_advisories.py --write   # also store for the API
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
 from dataclasses import fields
+from datetime import UTC, datetime
 from pathlib import Path
 
 import psycopg
@@ -50,6 +53,7 @@ from analytics.advisories.generate import (
     queue,
     recommend,
     site_economics,
+    write_advisories,
 )
 from analytics.diagnosis.classify import classify
 from analytics.diagnosis.isolation import isolate
@@ -233,6 +237,13 @@ def completeness(advisory: Advisory) -> tuple[list[str], list[str]]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Build and print the advisory queue.")
+    parser.add_argument(
+        "--write", action="store_true",
+        help="also store the queue in app.advisories, which is what the API serves",
+    )
+    args = parser.parse_args()
+
     graph, _ = load_merged_graph()
     mapping, _notes = node_to_asset_id(graph)
     window = (d(WINDOW[0]), d(WINDOW[1]))
@@ -299,6 +310,9 @@ def main() -> int:
 
         ordered = queue(advisories)
         by_key = {(a.asset_id, a.fault_id): a for a in ordered}
+        if args.write:
+            written = write_advisories(conn, ordered, datetime.now(UTC))
+            print(f"\nwrote {written} advisories to app.advisories")
 
         # ---- the queue ---------------------------------------------------
         print(f"\n{'=' * 92}\nTHE QUEUE, sorted by priority\n{'=' * 92}")
