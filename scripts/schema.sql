@@ -451,6 +451,174 @@ COMMENT ON COLUMN app.residuals.input_quality IS
 
 
 -- =====================================================================
+-- APP — failure modes
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS app.failure_modes (
+    mode_id               TEXT              PRIMARY KEY,
+    brick_class           TEXT              NOT NULL,
+    mode_name             TEXT              NOT NULL,
+    indicator_expression  TEXT,
+    applies_when          TEXT,
+    failure_threshold     DOUBLE PRECISION  NOT NULL CHECK (failure_threshold > 0),
+    indicator_unit        TEXT              NOT NULL,
+    threshold_rationale   TEXT              NOT NULL CHECK (length(threshold_rationale) > 40)
+);
+
+COMMENT ON TABLE app.failure_modes IS
+    'One row per distinct way a class of equipment can fail. A chiller does not '
+    'just "degrade" -- it fouls its condenser, or loses charge, or both at once, '
+    'and each of those is measured by a different number and reaches failure at a '
+    'different value. Keeping them in a table rather than in Python is what makes '
+    'adding a failure mode a database row: the health index reads this table at '
+    'startup and loops over whatever it finds, so a mode nobody has thought of '
+    'yet needs an INSERT and no code change.';
+
+COMMENT ON COLUMN app.failure_modes.brick_class IS
+    'Which class of equipment this mode applies to, e.g. brick:Chiller. Resolved '
+    'through Brick''s taxonomy, so a mode written against brick:Chiller reaches '
+    'every asset whose class is a kind of chiller, and three chillers need one '
+    'row rather than three.';
+
+COMMENT ON COLUMN app.failure_modes.indicator_expression IS
+    'Arithmetic that computes the degradation number, over {point:...} for a raw '
+    'measurement and {residual:...} for a baseline residual, with @asset standing '
+    'in for the asset being evaluated. WRITTEN SO THAT LARGER IS ALWAYS WORSE and '
+    'zero is healthy, whatever the underlying physics does -- the health index '
+    'maps the indicator onto 0 to 100 and cannot do that if some modes count up '
+    'and others count down. NULL means the mode is real but this building cannot '
+    'measure it; the threshold and rationale are still recorded so the gap is '
+    'documented rather than forgotten.';
+
+COMMENT ON COLUMN app.failure_modes.applies_when IS
+    'Optional condition restricting the instants at which the indicator means '
+    'anything. A cooling coil that leaks is only detectable while its valve is '
+    'commanded shut -- when the valve is modulating the controller absorbs the '
+    'leak and there is nothing to see. Kept separate from the indicator rather '
+    'than folded into it because a gate and a measurement are different things, '
+    'and because it lets the indicator language stay pure arithmetic with no '
+    'comparisons in it.';
+
+COMMENT ON COLUMN app.failure_modes.failure_threshold IS
+    'The indicator value at which the equipment counts as failed, in '
+    'indicator_unit. This is what the remaining-life estimate predicts the '
+    'crossing of, so it has to be a number that means something physically or '
+    'economically -- a prediction of when a made-up number will cross another '
+    'made-up number is not a prediction of anything.';
+
+COMMENT ON COLUMN app.failure_modes.threshold_rationale IS
+    'Why that value and not another, in physical or economic terms. Required, '
+    'not optional, and checked to be more than a token: a threshold can never be '
+    'entered into this table without a justification recorded beside it.';
+
+
+-- --- seed -------------------------------------------------------------
+-- ON CONFLICT DO UPDATE rather than DO NOTHING, so correcting a rationale here
+-- and re-applying the schema actually corrects it in the database.
+
+INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expression,
+                               applies_when, failure_threshold, indicator_unit,
+                               threshold_rationale) VALUES
+
+('coil-valve-leak-by', 'brick:Air_Handling_Unit', 'Cooling coil valve leak-by',
+ -- Reads the shut-valve baseline, not the coil-effectiveness one. That baseline
+ -- is already restricted to instants where the valve is commanded closed and
+ -- already asserts the coil delivers nothing there, so no applies_when is needed
+ -- and the leak cannot be absorbed as normal cooling from a partly open valve.
+ -- Negated because a leak makes supply air COLDER than predicted, and every
+ -- indicator in this table has to count upward as things get worse.
+ '-{residual:@asset.sa_temp.shut-valve-supply-air}',
+ NULL,
+ 2.8, 'degC',
+ 'With the valve commanded shut the coil should deliver no cooling at all, so '
+ 'every degree of depression below the baseline is cooling nobody asked for. '
+ '2.8 K (5 degF) across this unit''s 5.0 m3/s average airflow is about 17 kW of '
+ 'unwanted cooling, and it is paid for twice: once at the chiller making the '
+ 'water, and again wherever the overcooled space is reheated back to setpoint. '
+ 'It is also 2.5 times the plus or minus 1.1 K supply air control tolerance in '
+ 'ASHRAE Guideline 36, so a coil holding this deviation has taken supply air '
+ 'temperature outside the band the control sequence is specified to hold.'),
+
+('chiller-condenser-fouling', 'brick:Chiller', 'Condenser fouling',
+ '{residual:@asset.cdw_leaving_temp.condenser-heat-rejection}',
+ NULL,
+ 3.0, 'degC',
+ 'Fouling insulates the condenser tubes, so rejecting the same heat needs a '
+ 'hotter refrigerant, which raises condensing pressure and therefore the '
+ 'temperature gap the compressor works across. 3.0 K of excess leaving condenser '
+ 'water at matched load and matched entering water is roughly a 7 to 9 percent '
+ 'compressor power penalty at the usual 2.5 percent per kelvin, which is the '
+ 'point at which a tube-brush cleaning pays for itself inside one cooling '
+ 'season. It is also seven times the 0.42 K spread of the fitted baseline, so it '
+ 'cannot be reached by scatter.'),
+
+('chiller-efficiency-loss', 'brick:Chiller', 'Compressor efficiency loss',
+ '({residual:@asset.power.chiller-efficiency} / 1000.0) / '
+ '({point:@asset.chw_flow} * 997.0 * 4184.0 * '
+ '({point:@asset.chw_return_temp} - {point:@asset.chw_supply_temp}) / 3516.85)',
+ '{point:@asset.compressor_cmd} > 0.0',
+ 0.536, 'kW/ton',
+ 'This machine was commissioned at 1.3402 kW/ton averaged over its first three '
+ 'weeks. A chiller running at 1.4 times its own commissioned efficiency is '
+ 'buying the same cooling with 40 percent more electricity, which is the '
+ 'conventional economic-replacement trigger: the annual energy penalty exceeds '
+ 'the cost of the overhaul. 40 percent of 1.3402 is the 0.536 kW/ton of excess '
+ 'recorded here. Stated as an excess over the condition-matched baseline rather '
+ 'than as an absolute kW/ton, because the same healthy machine runs 1.2 kW/ton '
+ 'on a mild morning and 1.9 on a hot afternoon and an absolute limit would flag '
+ 'the afternoon.'),
+
+('fan-bearing-degradation', 'brick:Air_Handling_Unit', 'Fan and bearing degradation',
+ '{residual:@asset.sf_power.fan-similarity}',
+ NULL,
+ 88.9, 'watt',
+ 'Worn bearings and a fouled impeller both show as more shaft power for the same '
+ 'air delivered, so the excess is measured at matched fan speed AND matched '
+ 'airflow. This fan was commissioned drawing 592.4 W on average. NEMA motors are '
+ 'built to a 1.15 service factor, meaning 15 percent over nameplate is the '
+ 'continuous overload the winding is rated to survive, so 15 percent of the '
+ 'commissioned draw -- 88.9 W -- is the point past which the motor is running '
+ 'outside its own rating whenever the fan is at its average duty.'),
+
+('chiller-refrigerant-loss', 'brick:Chiller', 'Refrigerant charge loss',
+ '{point:@asset.chw_supply_temp} - {point:chw-plant-1.pri_supply_temp_spt}',
+ '{point:@asset.compressor_cmd} >= 0.95',
+ 2.0, 'degC',
+ 'Losing charge reduces the refrigerant mass the compressor can move, so the '
+ 'machine runs out of capacity before it runs out of command: chilled water '
+ 'drifts above setpoint while the compressor is already flat out. Measured only '
+ 'at full command, because below it a warm supply just means the controller has '
+ 'not asked for more yet. Fault-free operation at full command sits 0.22 K above '
+ 'setpoint on average and reaches 1.505 K at the 99th percentile, so 2.0 K is '
+ 'clear of normal control error and represents a plant that can no longer make '
+ 'its design water temperature on a design day.'),
+
+('filter-loading', 'brick:Air_Handling_Unit', 'Filter loading',
+ NULL,
+ NULL,
+ 250.0, 'pascal',
+ 'NOT COMPUTABLE IN THIS BUILDING. A loaded filter is measured by the pressure '
+ 'drop across it, and neither LBNL dataset publishes one -- the air handler ships '
+ '30 columns and none is a filter differential pressure, and there is no filter '
+ 'in the simulation to load. The threshold is recorded anyway because it is real: '
+ '250 Pa (1.0 inch water gauge) is the standard final-pressure change-out '
+ 'criterion for a MERV 13 bank, set at the point where the extra fan energy to '
+ 'push air through the filter exceeds the cost of replacing it. The row exists so '
+ 'the missing instrument is documented rather than silently absent; the nearest '
+ 'available proxy, fan speed required at matched airflow, was rejected because it '
+ 'fits at only R2 0.50 to 0.75 with a residual of 5 percent of full scale.')
+
+ON CONFLICT (mode_id) DO UPDATE SET
+    brick_class          = EXCLUDED.brick_class,
+    mode_name            = EXCLUDED.mode_name,
+    indicator_expression = EXCLUDED.indicator_expression,
+    applies_when         = EXCLUDED.applies_when,
+    failure_threshold    = EXCLUDED.failure_threshold,
+    indicator_unit       = EXCLUDED.indicator_unit,
+    threshold_rationale  = EXCLUDED.threshold_rationale;
+
+
+-- =====================================================================
 -- GROUNDTRUTH — the answer key
 -- =====================================================================
 

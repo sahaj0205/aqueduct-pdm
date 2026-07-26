@@ -4060,3 +4060,287 @@ it without a model.
 
 START HERE: `analytics/baselines/fit.py` — the ModelForm dataclass and
 fit_baseline directly below the catalogue. Those two are the whole refactor.
+
+## Checkpoint 4.3 — Failure modes and degradation indicators
+
+### WHAT WE DID
+
+The system now knows the distinct ways each kind of equipment can fail, tracks a
+separate number for each one, and knows the value at which each of those numbers
+means the machine is finished. Before this the system could say a machine looked
+wrong; it could not say in which of several possible ways, and it had no notion of
+how far along that path the machine had got.
+
+The list of failure modes lives in a database table rather than in code, so
+adding a mode nobody has thought of yet is one INSERT. Each row carries a small
+piece of arithmetic that computes the mode's degradation number from sensor
+readings and from the baseline residuals built in the previous two checkpoints,
+the value at which that number counts as failure, and — required, not optional —
+a written physical or economic reason for that value. That last column matters
+more than it looks: the remaining-life estimate coming next predicts when a
+number will cross a threshold, and a prediction that a made-up number will cross
+another made-up number is not a prediction of anything.
+
+Six modes are seeded. Three of them turned out to name instruments this building
+does not have, which is recorded honestly rather than papered over.
+
+### HOW IT WORKS
+
+    scripts/schema.sql :: app.failure_modes
+      WHY IT EXISTS: A machine does not simply get worse. A chiller fouls its
+        condenser, or loses refrigerant charge, or slides in compressor
+        efficiency, and those are three different numbers reaching failure at
+        three different values. Rolling them into one score before measuring them
+        separately throws away the only information that says which repair to
+        order.
+      WHAT IT DOES: One row per mode, holding the Brick class it applies to, the
+        arithmetic that computes its degradation number, an optional condition
+        restricting when that number means anything, the failure value, its unit,
+        and the justification. The health index reads the table and loops over
+        whatever it finds.
+      CHOICES: threshold_rationale is NOT NULL and additionally CHECKed to be
+        longer than 40 characters, so a threshold cannot be entered with a token
+        justification any more than with none.
+      CHOICES: indicator_expression is nullable. A mode that is real but not
+        measurable here keeps its row, its threshold and its rationale, so the
+        instrument gap is documented rather than silently absent.
+      ⚠ JUDGEMENT CALL: Two columns beyond the six the checkpoint listed.
+        indicator_unit, because a threshold of 2.8 is meaningless without knowing
+        it is kelvin. applies_when, because several indicators only mean anything
+        in a particular commanded state and folding that into the arithmetic would
+        force comparison operators into the indicator language. Keeping the gate
+        in its own column is what lets indicator_expression stay pure arithmetic,
+        which is the security property checkpoint 3.5 chose deliberately.
+      CHOICES: The seed uses ON CONFLICT DO UPDATE rather than DO NOTHING, so
+        correcting a rationale in this file and re-applying the schema actually
+        corrects it in the database.
+
+    scripts/schema.sql :: the sign convention
+      WHY IT EXISTS: Every indicator is written so that LARGER IS WORSE and zero
+        is healthy, whatever the underlying physics does. The health index in 4.4
+        maps indicator onto 0 to 100 and cannot do that if some modes count up and
+        others count down.
+      WHAT IT DOES: In practice this means one mode carries a leading minus sign —
+        a leaking coil makes supply air COLDER than predicted, so the raw residual
+        goes negative and the indicator negates it.
+
+    analytics/baselines/fit.py :: ModelForm.ceilings
+      WHY IT EXISTS: Some models describe a component in a specific commanded
+        state. What a cooling coil does with its valve shut is a different model
+        from what it does modulating, and expressing "shut" needs an upper bound.
+      CHANGED FROM BEFORE: ModelForm previously had only lower-bound gates, which
+        could say "the fan is running" but not "the valve is closed".
+
+    analytics/baselines/fit.py :: shut_valve_design / SHUT_VALVE_SUPPLY_AIR
+      WHY IT EXISTS: The coil leak indicator the checkpoint asks for is "supply
+        air deviation with the valve commanded closed", and the existing coil
+        model cannot provide it.
+      WHAT IT DOES: A second, separate model of supply air temperature,
+        restricted by its ceiling gate to instants where the valve is commanded
+        closed. In that state the coil should do nothing at all, so the only thing
+        between mixed air and supply air is the heat the fan adds, and the model
+        is a single constant: supply air is mixed air plus a fixed rise. Any
+        cooling that appears therefore has nowhere to hide — it shows up directly
+        as supply air colder than predicted.
+      ⚠ JUDGEMENT CALL: A third air-handler baseline, added in 4.3 rather than
+        4.2. It is needed because the coil-effectiveness model CANNOT detect this
+        fault: that model is driven by the valve POSITION, and in this dataset a
+        leaking valve honestly reports itself as 10 percent open, so the model
+        explains the leak away as ordinary cooling from a partly open valve. I
+        confirmed this against the raw LBNL files before adding anything — see the
+        finding below. The alternative was to change the existing model's driver
+        from position to command, which was rejected because it would have altered
+        the 4.1 and 4.2 results that are already verified and committed.
+      CHOICES: One parameter, no airflow term. Airflow was tried and earns
+        nothing: with the valve shut it moves R-squared by 0.003 to 0.099
+        depending on the window, because there is almost no variance left to
+        explain once the coil is out of the picture.
+      CHOICES: R-squared for this model is identically 0.00000 and that is not a
+        failure — an intercept-only model explains none of the variance by
+        construction. The statistic that matters is the residual spread, 0.166 to
+        0.209 K.
+
+    analytics/baselines/fit.py :: condenser_design / CONDENSER_HEAT_REJECTION
+      WHY IT EXISTS: The condenser fouling indicator needs an excess-lift
+        residual, and 4.2's chiller baseline predicts power, not lift.
+      WHAT IT DOES: Models the temperature the condenser water LEAVES at, from
+        part load ratio, entering condenser water and chilled water temperature.
+        For a given load and given entering water a clean condenser leaves the
+        water at a predictable temperature; fouling insulates the tubes, so
+        rejecting the same heat needs a hotter refrigerant, condensing pressure
+        rises, and the water leaves warmer. The residual is the excess lift the
+        compressor is working against.
+      CHOICES: Leaving condenser water is the target because it is a real point,
+        which app.residuals requires — it carries a foreign key to app.points, and
+        "lift" is not a sensor.
+      CHOICES: Entering condenser water is a DRIVER, not an output, because it is
+        set by the cooling tower rather than by the chiller. Holding it fixed is
+        what stops this residual moving when the TOWER fouls, which matters
+        because tower fouling is the fault held out for Task 8. Measured: the
+        indicator reads 0.401 on condenser fouling and -0.024 on tower fouling.
+
+    analytics/health/modes.py :: FailureMode / load_failure_modes
+      WHY IT EXISTS: Reads the config table. NO FAILURE MODE IS DEFINED IN PYTHON
+        anywhere in this package, which is the whole point of the table.
+
+    analytics/health/modes.py :: modes_for_class(modes, brick_class)
+      WHY IT EXISTS: Three chillers must share one row.
+      WHAT IT DOES: Resolves the mode's declared class through Brick's taxonomy,
+        so a mode written against brick:Air_Handling_Unit reaches an asset the
+        database records as brick:AHU. Same closure the baseline catalogue and the
+        rule registry use.
+
+    analytics/health/modes.py :: _substitute(expression, asset_id)
+      WHY IT EXISTS: Expressions have to name two different kinds of thing — raw
+        measurements and baseline residuals — and have to work for any asset of
+        the right class.
+      WHAT IT DOES: Replaces @asset with the concrete asset id, then rewrites each
+        {point:...} or {residual:...} reference as a positional placeholder,
+        returning the reference list alongside so the values can be supplied in a
+        fixed order. Identifiers contain dots and hyphens, so they cannot be
+        Python names and this indirection is unavoidable.
+
+    analytics/health/modes.py :: ARITHMETIC_NODES and GATE_NODES
+      WHY IT EXISTS: These expressions come from a table, and text from a table
+        being compiled into executable code is exactly where a config store
+        becomes a foothold.
+      WHAT IT DOES: Two whitelists. Indicators may contain arithmetic over names
+        and numbers and nothing else — no calls, no attributes, no subscripts, no
+        comparisons — which is the same list the constraint evaluator in 3.5 uses.
+        Gates additionally allow comparison and boolean operators, because a gate
+        is a yes-or-no question. Nothing else is added to either.
+
+    analytics/health/modes.py :: compile_mode(mode, asset_id)
+      WHAT IT DOES: Substitutes the indicator and the gate as one string joined by
+        a separator that cannot occur in arithmetic, so the two share a single
+        reference list and a point named in both is loaded once, then splits them
+        apart and compiles each against its own whitelist.
+
+    analytics/health/modes.py :: load_references(...)
+      WHY IT EXISTS: An expression can read measurements and residuals in the same
+        line, and those live in two tables with two shapes.
+      WHAT IT DOES: Pivots each source to one column per identifier, prefixed by
+        kind so a point and a residual of the same name cannot collide, and joins
+        them on time. An OUTER join, so an instant carrying a measurement but no
+        residual survives with a gap; the gap then propagates through the
+        arithmetic to a missing indicator, which is the honest answer.
+
+    analytics/health/modes.py :: evaluate(compiled, values)
+      WHAT IT DOES: Evaluates the indicator, then drops instants the gate
+        excludes and instants where the arithmetic came out non-finite.
+      CHOICES: Gated-out instants are DROPPED, not set to zero. A cooling coil
+        whose valve is modulating is not a coil with no leak; it is a coil whose
+        leak cannot be seen right now, and recording zero would tell the trend
+        downstream that the machine had recovered.
+
+    analytics/health/modes.py :: summarise / ModeSummary
+      WHAT IT DOES: Reduces an indicator series to sample count, median, 95th
+        percentile, and where it finished, plus that as a fraction of the
+        threshold.
+      CHOICES: `final` is the median over the last tenth of the window rather than
+        the last value, because a single sample at the end of a run is noise and
+        the question is where the indicator has GOT to.
+
+    analytics/health/modes.py :: indicators_for_asset(...)
+      WHY IT EXISTS: The entry point everything else calls.
+      CHOICES: A mode that cannot be evaluated is returned as a message, not
+        raised. chiller-3 has no fitted baselines at all, and one missing baseline
+        must not take an asset's other modes down with it.
+
+    scripts/run_modes.py :: main()
+      WHAT IT DOES: Prints the config table with every rationale in full,
+        evaluates every mode on every asset over every run, reports how far each
+        indicator travelled as a percentage of its threshold, lists the modes that
+        are declared but not computable, and plots each verifiable mode against
+        the matched clean run with its threshold drawn on.
+
+### MEASURED RESULT
+
+Six modes seeded, four of which reference substitute indicators because the
+instrument the checkpoint named does not exist in this building:
+
+    mode                       indicator                            asked for
+    coil-valve-leak-by         supply air deviation, valve shut     as specified
+    chiller-condenser-fouling  excess leaving condenser water       substituted
+    chiller-efficiency-loss    kW/ton over condition-matched base   added
+    fan-bearing-degradation    fan power residual at matched duty   as specified
+    chiller-refrigerant-loss   chilled water above setpoint at
+                               full compressor command              substituted
+    filter-loading             none — no instrument exists          declared only
+
+Direction of travel on each mode's own scenario, against the matched clean run:
+
+    mode                       faulted final   clean final   moves
+    coil-valve-leak-by                 0.402        -0.264      UP
+    chiller-condenser-fouling          0.401         0.002      UP
+    chiller-efficiency-loss            1.037        -0.021      UP
+
+All three move upward, which is the physically expected direction for all three
+by the sign convention. chiller-efficiency-loss crosses its 0.536 kW/ton
+threshold around 20 July, about seven weeks after onset, and finishes at 193
+percent of it.
+
+Every mode on every run, as a percentage of its own threshold, final value:
+
+    run                         asset       coil    fan    cond      eff  refrig
+    clean_ahu                   ahu-1      -9.4%   4.7%      -        -       -
+    ahu_cooling_valve_leakage   ahu-1      14.4%  -2.3%      -        -       -
+    ahu_oa_damper_stuck         ahu-1     -17.6%   4.6%      -        -       -
+    ahu_sat_sensor_drift        ahu-1    -143.9%   4.7%      -        -       -
+    clean_chiller               chiller-1      -      -   0.1%    -3.8%   24.6%
+    chiller_condenser_fouling   chiller-1      -      -  13.4%   193.5%   73.6%
+    chiller_bypass_valve_leak   chiller-1      -      - 259.7%  1584.6%  637.0%
+    cooling_tower_fouling       chiller-1      -      -  -0.8%    -2.8%   19.7%
+
+Four things in that table are worth stating plainly rather than leaving to be
+noticed.
+
+- The held-out fault does what it should. cooling_tower_fouling leaves every
+  chiller indicator inside noise: -0.8 percent, -2.8 percent and 19.7 percent of
+  threshold. No seeded mode can claim it, which is the point of holding it out.
+- No indicator is falsely driven toward failure by a fault belonging to another
+  mode on the same asset. The stuck damper leaves coil-valve-leak-by at -17.6
+  percent, further from failure than the clean run's -9.4 percent, and the fan
+  indicator sits at 4.6 to 4.7 percent on every air-handler run including the
+  clean one.
+- The indicators are not perfectly specific across assets, and the cross-talk is
+  physical. Condenser fouling pushes chiller-refrigerant-loss to 73.6 percent of
+  threshold because fouling really does cost capacity, and a machine short of
+  capacity really does drift above setpoint. Separating that from an actual charge
+  loss is Task 5's job, not an indicator's.
+- ahu_sat_sensor_drift drives coil-valve-leak-by to -143.9 percent, hard in the
+  WRONG direction. That is correct behaviour and useful: a supply air sensor
+  reading high looks like the exact opposite of a leak, so the sign itself
+  discriminates a sensor fault from an equipment fault. It also means the mode
+  indicators alone cannot be trusted without the quality layer, which is why
+  every residual they read carries an input_quality column.
+- chiller-3 has no indicators at all on any run, because it has no fitted
+  baselines: it runs for 9 samples in every commissioning window. Reported as
+  SKIPPED on every run rather than silently absent.
+
+### FINDING — the LBNL coil leakage fault, and a flat severity ladder
+
+Two things came out of checking the raw source files, and the second one matters
+beyond this checkpoint.
+
+The coil valve leakage fault is genuine leak-by. With the valve commanded shut,
+the fault-free file has the valve at position 0.0004 and supply air 0.97 degF
+WARMER than mixed air, which is fan heat and no cooling. The faulted file has the
+valve pinned at 0.1006 — ten percent open — and supply air 0.06 degF COOLER at the
+median and 2.23 degF cooler at the 95th percentile. So the valve reports its own
+leak honestly as a position, which is exactly why the coil-effectiveness baseline
+cannot detect it and the shut-valve baseline can.
+
+`coi_leakage_010_annual.csv` and `coi_leakage_050_annual.csv` are IDENTICAL on
+every column this checkpoint reads: same valve position 0.10064, same mixed-minus-
+supply distribution to three decimals, same sample count. The four published
+severity levels of this fault are not distinguishable in the data. That does not
+affect anything built here — the trajectory synthesiser blends between fault-free
+and one faulted file, so a flat ladder still produces a correct ramp — but it does
+mean the severity ladder recorded for this fault in checkpoint 2.4 describes file
+names rather than measured differences, and the validation in a later task should
+not claim severity discrimination on it.
+
+START HERE: `scripts/schema.sql`, the app.failure_modes seed. Six INSERT rows with
+their rationales are the actual content of this checkpoint; the Python only reads
+them.

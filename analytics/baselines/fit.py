@@ -181,6 +181,10 @@ class ModelForm:
     design: Callable[[Roles], np.ndarray]
     # Points that must all exceed their threshold for the model to apply.
     gates: tuple[tuple[str, float], ...] = ()
+    # Points that must all stay AT OR BELOW their threshold. Needed because some
+    # models describe a component in a specific commanded state -- what the coil
+    # does with its valve shut is a different model from what it does modulating.
+    ceilings: tuple[tuple[str, float], ...] = ()
     derive: Callable[[Roles], Roles] = _identity_roles
     evaluable: Callable[[Roles], np.ndarray] | None = None
     fit_quantity: Callable[[np.ndarray, Roles], np.ndarray] | None = None
@@ -199,7 +203,10 @@ class BaselineSpec:
         """Substitute a concrete asset into the target, drivers and gates."""
         target = self.target.format(asset=asset_id)
         drivers = {role: p.format(asset=asset_id) for role, p in self.drivers.items()}
-        gates = tuple(p.format(asset=asset_id) for p, _ in self.form.gates)
+        gates = tuple(
+            p.format(asset=asset_id)
+            for p, _ in (*self.form.gates, *self.form.ceilings)
+        )
         return target, drivers, gates
 
 
@@ -353,6 +360,46 @@ COIL_EFFECTIVENESS = ModelForm(
 )
 
 
+SHUT_VALVE_TERMS = ("fan_temp_rise_K",)
+
+
+def shut_valve_design(roles: Roles) -> np.ndarray:
+    """Design matrix for supply air temperature with the coil valve commanded shut.
+
+    A separate model from the coil effectiveness one, restricted by its ceiling
+    gate to instants where the valve is commanded closed. In that state the coil
+    should do nothing at all, so the only thing between mixed air and supply air
+    is the heat the fan adds, and the model is a single constant: supply air is
+    mixed air plus a fixed rise.
+
+    That is the whole point. Because the model says the coil delivers ZERO
+    cooling, any cooling that appears has nowhere to hide: it shows up directly as
+    supply air colder than predicted, which is what a valve that will not seat
+    does. The coil effectiveness model cannot serve here, because it is driven by
+    the valve POSITION, and in this dataset a leaking valve honestly reports
+    itself as 10 percent open -- so that model explains the leak away as normal
+    cooling from a partly open valve.
+
+    One parameter, no airflow term. Airflow was tried and earns nothing: with the
+    valve shut it moves R-squared by 0.003 to 0.099 depending on the window,
+    because there is almost no variance left to explain once the coil is out of
+    the picture. A term that explains a third of a percent is decoration.
+    """
+    return np.ones((len(roles["mixed_air"]), 1))
+
+
+SHUT_VALVE_SUPPLY_AIR = ModelForm(
+    name="shut-valve-supply-air",
+    terms=SHUT_VALVE_TERMS,
+    unit="degC",
+    design=shut_valve_design,
+    gates=(("{asset}.sf_speed_cmd", 0.05),),
+    ceilings=(("{asset}.chw_valve_cmd", 0.02),),
+    fit_quantity=coil_fit_quantity,
+    to_target=coil_to_target,
+)
+
+
 # ---------------------------------------------------------------------------
 # physics forms -- chiller
 # ---------------------------------------------------------------------------
@@ -385,13 +432,18 @@ def chiller_derive(roles: Roles) -> Roles:
         * (roles["chw_return"] - roles["chw_supply"])
         / WATTS_PER_TON
     )
-    return {
+    derived = {
         **roles,
         "tons": tons,
         "plr": tons / CHILLER_DESIGN_TONS,
-        "lift": roles["cdw_leaving"] - roles["chw_supply"],
         "chws": roles["chw_supply"],
     }
+    # Lift needs the leaving condenser water, which the efficiency model reads as
+    # a driver and the condenser model PREDICTS. It is therefore only derivable
+    # for the former, and the latter never asks for it.
+    if "cdw_leaving" in roles:
+        derived["lift"] = roles["cdw_leaving"] - roles["chw_supply"]
+    return derived
 
 
 def chiller_evaluable(roles: Roles) -> np.ndarray:
@@ -420,6 +472,50 @@ def chiller_design(roles: Roles) -> np.ndarray:
     )
 
 
+CONDENSER_TERMS = (
+    "intercept",
+    "plr", "plr^2",
+    "cdwe", "cdwe^2",
+    "chws", "chws^2",
+    "plr*cdwe", "plr*chws", "cdwe*chws",
+)
+
+
+def condenser_design(roles: Roles) -> np.ndarray:
+    """Design matrix for the temperature the condenser water leaves at.
+
+    This is the closest thing this plant supports to a condenser approach
+    temperature, which is the textbook fouling indicator and is not measurable
+    here: approach is refrigerant saturation temperature minus water temperature,
+    and there is no refrigerant instrumentation anywhere in the dataset.
+
+    What is measurable is the water side of the same heat exchanger. For a given
+    load, a given entering water temperature and a given chilled water
+    temperature, a clean condenser leaves the water at a predictable temperature.
+    Fouling insulates the tubes, so rejecting the same heat needs a hotter
+    refrigerant, condensing pressure rises, and the water leaves warmer than the
+    clean machine would have left it. The residual is therefore the excess lift
+    the compressor is working against, which is the consequence of fouling that
+    actually costs money.
+
+    Entering condenser water is a driver rather than an output because it is set
+    by the cooling tower, not by the chiller. Holding it fixed is what stops this
+    residual from moving when the TOWER fouls -- which matters, because tower
+    fouling is the fault this project holds out for Task 8, and an indicator that
+    moved on it would be reporting the wrong machine.
+    """
+    plr, cdwe, chws = roles["plr"], roles["cdw_entering"], roles["chws"]
+    return np.column_stack(
+        [
+            np.ones_like(plr),
+            plr, plr * plr,
+            cdwe, cdwe * cdwe,
+            chws, chws * chws,
+            plr * cdwe, plr * chws, cdwe * chws,
+        ]
+    )
+
+
 CHILLER_EFFICIENCY = ModelForm(
     name="chiller-efficiency",
     terms=CHILLER_TERMS,
@@ -428,6 +524,16 @@ CHILLER_EFFICIENCY = ModelForm(
     # Chillers carry a power test as well as a status test because chiller-1's
     # status point reads 1 for the entire year -- on its own it would never gate
     # anything. Matches the run gates in analytics/rules/constraints.py.
+    gates=(("{asset}.status", 0.5), ("{asset}.power", 1000.0)),
+    derive=chiller_derive,
+    evaluable=chiller_evaluable,
+)
+
+CONDENSER_HEAT_REJECTION = ModelForm(
+    name="condenser-heat-rejection",
+    terms=CONDENSER_TERMS,
+    unit="degC",
+    design=condenser_design,
     gates=(("{asset}.status", 0.5), ("{asset}.power", 1000.0)),
     derive=chiller_derive,
     evaluable=chiller_evaluable,
@@ -458,6 +564,11 @@ BASELINE_CATALOGUE: dict[str, tuple[BaselineSpec, ...]] = {
                 "flow": "{asset}.sa_flow",
             },
         ),
+        BaselineSpec(
+            form=SHUT_VALVE_SUPPLY_AIR,
+            target="{asset}.sa_temp",
+            drivers={"mixed_air": "{asset}.ma_temp"},
+        ),
     ),
     "brick:Chiller": (
         BaselineSpec(
@@ -468,6 +579,16 @@ BASELINE_CATALOGUE: dict[str, tuple[BaselineSpec, ...]] = {
                 "chw_return": "{asset}.chw_return_temp",
                 "chw_flow": "{asset}.chw_flow",
                 "cdw_leaving": "{asset}.cdw_leaving_temp",
+            },
+        ),
+        BaselineSpec(
+            form=CONDENSER_HEAT_REJECTION,
+            target="{asset}.cdw_leaving_temp",
+            drivers={
+                "chw_supply": "{asset}.chw_supply_temp",
+                "chw_return": "{asset}.chw_return_temp",
+                "chw_flow": "{asset}.chw_flow",
+                "cdw_entering": "{asset}.cdw_entering_temp",
             },
         ),
     ),
@@ -550,13 +671,18 @@ def points_needed(spec: BaselineSpec, asset_id: str) -> list[str]:
 
 
 def gate_mask(form: ModelForm, asset_id: str, values: pd.DataFrame) -> pd.Series:
-    """True where every run gate this form declares is satisfied."""
+    """True where every run gate and ceiling this form declares is satisfied."""
     mask = pd.Series(True, index=values.index)
     for raw_point, threshold in form.gates:
         point = raw_point.format(asset=asset_id)
         if point not in values.columns:
             raise BaselineError(f"run gate needs {point}, which was not loaded")
         mask &= (values[point] > threshold).fillna(False)
+    for raw_point, ceiling in form.ceilings:
+        point = raw_point.format(asset=asset_id)
+        if point not in values.columns:
+            raise BaselineError(f"ceiling gate needs {point}, which was not loaded")
+        mask &= (values[point] <= ceiling).fillna(False)
     return mask
 
 
@@ -646,8 +772,14 @@ def fit_baseline(
 
     spec = BaselineSpec(form=form, target=target_point, drivers=dict(driver_points))
     values, quality = load_points(
-        conn, [target_point, *driver_points.values(),
-               *(p.format(asset=asset_id) for p, _ in form.gates)], t_from, t_to
+        conn,
+        [
+            target_point,
+            *driver_points.values(),
+            *(p.format(asset=asset_id) for p, _ in (*form.gates, *form.ceilings)),
+        ],
+        t_from,
+        t_to,
     )
     if values.empty:
         raise BaselineError(f"{baseline_id}: no readings in {t_from} .. {t_to}")

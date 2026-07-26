@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines api web
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes api web
 
 # Resolve and install the Python environment into .venv
 install:
@@ -88,12 +88,18 @@ residuals:
 	uv run python -m analytics.rules.constraints
 	uv run python scripts/plot_residuals.py
 
-# Fit the air-handler baselines on the commissioning window at the start of each
-# run, store observed-minus-expected for every modelled point, then report every
-# fit and plot the clean run against the coil valve leak.
+# Fit every baseline an asset's Brick class declares, on the commissioning window
+# at the start of each run, store observed-minus-expected for every modelled
+# point, then report each fit and plot the clean run against the coil valve leak.
 baselines:
 	uv run python -m analytics.baselines.residual
 	uv run python scripts/plot_baselines.py
+
+# Evaluate every degradation indicator app.failure_modes declares, across every
+# run and asset, and plot each one against the clean run it should not move on.
+# Reads the modes from the database, so seeding a new one needs no code change.
+modes:
+	uv run python scripts/run_modes.py
 
 # Serve the API on :8000
 api:
