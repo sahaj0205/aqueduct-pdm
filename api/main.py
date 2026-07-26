@@ -404,7 +404,14 @@ def list_advisories(
                v.detail #>> '{fault,title}', v.fault_class, v.mode_id, v.status,
                v.health, v.severity, v.priority, v.cost_usd, v.effort_usd,
                v.consequential, v.cause_asset, v.cause_fault,
-               v.detail #>> '{forecast,sentence}', v.generated_at
+               v.detail #>> '{forecast,sentence}', v.generated_at,
+               -- #>> and not #>: the text extractor turns a JSON null into a SQL
+               -- NULL, which casts cleanly, whereas casting a jsonb null to
+               -- double precision is an error. A refused prediction stores JSON
+               -- null in all three, so this path is the common one, not the edge.
+               (v.detail #>> '{forecast,p10}')::float8,
+               (v.detail #>> '{forecast,p50}')::float8,
+               (v.detail #>> '{forecast,p90}')::float8
           FROM app.advisories v
           JOIN app.assets a ON a.asset_id = v.asset_id
          WHERE (%(status)s::text IS NULL OR v.status = %(status)s::text)
@@ -425,6 +432,7 @@ def list_advisories(
             cost_usd=float(r[11]), effort_usd=float(r[12]),
             consequential=r[13], cause_asset=r[14], cause_fault=r[15],
             why=r[16] or "no remaining-life estimate", generated_at=r[17],
+            p10=r[18], p50=r[19], p90=r[20],
         )
         for r in rows
     ]

@@ -1,0 +1,93 @@
+/* Base styling only. Everything component-specific lives in a CSS module.
+   No component library, by project decision, so these are the primitives. */
+
+:root {
+  --bg: #10151c;
+  --panel: #171e28;
+  --panel-2: #1e2833;
+  --line: #2b3644;
+  --text: #dde5ee;
+  --muted: #8d9bad;
+  --faint: #63707f;
+
+  --ok: #3fb27f;
+  --warn: #d9a13b;
+  --bad: #d95757;
+  --accent: #4f9ad8;
+
+  /* One colour per fault class, and they are not decorative. A technician reads the
+     badge before anything else on the row, because it decides which van goes out. */
+  --sensor: #4f9ad8;
+  --equipment: #d97a3b;
+  --control: #9b6fd4;
+  --ambiguous: #7d8794;
+
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-weight: 600;
+}
+
+.page {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 20px 24px 64px;
+}
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.masthead h1 {
+  font-size: 19px;
+  letter-spacing: 0.01em;
+}
+
+.masthead .sub {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.notice {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--bad);
+  background: var(--panel);
+  padding: 14px 16px;
+  border-radius: 4px;
+  color: var(--text);
+}
+
+.notice code {
+  font-family: var(--mono);
+  color: var(--warn);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.mono {
+  font-family: var(--mono);
+}

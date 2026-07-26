@@ -6718,3 +6718,322 @@ The four ruff findings in `ingestion/lbnl_loader.py`
     implementations across 112 cases — 96 combinations of date, offset and trajectory
     index for `_stamp`, 16 combinations of span and segment count for
     `segment_windows` — with zero mismatches, and the windows confirmed still tz-naive.
+
+
+## Checkpoint 6.4 — Operations dashboard
+
+### WHAT WE DID
+
+There is now a screen. Everything the platform has computed over the previous five
+sessions — trustworthiness scores, physics rules, condition-normalised baselines, a
+health index, remaining-life predictions and their refusals, sensor-versus-equipment
+discrimination, and cross-asset root cause — arrives as a single ranked list of work
+with a summary strip above it. The list is ordered by expected dollars saved per
+dollar spent, so the first row is the best return rather than the loudest alarm. Each
+row names the machine, what is wrong with it, whether the trouble is the machine or
+the instrument measuring it, its health score, how long until it fails and with what
+spread, and one line of why. Advisories judged to be consequences of a fault
+elsewhere are dimmed, indented and marked with the machine actually at fault — still
+on screen, ranked lower, because that inference can be wrong and only a human can
+overrule it. Where the system cannot compute something it says so on the row instead
+of showing a blank or a zero, and the queue is split by a labelled separator at the
+point where the ordering stops being about money and starts being about severity.
+
+### HOW IT WORKS
+
+`api/models.py :: AdvisorySummary.p10/p50/p90`
+  WHY IT EXISTS: The queue needs a countdown per row and must stay one request.
+  WHAT IT DOES: Lifts the three published quantiles out of the JSONB payload onto the
+    queue row.
+  CHOICES: Extracted with the `#>>` text operator and then cast, not with `#>`.
+    Casting a jsonb null straight to double precision is an error in Postgres, and a
+    refused prediction stores JSON null in all three — so that is the common path, not
+    an edge case. Found the hard way: the first version returned 500 on the whole
+    queue.
+
+`web/vite.config.ts` — the dev proxy
+  WHY IT EXISTS: How the browser reaches the API.
+  WHAT IT DOES: Proxies `/api/*` to port 8000, stripping the prefix.
+  CHOICES: The frontend contains no hostname anywhere, so deploying behind a single
+    origin needs no rebuild, and no browser request is ever cross-origin — which means
+    CORS cannot be the thing that breaks the dashboard. The CORS middleware in the API
+    stays as a second line for anyone hitting it directly.
+
+`web/src/types.ts`
+  WHY IT EXISTS: The API contract in TypeScript.
+  CHOICES: Hand-written rather than generated from the OpenAPI schema. For nine
+    endpoints a generator adds a build step and a large file nobody reads; the cost is
+    that a field renamed in `api/models.py` must be renamed here too, and the compiler
+    will say so. Every `| null` carries the same meaning as in the API — the system
+    declines to say — and every nullable field has a sibling holding the reason.
+
+`web/src/api.ts :: get<T>()`
+  WHY IT EXISTS: One fetch, with the failure path treated as seriously as the success
+    path.
+  WHAT IT DOES: Throws on a network error or a non-2xx, with the status, the body and
+    the command that starts the API.
+  CHOICES: A dashboard that renders an empty table when the API is down is worse than
+    one that says the API is down, because an empty table reads as "nothing is wrong
+    with the building" — the single most dangerous thing this screen could imply.
+
+`web/src/lib/format.ts`
+  WHY IT EXISTS: This is the checkpoint's most load-bearing decision. Every string the
+    queue displays is produced here, in a pure module with no React in it, so that the
+    contents of the table can be checked by running the same functions against the live
+    API rather than by somebody looking at their own screen.
+  WHAT IT DOES: `usd` rounds to whole dollars — cents on a five-figure estimate are
+    false precision. `priorityLabel` returns the word "unpriced", never 0.00.
+    `countdown` returns a cell, a band and whether it is bounded, giving "260 d" with
+    "127–569 d" beneath, "now" with "threshold already reached" when every quantile is
+    zero, and an em dash with the reason when there is no prediction. `shortRefusal`
+    keeps the first clause of a refusal, which is always the reason. `healthLabel`
+    returns "n/a" and not 0 for a rule firing, which has no health score. `buildRows`
+    assembles the rows in the order they arrived.
+  CHOICES: `buildRows` does NOT re-sort. The two-tier ranking is decided by the
+    analytics layer, and a dashboard that sorted the rows itself would be free to
+    disagree with the numbers it is displaying — the first time it did, the ordering
+    would stop being explainable. The rank number is just arrival position.
+  ⚠ JUDGEMENT CALL: `healthBand`'s thresholds at 70 and 40 are the only numbers in
+    this checkpoint that are not derived from anything. They are presentational: nothing
+    branches on them and no value in the system changes if they move. Said so in the
+    docstring so a reader does not go looking for a justification that does not exist.
+
+`web/src/components/FaultClassBadge.tsx`
+  WHY IT EXISTS: The visible output of the whole sensor-versus-equipment
+    discrimination, and the field that decides which van is dispatched.
+  WHAT IT DOES: One colour per class, with a hover explanation of what the class
+    means.
+  CHOICES: AMBIGUOUS is styled flat grey rather than as a warning. It is a real and
+    honest outcome — the instrumentation cannot decide this case — and dressing it up
+    as an alarm would push operators to treat it as one. On the same reported symptom
+    SENSOR and EQUIPMENT differ by 3.2 times in dispatch cost, which is why the badge
+    is the leftmost thing after the fault name rather than a detail.
+
+`web/src/components/SummaryStrip.tsx`
+  WHY IT EXISTS: The site in one row of cells.
+  WHAT IT DOES: Assets, open advisories with the consequential count, worst health and
+    which asset has it, cost of inaction over the horizon, cost to act, the unpriced
+    count, and the breakdown by fault class.
+  CHOICES: Cost of inaction and cost to act are adjacent, because their ratio is what
+    the entire queue is sorted by and seeing them together is what makes the ordering
+    legible. `unpriced` gets its own cell rather than being folded into the advisory
+    count, because it is the honest caveat on the two totals beside it: those are sums
+    over the priced rows only.
+  ⚠ JUDGEMENT CALL: The strip ends with a line stating when the queue was generated
+    and that health is quoted as of each asset's own advisory window rather than
+    wall-clock now. That sentence is there because this database holds eight
+    independent simulation runs in separate calendar eras, so "now" is not a single
+    instant. Without it the screen implies it is live, and a live-looking dashboard
+    over historical simulation data is the most misleading thing this project could
+    ship.
+
+`web/src/components/AdvisoryQueue.tsx`
+  WHY IT EXISTS: The work queue.
+  WHAT IT DOES: One row per advisory: rank, asset, failure mode with its id, fault
+    class badge, health coloured by band, the countdown with its band beneath,
+    priority, cost of inaction with the cost to act beneath, and one line of why. Rows
+    carry the full sentence in a title attribute where it is truncated.
+  CHOICES: A consequential row is dimmed, indented behind a coloured left border, and
+    carries a "↳ caused by <asset> / <fault>" line under the fault name. Dimmed and
+    subordinate at a glance, but every field still on screen and still legible —
+    demoted, never hidden. The cross-asset inference can be wrong, and on this dataset
+    it demonstrably is on one row, so the operator has to be able to overrule it, which
+    they cannot do if it is not there.
+  ⚠ JUDGEMENT CALL: The boundary between priced and unpriced rows is drawn as a
+    labelled separator row rather than left implicit. An operator scanning a priority
+    column that suddenly reads "unpriced" needs to be told they have crossed into a
+    group ordered on a different quantity, or the ordering looks broken. The separator
+    also says an unpriced advisory is not a cheap one, because that is exactly the
+    wrong conclusion to draw from a blank.
+
+`web/scripts/verify-queue.ts`
+  WHY IT EXISTS: How this checkpoint is verified, given that the project has no test
+    suite by deliberate decision and "I looked at it" is not a verification anybody can
+    repeat.
+  WHAT IT DOES: Fetches the summary and the queue from the running API, renders both
+    through the same `format.ts` the React components import, prints them, and then
+    checks three properties the queue must have: priced rows all precede unpriced ones,
+    every consequential advisory sits strictly below the row it names as its cause, and
+    no unpriced advisory renders as 0.00. Exits non-zero on any failure.
+  CHOICES: Run through esbuild, which Vite already depends on, piped into node. Node
+    22 on this machine is not compiled with TypeScript support so
+    `--experimental-strip-types` fails, and adding a runtime like tsx for one script is
+    not worth a dependency.
+  ⚠ JUDGEMENT CALL: This checks contents, not appearance. Layout, colour and the
+    visual demotion of a consequential row are not covered and cannot be by this
+    method; a screenshot is the only check for those. The script says so at the top
+    rather than implying the dashboard is fully verified.
+
+### The verification, in one paragraph
+
+`make web-verify` renders the strip and all six rows and passes all three checks.
+The strip reads 8 assets, 6 open advisories of which 1 is consequential, worst health
+0 on chiller-1, $314,852 of cost of inaction over 90 days against $38,193 to act, 2
+unpriced, and 4 equipment / 2 sensor. The queue leads with condenser fouling on
+chiller-1 at priority 18.89 — health 84, fails in 260 d with a 127–569 d band, $30,419
+of inaction against $1,610 to act — then compressor efficiency loss at 16.21 showing
+"now" and "threshold already reached" rather than "0 to 0 days", then the fan bearing
+at health 63 with an em dash and its withheld-prediction reason, then the second
+chiller. The labelled separator follows, then the two unpriced air-side rule firings,
+the last of which is the demoted consequential row marked "↳ DEMOTED, still in the
+queue — caused by chiller-1 / chiller-condenser-fouling". `npm run build` typechecks
+under `strict` with `noUnusedLocals`, `noUncheckedIndexedAccess` and
+`verbatimModuleSyntax`, and produces a 153 kB bundle. The dev server serves the shell,
+compiles all five modules and the CSS module, and proxies `/api/advisories/summary`
+through to the API.
+
+START HERE: `web/src/lib/format.ts` — every string the operator reads is produced
+there, which is also what makes the dashboard checkable without a browser.
+
+
+## Checkpoint 6.5 — Advisory detail and the RUL fan chart
+
+### WHAT WE DID
+
+Clicking a row in the queue now opens the whole argument for doing that piece of work.
+The centrepiece is a chart in two stacked panels sharing one calendar axis. The upper
+panel shows the degradation number climbing toward the value at which the equipment
+counts as failed, with the predicted failure window shaded across the dates it could
+happen on. The lower panel shows something more unusual and more important: how the
+prediction itself changed every time it was recomputed. Early on, with two weeks of
+evidence, the system said the coil valve would fail somewhere in the next 3,479 days —
+which is a useless answer, and it says so by being visibly enormous. Eight weeks later,
+with fifty-two days of evidence, it said 11 to 34 days. Watching that interval close by
+97 percent as the evidence accumulates is the single clearest demonstration that this is
+prediction rather than pattern-matching. Around the chart sits the rest of the case: the
+measurements with their actual values and how far each moved, the health trend, the
+upstream machines that could have caused it and the downstream zones and people who
+suffer if it is left, the arithmetic behind every dollar, and the specific job to raise
+with its hours, trades, parts and cost. Where the system refused to predict, the chart
+draws no band at all and prints the refusal in its place.
+
+### HOW IT WORKS
+
+`scripts/run_advisories.py :: EXTRA`
+  WHY IT EXISTS: The flagship visual had to be reachable by clicking a row, not only
+    from a verification script.
+  WHAT IT DOES: Adds the 2036 coil-valve-leak advisory to the queue, on its own
+    observation window and its own season-matched reference, classified over that
+    window rather than over the 2038 one.
+  CHOICES: The coil leak carries the most informative remaining-life history in the
+    project — 84 published estimates whose interval closes from 3,479 days to 23 as the
+    post-onset sample count goes 14 to 53. Adding it means the queue holds advisories
+    from two different runs, which is honest for a database of eight independent
+    simulations in separate calendar eras: there is no single "now" here, every advisory
+    carries the window it was computed over, and the dashboard states that above the
+    queue. `classify_assets` gained an optional per-call window override so the air
+    handler can be classified over its 2038 run for the cross-asset situation and its
+    2036 run for the coil leak.
+
+`web/src/lib/chart.ts :: LOOKBACK_DAYS` and `chartWindow`
+  WHY IT EXISTS: Deciding the calendar span both panels and the health request cover.
+  WHAT IT DOES: One function returning the from/to used by the indicator line, the
+    prediction band and the health query alike.
+  ⚠ JUDGEMENT CALL: The first version clipped the band to the advisory's own window and
+    that was wrong in a way that hid the best part of the chart. An advisory's window is
+    the span the fault CLASSIFICATION was computed over — a month or two, chosen so the
+    isolation sweep has a stable operating point. The degradation story is longer and
+    starts earlier: the coil leak's onset is confirmed on 19 March and its first
+    prediction published on 1 April, both before the classification window opens on 27
+    May. Clipping threw away 56 of the 84 estimates, and with them the fall from 3,479
+    days to 138 — the interval appeared to close by 57 percent instead of 97. Reaching
+    back 120 days, the length of a synthesised run, recovers the whole history and no
+    more; reaching further would pull the same mode's estimates in from a different run
+    and draw two unrelated histories as one line with a two-year gap in it.
+
+`web/src/lib/chart.ts :: indicatorSeries`, `fanBand`, `crossingWindow`, `narrowing`
+  WHY IT EXISTS: All four are pure, which is what lets the chart be checked without a
+    browser. The components do no arithmetic.
+  WHAT IT DOES: `indicatorSeries` keeps both the raw and the clamped indicator.
+    `fanBand` produces one point per published estimate, restricted to the run.
+    `crossingWindow` converts the interval — published in DAYS FROM the date it was made
+    — into a region on a calendar axis, which is the form a planner can put in a diary:
+    an 11-to-34-day interval made on 23 June becomes 4 July to 27 July. `narrowing`
+    reports the widest and narrowest interval, the percentage closed, whether every step
+    was monotone, and how many estimates left the upper end unbounded.
+  CHOICES: `fanBand` returns an empty array when the advisory carries a refusal — not a
+    wide band, not a dashed one. A refused prediction is not an uncertain prediction, and
+    any band at all would contradict the sentence printed beside it. Points whose upper
+    end is unbounded keep their P10 and P50 and carry a null P90, so the median line
+    continues and the fill simply stops, which is the truthful rendering of "there may be
+    no failure date at all" — an open top rather than a guessed one. `monotone` is
+    reported separately from `percentClosed` because these intervals close dramatically
+    over a run and still widen from one day to the next: each estimate is refitted from
+    that day's evidence, and a day the indicator did not move genuinely is weaker
+    evidence about a rate. Claiming monotone convergence would be overselling.
+
+`web/src/components/RulFanChart.tsx`
+  WHY IT EXISTS: The chart the checkpoint calls the most important visual in the
+    project.
+  WHAT IT DOES: Three states. With a bounded prediction it draws both panels: indicator
+    and clamped indicator against the amber dashed threshold line, the crossing window
+    as a red shaded region with the median marked and dated, then the interval band
+    beneath with a readout of estimate count, widest, narrowest, percent closed, sample
+    growth, monotonicity and how many estimates were open above. With a refusal it draws
+    the indicator panel and replaces the band panel with the reason. With no failure mode
+    at all — a rule firing — it draws nothing and explains that a rule reports a
+    condition rather than a quantity accumulating toward a threshold.
+  CHOICES: Two panels rather than one, because the checkpoint asks for two things that
+    cannot share a pair of axes. The interval is measured in days and the indicator in
+    kelvin or watts or kW/ton; putting the interval on the indicator's axis would mean
+    drawing days against kelvin, and putting the indicator on the interval's axis would
+    mean dropping the threshold, which is the only thing that makes "failure" mean
+    anything. The band is drawn as two stacked areas because Recharts has no native
+    range area — the lower one is transparent and only lifts the visible one off the
+    axis.
+
+`web/src/components/AdvisoryDetail.tsx`
+  WHY IT EXISTS: The rest of the case, in the order the advisory layer assembles it.
+  WHAT IT DOES: Fetches the advisory, then the remaining-life history and health
+    concurrently, both with a catch that yields null — so a missing history degrades the
+    page rather than breaking it. Renders the fan chart, the health trend with the
+    per-mode line solid and the asset roll-up dashed, the evidence table with observed
+    and reference values and the movement in each point's own spread, the cost breakdown
+    with its basis lines, the severity terms with their weights, the graph trace both
+    directions with the occupant count, the recommended intervention, any caveats, and
+    the reason for the fault class.
+  CHOICES: The evidence table states how many measurements were excluded and
+    distinguishes the two reasons — source data known defective versus readings the
+    quality layer condemned — because those call for different responses. When an
+    intervention was matched on the fault class the page says so, since that is where
+    the sensor-versus-equipment discrimination turns into a different van being sent.
+  ⚠ JUDGEMENT CALL: Which advisory is open is held in React state rather than in the
+    URL. A router for one nested view is a dependency and a build step for a screen with
+    two states. The cost is real and worth naming: the detail view is not linkable, so an
+    operator cannot paste a colleague an advisory. That is the first thing a router would
+    buy and the reason to add one later.
+
+`web/scripts/verify-detail.ts`
+  WHY IT EXISTS: How the claim "the fan chart narrows" is made checkable by somebody who
+    did not look at my screen.
+  WHAT IT DOES: Walks every advisory, prepares its chart through the same `chart.ts` the
+    component uses, prints the interval per date as a bar, and reports per series how far
+    it closed.
+  ⚠ JUDGEMENT CALL: It separates two kinds of finding, and the split is the honest part.
+    A band drawn for a refused prediction, or a closing percentage computed from fewer
+    than two bounded intervals, is the CHART misrepresenting its data — that fails the
+    run. A series whose interval does not close is a property of the remaining-life model
+    from checkpoint 5.2, which already recorded it as an honest partial failure; scoring
+    this checkpoint on that would be scoring it on another checkpoint's work, and hiding
+    it would be worse. So it is reported loudly, separately, with the number. The run
+    fails if no series demonstrates closing at all, because then the visual's central
+    claim is unevidenced whatever the code does.
+
+### The verification, in one paragraph
+
+`make web-verify-detail` walks all seven advisories and exits 0. Two intervals close:
+the coil valve leak by 97 percent, from 3,479 days to 59, over 84 estimates as the
+sample count goes 14 to 53 — the flagship, and now the top row of the queue at priority
+24.69 — and compressor efficiency loss by 100 percent, from 480 days to 0, over 78
+estimates as it reaches its threshold. One does not: condenser fouling widens 12 percent,
+393 days to 442, which is checkpoint 5.2's known limitation now visible on screen rather
+than only in a report. One has nothing to compare, chiller-2, where 83 of 84 estimates
+leave the upper end unbounded because a barely-degrading chiller may genuinely never
+reach its threshold and the model says so rather than inventing a date. Three advisories
+carry a refusal and in all three the band is correctly absent: the fan bearing, whose
+prediction the advisory layer withheld for contradicting its own health score, and the
+two rule firings, which have no indicator to chart at all. The frontend typechecks under
+strict and builds.
+
+START HERE: `web/src/lib/chart.ts` — every number the fan chart draws is computed there,
+which is also what makes the narrowing claim verifiable outside a browser.

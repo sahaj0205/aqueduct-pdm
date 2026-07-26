@@ -81,6 +81,28 @@ CLASSIFY = {
     "chiller-2": (("2036-07-10", "2036-09-06"), ("2039-07-10", "2039-09-06")),
 }
 
+# Advisories from a DIFFERENT run, added to the queue explicitly rather than
+# smuggled in. Each entry is (asset, fault, its own observation window, a fault-free
+# reference window at the same time of year).
+#
+# The coil valve leak is here because it carries the most informative remaining-life
+# history in this project: 68 successive estimates over the 2036 air handler run, whose
+# P10-to-P90 interval closes from 2,259 days to 23 as the post-onset sample count goes
+# from 14 to 52. That narrowing is what checkpoint 6.5's fan chart exists to show, and
+# a flagship visual that could only be reached from a verification script rather than
+# by clicking a row in the queue would be a demonstration of nothing.
+#
+# It sits in the same queue as the 2038 cross-asset situation, which is honest for a
+# database holding eight independent simulation runs in separate calendar eras: there
+# is no single "now" here, so every advisory carries the window it was computed over
+# and the dashboard says so above the queue.
+EXTRA = (
+    (
+        "ahu-1", "coil-valve-leak-by",
+        ("2036-05-27", "2036-06-24"), ("2039-05-27", "2039-06-24"),
+    ),
+)
+
 # Which advisories to print in full, and under what heading.
 SHOW = (
     ("EQUIPMENT — the root cause", ("chiller-1", "chiller-condenser-fouling")),
@@ -89,7 +111,12 @@ SHOW = (
 )
 
 
-def classify_assets(conn, asset_ids: set[str], degrading: dict[str, str]):
+def classify_assets(
+    conn,
+    asset_ids: set[str],
+    degrading: dict[str, str],
+    windows: dict[str, tuple[tuple[str, str], tuple[str, str]]] | None = None,
+):
     """One fault class per asset per window, from checkpoint 5.4's machinery.
 
     `degrading` says which assets have a confirmed, published degradation trend, and
@@ -104,11 +131,16 @@ def classify_assets(conn, asset_ids: set[str], degrading: dict[str, str]):
     the same machine at the same time would both be labelled with whichever one the
     isolation sweep found.
     """
+    # An asset can need classifying over more than one window -- the air handler is
+    # classified over its 2038 run for the cross-asset situation and over its 2036 run
+    # for the coil leak -- so the window can be overridden per call rather than being
+    # fixed per asset.
+    lookup = windows if windows is not None else CLASSIFY
     out = {}
     for asset_id in sorted(asset_ids):
-        if asset_id not in CLASSIFY:
+        if asset_id not in lookup:
             continue
-        obs, ref = CLASSIFY[asset_id]
+        obs, ref = lookup[asset_id]
         window = (d(obs[0]), d(obs[1]))
         reference = (d(ref[0]), d(ref[1]))
         isolation = isolate(conn, {asset_id}, reference, window)
@@ -311,6 +343,38 @@ def main() -> int:
                     diagnosis_evidence=tuple(diagnosis.evidence.lines()[:3]),
                 )
             )
+
+        # ---- advisories from another run, each on its own window ---------
+        for asset_id, fault_id, obs, ref in EXTRA:
+            window_extra = (d(obs[0]), d(obs[1]))
+            found = [
+                f for f in open_failure_modes(conn, window_extra)
+                if f.asset_id == asset_id and f.fault_id == fault_id
+            ]
+            if not found:
+                print(f"  {asset_id}/{fault_id}: nothing open in {obs[0]}..{obs[1]}")
+                continue
+            extra_diagnoses = classify_assets(
+                conn, {asset_id},
+                {asset_id: f"{fault_id} is degrading, {found[0].detail}"},
+                {asset_id: (obs, ref)},
+            )
+            diagnosis = extra_diagnoses[asset_id]
+            print(f"  added {asset_id}/{fault_id} from {obs[0]}..{obs[1]}, "
+                  f"classified {diagnosis.fault_class.upper()}")
+            for entry in rank(found, {}, {}):
+                advisories.append(
+                    build(
+                        conn=conn, graph=graph, nodes=nodes, mapping=mapping,
+                        facts=facts, economics=economics, ranked=entry,
+                        window=window_extra,
+                        reference=(d(ref[0]), d(ref[1])),
+                        diagnosis_class=diagnosis.fault_class,
+                        diagnosis_reason=diagnosis.reason,
+                        diagnosis_subject=diagnosis.subject,
+                        diagnosis_evidence=tuple(diagnosis.evidence.lines()[:3]),
+                    )
+                )
 
         ordered = queue(advisories)
         by_key = {(a.asset_id, a.fault_id): a for a in ordered}

@@ -1,0 +1,35 @@
+.badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.sensor {
+  color: var(--sensor);
+  border-color: color-mix(in srgb, var(--sensor) 45%, transparent);
+  background: color-mix(in srgb, var(--sensor) 12%, transparent);
+}
+
+.equipment {
+  color: var(--equipment);
+  border-color: color-mix(in srgb, var(--equipment) 45%, transparent);
+  background: color-mix(in srgb, var(--equipment) 12%, transparent);
+}
+
+.control {
+  color: var(--control);
+  border-color: color-mix(in srgb, var(--control) 45%, transparent);
+  background: color-mix(in srgb, var(--control) 12%, transparent);
+}
+
+.ambiguous {
+  color: var(--ambiguous);
+  border-color: color-mix(in srgb, var(--ambiguous) 45%, transparent);
+  background: color-mix(in srgb, var(--ambiguous) 12%, transparent);
+}

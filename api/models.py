@@ -241,6 +241,13 @@ class AdvisorySummary(BaseModel):
     cause_asset: str | None
     cause_fault: str | None
     why: str = Field(description="One line: the remaining-life sentence or the refusal")
+    # The three quantiles are lifted onto the queue row rather than left in the detail
+    # payload, so the dashboard can render a countdown per row without one request per
+    # advisory. All three are null together when there is no prediction, and `why`
+    # then carries the reason.
+    p10: float | None = Field(default=None, description="Days. Pessimistic end.")
+    p50: float | None = Field(default=None, description="Days. Plan around this.")
+    p90: float | None = Field(default=None, description="Days. Optimistic end.")
     generated_at: datetime
 
 

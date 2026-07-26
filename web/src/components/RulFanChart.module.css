@@ -1,0 +1,109 @@
+.wrap {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.head {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+}
+
+.head h3 {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.head .sub {
+  font-size: 11.5px;
+  color: var(--faint);
+  margin-top: 3px;
+}
+
+.panel {
+  padding: 12px 8px 4px 0;
+}
+
+.panelLabel {
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--faint);
+  padding: 8px 0 0 14px;
+}
+
+.divider {
+  border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+
+.readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel-2) 60%, var(--panel));
+}
+
+.stat .k {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.stat .v {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.good {
+  color: var(--ok);
+}
+
+.refused {
+  margin: 0;
+  padding: 16px 16px 18px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--warn) 7%, var(--panel));
+}
+
+.refused .title {
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--warn);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.refused .body {
+  color: var(--text);
+  font-size: 13px;
+  max-width: 76ch;
+}
+
+.tooltip {
+  background: #0d1218;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 7px 9px;
+  font-size: 12px;
+  font-family: var(--mono);
+}
+
+.tooltip .when {
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+
+.tooltip .row {
+  white-space: nowrap;
+}

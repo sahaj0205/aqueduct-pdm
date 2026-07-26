@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis api web
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories api web web-verify web-verify-detail web-build
 
 # Resolve and install the Python environment into .venv
 install:
@@ -152,6 +152,26 @@ advisories:
 api:
 	uv run uvicorn api.main:app --reload --port 8000
 
-# Serve the frontend dev server
+# Serve the frontend dev server on :5173. Needs `make api` running in another
+# terminal -- the dev server proxies /api to :8000, so nothing in the frontend
+# knows a hostname and no browser request is ever cross-origin.
 web:
 	cd web && npm install && npm run dev
+
+# Render the advisory queue to the terminal through the SAME formatting module the
+# React components use, and check the properties the queue has to have: priced rows
+# above unpriced, every consequential advisory below its own cause, and no unpriced
+# advisory displayed as 0.00. This is how the dashboard is verified without a browser.
+web-verify:
+	cd web && npm run verify
+
+# Verify the fan chart's data through the same module the chart renders from: that no
+# band is drawn for a refused prediction, that every closing percentage rests on at
+# least two bounded intervals, and how far each series' interval actually closes.
+# Prints the interval per date as a bar so the narrowing is readable in a terminal.
+web-verify-detail:
+	cd web && npm run verify:detail
+
+# Typecheck and production-build the frontend.
+web-build:
+	cd web && npm run build
