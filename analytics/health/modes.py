@@ -102,6 +102,7 @@ class FailureMode:
     failure_threshold: float
     indicator_unit: str
     threshold_rationale: str
+    degradation_process: str = "wiener"
 
     @property
     def computable(self) -> bool:
@@ -131,7 +132,8 @@ def load_failure_modes(conn: psycopg.Connection) -> list[FailureMode]:
     """Every failure mode the database declares, in a stable order."""
     rows = conn.execute(
         "SELECT mode_id, brick_class, mode_name, indicator_expression, applies_when, "
-        "       failure_threshold, indicator_unit, threshold_rationale "
+        "       failure_threshold, indicator_unit, threshold_rationale, "
+        "       degradation_process "
         "  FROM app.failure_modes ORDER BY brick_class, mode_id"
     ).fetchall()
     return [FailureMode(*row) for row in rows]

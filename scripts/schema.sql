@@ -462,8 +462,24 @@ CREATE TABLE IF NOT EXISTS app.failure_modes (
     applies_when          TEXT,
     failure_threshold     DOUBLE PRECISION  NOT NULL CHECK (failure_threshold > 0),
     indicator_unit        TEXT              NOT NULL,
-    threshold_rationale   TEXT              NOT NULL CHECK (length(threshold_rationale) > 40)
+    threshold_rationale   TEXT              NOT NULL CHECK (length(threshold_rationale) > 40),
+    degradation_process   TEXT              NOT NULL DEFAULT 'wiener'
+                                            CHECK (degradation_process
+                                                   IN ('wiener', 'gamma'))
 );
+
+-- Added in checkpoint 5.1, after this table already existed in the running
+-- database. CREATE TABLE IF NOT EXISTS silently does nothing to a table that is
+-- already there, so the column has to be added separately for the file to stay
+-- idempotent against both a fresh volume and an existing one. The DEFAULT is
+-- what makes the ADD COLUMN safe on rows that predate the column.
+ALTER TABLE app.failure_modes
+    ADD COLUMN IF NOT EXISTS degradation_process TEXT NOT NULL DEFAULT 'wiener';
+ALTER TABLE app.failure_modes
+    DROP CONSTRAINT IF EXISTS failure_modes_degradation_process_check;
+ALTER TABLE app.failure_modes
+    ADD CONSTRAINT failure_modes_degradation_process_check
+    CHECK (degradation_process IN ('wiener', 'gamma'));
 
 COMMENT ON TABLE app.failure_modes IS
     'One row per distinct way a class of equipment can fail. A chiller does not '
@@ -511,6 +527,19 @@ COMMENT ON COLUMN app.failure_modes.threshold_rationale IS
     'not optional, and checked to be more than a token: a threshold can never be '
     'entered into this table without a justification recorded beside it.';
 
+COMMENT ON COLUMN app.failure_modes.degradation_process IS
+    'Which stochastic process the remaining-life layer fits to this mode''s '
+    'indicator once degradation has been confirmed. ''wiener'' is Brownian motion '
+    'with drift: the indicator trends one way but individual days may move either '
+    'way, which is right for an indicator that is a noisy readout of a state '
+    'rather than the state itself. ''gamma'' is a pure-jump process whose '
+    'increments cannot be negative, which is right only where the underlying '
+    'physical quantity can genuinely only accumulate -- deposit on a tube, dust in '
+    'a filter, refrigerant that has left the circuit. Choosing gamma where the '
+    'indicator can honestly fall means the model assigns zero probability to '
+    'something that is observed, so this is a per-mode physical statement and '
+    'deliberately not a global setting.';
+
 
 -- --- seed -------------------------------------------------------------
 -- ON CONFLICT DO UPDATE rather than DO NOTHING, so correcting a rationale here
@@ -518,7 +547,7 @@ COMMENT ON COLUMN app.failure_modes.threshold_rationale IS
 
 INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expression,
                                applies_when, failure_threshold, indicator_unit,
-                               threshold_rationale) VALUES
+                               threshold_rationale, degradation_process) VALUES
 
 ('coil-valve-leak-by', 'brick:Air_Handling_Unit', 'Cooling coil valve leak-by',
  -- Reads the shut-valve baseline, not the coil-effectiveness one. That baseline
@@ -537,7 +566,11 @@ INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expres
  'water, and again wherever the overcooled space is reheated back to setpoint. '
  'It is also 2.5 times the plus or minus 1.1 K supply air control tolerance in '
  'ASHRAE Guideline 36, so a coil holding this deviation has taken supply air '
- 'temperature outside the band the control sequence is specified to hold.'),
+ 'temperature outside the band the control sequence is specified to hold.',
+ -- Wiener. A valve seat erodes one way, but this indicator is not the erosion --
+ -- it is how cold the air got, which also depends on how much water happened to
+ -- be in the coil and how hard the fan was blowing. Day-to-day falls are real.
+ 'wiener'),
 
 ('chiller-condenser-fouling', 'brick:Chiller', 'Condenser fouling',
  '{residual:@asset.cdw_leaving_temp.condenser-heat-rejection}',
@@ -550,7 +583,13 @@ INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expres
  'compressor power penalty at the usual 2.5 percent per kelvin, which is the '
  'point at which a tube-brush cleaning pays for itself inside one cooling '
  'season. It is also seven times the 0.42 K spread of the fitted baseline, so it '
- 'cannot be reached by scatter.'),
+ 'cannot be reached by scatter.',
+ -- Gamma. Scale and biofilm settle onto condenser tubes and stay there until
+ -- somebody brushes them out; there is no mechanism by which a tube spontaneously
+ -- gets cleaner mid-season. The accumulated deposit is the state being tracked and
+ -- it is genuinely one-directional, so a process that forbids negative increments
+ -- is the physically correct one rather than a convenience.
+ 'gamma'),
 
 ('chiller-efficiency-loss', 'brick:Chiller', 'Compressor efficiency loss',
  '({residual:@asset.power.chiller-efficiency} / 1000.0) / '
@@ -566,7 +605,11 @@ INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expres
  'recorded here. Stated as an excess over the condition-matched baseline rather '
  'than as an absolute kW/ton, because the same healthy machine runs 1.2 kW/ton '
  'on a mild morning and 1.9 on a hot afternoon and an absolute limit would flag '
- 'the afternoon.'),
+ 'the afternoon.',
+ -- Wiener. kW/ton excess is the sum of several independent causes -- fouling,
+ -- charge, wear, and the accuracy of the flow meter it is computed from -- and a
+ -- genuinely better week is possible without anyone repairing anything.
+ 'wiener'),
 
 ('fan-bearing-degradation', 'brick:Air_Handling_Unit', 'Fan and bearing degradation',
  '{residual:@asset.sf_power.fan-similarity}',
@@ -578,7 +621,12 @@ INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expres
  'built to a 1.15 service factor, meaning 15 percent over nameplate is the '
  'continuous overload the winding is rated to survive, so 15 percent of the '
  'commissioned draw -- 88.9 W -- is the point past which the motor is running '
- 'outside its own rating whenever the fan is at its average duty.'),
+ 'outside its own rating whenever the fan is at its average duty.',
+ -- Wiener. Bearing wear only accumulates, but the excess shaft power reporting it
+ -- is dominated by how well the similarity-law fit happens to match the day's
+ -- operating point, and that error changes sign. Measured on the fault-free run,
+ -- 45 of 116 daily changes in this indicator are downward.
+ 'wiener'),
 
 ('chiller-refrigerant-loss', 'brick:Chiller', 'Refrigerant charge loss',
  '{point:@asset.chw_supply_temp} - {point:chw-plant-1.pri_supply_temp_spt}',
@@ -591,7 +639,13 @@ INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expres
  'not asked for more yet. Fault-free operation at full command sits 0.22 K above '
  'setpoint on average and reaches 1.505 K at the 99th percentile, so 2.0 K is '
  'clear of normal control error and represents a plant that can no longer make '
- 'its design water temperature on a design day.'),
+ 'its design water temperature on a design day.',
+ -- Gamma. Refrigerant that has escaped the circuit does not come back, so the lost
+ -- charge is strictly accumulating. The indicator is a lagging readout of it and
+ -- does wobble, which argues the other way; gamma is chosen because the physical
+ -- state is irreversible and because a charge-loss prediction that can forecast
+ -- recovery would be predicting something no technician has ever seen.
+ 'gamma'),
 
 ('filter-loading', 'brick:Air_Handling_Unit', 'Filter loading',
  NULL,
@@ -606,7 +660,11 @@ INSERT INTO app.failure_modes (mode_id, brick_class, mode_name, indicator_expres
  'push air through the filter exceeds the cost of replacing it. The row exists so '
  'the missing instrument is documented rather than silently absent; the nearest '
  'available proxy, fan speed required at matched airflow, was rejected because it '
- 'fits at only R2 0.50 to 0.75 with a residual of 5 percent of full scale.')
+ 'fits at only R2 0.50 to 0.75 with a residual of 5 percent of full scale.',
+ -- Gamma, on the same grounds as condenser fouling: dust caught in a filter stays
+ -- caught. Recorded for completeness even though nothing can fit it, so that if a
+ -- filter pressure sensor is ever added the process choice is already made.
+ 'gamma')
 
 ON CONFLICT (mode_id) DO UPDATE SET
     brick_class          = EXCLUDED.brick_class,
@@ -615,7 +673,8 @@ ON CONFLICT (mode_id) DO UPDATE SET
     applies_when         = EXCLUDED.applies_when,
     failure_threshold    = EXCLUDED.failure_threshold,
     indicator_unit       = EXCLUDED.indicator_unit,
-    threshold_rationale  = EXCLUDED.threshold_rationale;
+    threshold_rationale  = EXCLUDED.threshold_rationale,
+    degradation_process  = EXCLUDED.degradation_process;
 
 
 -- =====================================================================

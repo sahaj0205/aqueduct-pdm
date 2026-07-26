@@ -4766,3 +4766,305 @@ supposed to.
 START HERE: `AI_LOG.md` — the Outcome of D-06. It is the only place in the log
 that records a decision working and relocating its own problem at the same time,
 which is the most useful thing Task 4 learned.
+
+---
+
+## Checkpoint 5.1 — Degradation model
+
+### WHAT WE DID
+
+The system can now say how fast a machine is getting worse, and how confident it
+is in that speed. Before this it could only say how bad things currently are: the
+health index gave a number per day, but nothing turned that sequence of numbers
+into a rate of change with an honest error bar around it. That rate is the whole
+input to predicting a failure date — a remaining-life estimate is just "how far
+is left to go" divided by "how fast we are going", and the error bar on the
+second of those is what makes the prediction an interval rather than a guess.
+
+Two different kinds of wear are now modelled separately, because they are
+physically different. Some things drift both ways day to day while trending one
+way overall, like the extra power a worn fan draws. Others can only accumulate —
+scale settling on a condenser tube does not come off by itself. Which of the two
+applies to each failure mode is recorded in the database next to the mode, with
+the physical reason written beside it, so it is a statement about the equipment
+rather than a decision buried in code.
+
+The estimate also starts from a stated default rather than from nothing, and that
+default is deliberately weak: it carries the weight of one week of observation, so
+after a month of real data it contributes almost nothing. The belief is then
+updated one day at a time as data arrives, and it provably sharpens as it goes.
+
+### HOW IT WORKS
+
+`scripts/schema.sql` :: `app.failure_modes.degradation_process`
+- WHY IT EXISTS: Which stochastic process fits a mode's wear is a claim about
+  physics, and the project's standing rule is that claims about equipment live in
+  the database, not in Python. Without this column the prediction layer would have
+  to hardcode a list of mode names, and adding a failure mode would stop being an
+  INSERT.
+- WHAT IT DOES: One text column, constrained to `wiener` or `gamma`, defaulting to
+  `wiener`. Every seeded mode now carries a value with a comment above it giving
+  the physical argument. Condenser fouling, refrigerant loss and filter loading are
+  `gamma` — deposit, escaped refrigerant and trapped dust are all irreversible.
+  Coil valve leak-by, compressor efficiency loss and fan/bearing degradation are
+  `wiener`, because in each case the indicator is a noisy readout of a hidden state
+  and not the state itself, so honest days do move the wrong way. On the fault-free
+  run, 45 of 116 daily changes in the fan indicator are downward.
+- CHOICES: Added by `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` as well as being in
+  the `CREATE TABLE`, because the table already exists in the running database and
+  `CREATE TABLE IF NOT EXISTS` silently does nothing to it. This is the first
+  `ALTER` in the schema file; the comment above it says why.
+- ⚠ JUDGEMENT CALL: Bearing wear is physically irreversible, so a case could be
+  made for `gamma` there too. I chose `wiener` on the grounds that a Gamma process
+  assigns zero probability to a negative day, and 39 percent of this indicator's
+  days are negative on a machine with nothing wrong with it — a model that calls
+  observed data impossible is worse than one that is philosophically imprecise.
+
+`analytics/rul/degradation.py` :: `load_daily_indicator`
+- WHY IT EXISTS: The entry point for the whole layer. Everything below fits to
+  what this returns.
+- WHAT IT DOES: Reads one mode's daily indicator for one asset over one window out
+  of the health table. Deliberately reads the RAW daily column and not the clamped
+  one, because the clamped column was computed over the whole run — replaying an
+  as-of date against it would let the model at day 20 use the shape of day 100.
+  The raw daily median is a statistic of its own day and nothing else.
+
+`analytics/rul/degradation.py` :: `observe`
+- WHY IT EXISTS: Reconstructs what the system would have known on a given date.
+  Everything about a narrowing interval is a lie if the early snapshots can see
+  the end of the run.
+- WHAT IT DOES: Cuts the daily series off at the as-of date, then redoes on that
+  truncated series alone both steps the health index performs: runs the cumulative
+  sum detector to see whether degradation has been confirmed yet, and applies the
+  one-directional clamp. Subtracts the commissioning mean so that zero means "where
+  this mode sat when the machine was last called healthy". Returns the post-onset
+  stretch alongside the detector's verdict — including the cases where there is
+  nothing to fit, because the refusal layer in 5.3 has to be able to say WHICH
+  precondition failed, and it cannot do that if the failure comes back as nothing.
+- CHOICES: An already-confirmed onset can be passed in and is then used rather than
+  re-detected. Once a change is confirmed it stays confirmed with the same start
+  date; a live system does not quietly slide the date a fault began because a week
+  later the cumulative sum would have preferred a different day. Measured across
+  these runs the detector's estimate is in fact stable once it fires, so this
+  changes no number in the report — it removes the possibility.
+
+`analytics/rul/degradation.py` :: `increments` and `Increments`
+- WHY IT EXISTS: Both processes are fitted from day-to-day changes, not from
+  levels, so this is the shape everything downstream consumes.
+- WHAT IT DOES: Splits the post-onset series into the change across each interval
+  and the length of that interval, and carries the totals. Interval lengths are
+  measured rather than assumed to be one day, because the health index drops a day
+  whose indicator had fewer than six samples, which leaves a two-day gap; treating
+  that gap as one step would claim the machine moved twice as fast that day. Also
+  reports what fraction of intervals the clamp held exactly flat — 45 to 100
+  percent across the 38 fits here, median 90, which is the single most important number for
+  understanding everything below.
+- CHOICES: Refuses to produce anything below 10 increments. Both a rate and a
+  spread estimated from a handful of daily steps have a sampling error comparable
+  to themselves. This is a numerical floor for the arithmetic, explicitly NOT the
+  policy on when a prediction may be published — that is 5.3's job and 5.3 owns
+  the configurable sample minimum.
+
+`analytics/rul/degradation.py` :: `moments`
+- WHY IT EXISTS: The two numbers both processes are built from. Sharing them is
+  what makes the Wiener and Gamma alternatives comparable rather than two
+  unrelated models.
+- WHAT IT DOES: The rate is the total rise divided by the total elapsed days,
+  which for a Wiener process is exactly the maximum-likelihood estimate of the
+  drift. Worth knowing why: for Brownian motion every path between two endpoints
+  is equally likely, so the days in the middle carry no information about the
+  drift at all. That makes the rate robust to one bad day and blind to the shape
+  of the trajectory. The spread is the average squared departure from that rate,
+  each interval divided by its own length because a two-day step is expected to
+  stray twice as far as a one-day step. Unlike the rate, this one uses every point.
+
+`analytics/rul/degradation.py` :: `fit_wiener`
+- WHY IT EXISTS: The default model. Brownian motion with drift, meaning the
+  indicator trends one way at a fixed average rate while individual days scatter
+  either side of it.
+- WHAT IT DOES: Takes the rate and spread from `moments` and computes the log
+  likelihood of the observed increments under them, which is the sum over days of
+  the normal density of each day's departure from its expected rise. Nothing is
+  optimised numerically — for this model the closed-form estimates ARE the maximum
+  likelihood.
+
+`analytics/rul/degradation.py` :: `fit_gamma`
+- WHY IT EXISTS: The alternative for modes where the underlying physical quantity
+  can only accumulate. Its increments are strictly positive, so it can never
+  forecast a machine spontaneously recovering.
+- WHAT IT DOES: A Gamma process has mean rate shape times scale, and one-day
+  variance shape times scale squared, so the same two statistics pin both
+  parameters down: the scale is the variance over the rate, and the shape is what
+  is left. Fitted shapes here run 0.15 to 0.31 per day. If the post-onset rate is
+  not positive a Gamma process cannot represent the data at all, so it falls back
+  to Wiener and records the reason in the fit rather than reporting parameters
+  that do not exist — which happens on the second chiller of the bypass-leakage
+  run, whose clamped series never moves.
+- CHOICES: Fitted by moments, not maximum likelihood, and this is forced rather
+  than lazy. The clamp produces intervals that are exactly zero — a median of 90
+  percent of them — and the Gamma density at zero is either zero or infinite
+  depending on the shape, so the likelihood is not hard to maximise, it is
+  degenerate. Dropping the flat intervals to rescue it would discard the evidence
+  that the machine stopped moving, which is precisely the evidence that should
+  widen a prediction. A likelihood over the positive intervals only is still
+  reported for comparison, with the count it had to leave out stated beside it.
+
+`analytics/rul/degradation.py` :: `Anchor` and `anchor_at`
+- WHY IT EXISTS: This is the spine of the checkpoint and the thing three wrong
+  versions taught me. It holds everything that is decided ONCE, at the moment
+  degradation is first confirmed: the onset, the prior, the process spread, and the
+  Gamma shape. A prior re-derived from each day's data is not a prior, and a
+  process whose spread is re-chosen every day is not one process.
+- WHAT IT DOES: The prior mean rate is the failure threshold spread over one year —
+  absent intervention, this mode arrives at the value somebody physically justified
+  as failure in about a season and a bit. A year rather than an equipment service
+  life, because the thresholds in the config table are maintenance triggers, not
+  end-of-life: a condenser reaches its cleaning threshold in a season or two, not
+  in the twenty-three years ASHRAE gives the chiller around it. The prior width is
+  the process spread over the square root of seven, which makes the prior worth
+  exactly seven days of observation whatever unit the mode is measured in.
+- CHOICES: Seven days. The modes here differ by three orders of magnitude in scale
+  — a fan power residual in watts against a temperature residual in kelvin — so no
+  fixed variance could be weak for both, and expressing the prior's strength as a
+  number of days is what makes it scale-free. Measured against the runs, seven days
+  out of a 35-day window pulls a fitted rate back by about 20 percent, and out of a
+  100-day window by about 7 percent.
+- ⚠ JUDGEMENT CALL: The spread is floored at the commissioning-window day-to-day
+  spread of the same indicator, and that floor is doing real work — in 12 of the 14
+  fitted cases it is LARGER than the spread fitted to the clamped series, so it is
+  what the update actually runs on. The argument is that a day cannot honestly
+  claim to be quieter than the same indicator was on the same equipment when nobody
+  thought anything was wrong; the clamp removed variance that physically exists,
+  measured here as a deflation of between 2.8 and 61 times. The alternative was to
+  take the clamped spread at face value, which is what the checkpoint's wording
+  literally asks for. I rejected it because it makes the interval in 5.2 too narrow
+  by up to a factor of 61, and because with no floor a perfectly flat clamped
+  series reports zero spread and the belief collapses onto the prior mean with
+  unbounded confidence — on the second chiller of the bypass run that produced a
+  rate ten million standard deviations from zero, out of a series that had not moved
+  at all. Both the floored and unfloored spreads are printed side by side so the
+  choice is auditable rather than hidden.
+
+`analytics/rul/degradation.py` :: `update_wiener`
+- WHY IT EXISTS: Turns the fit into a belief with a width, and it is the width that
+  becomes the prediction interval in 5.2.
+- WHAT IT DOES: Each day's increment is a noisy observation of the rate — expected
+  value the rate times the interval length, variance the spread squared times that
+  length. A normal prior updated by a normal observation gives a normal posterior,
+  so the whole history collapses into two running numbers: a mean, and a precision
+  which is one over the variance. The loop walks the days adding each day's
+  precision to the total. Because every term added is positive the total can only
+  grow, so the standard deviation can only fall. That is where the narrowing comes
+  from — it is a property of accumulating evidence, not something the data happened
+  to do.
+- CHOICES: Written as a loop even though it collapses to a closed form, because the
+  accumulation is the claim being made. Verified numerically that the loop and the
+  closed form agree to 1e-12, and that the accumulated precision strictly increases
+  over every prefix of a series.
+- CHANGED FROM BEFORE: Two earlier versions were wrong and both are recorded in the
+  docstring because the failure modes are instructive. Re-fitting the whole window
+  from scratch at each date is the honest batch answer but it is not an update: the
+  spread is re-estimated each time, and on an accelerating fault it grows faster
+  than the extra days shrink it, so the rate's standard deviation on the coil valve
+  leak went 0.0074, then 0.0032, then back up to 0.0053. Re-estimating the spread
+  from the data available at each STEP is worse and looks more principled than it
+  is — the first increment has no scatter of its own so its spread falls to the
+  floor, a small spread means an enormous weight, and the entire estimate ends up
+  pinned to day one. On the bypass-leakage fault that dragged a measured 0.438
+  kW/ton per day down to 0.054, because day one carried roughly eight hundred times
+  the weight of day thirty.
+
+`analytics/rul/degradation.py` :: `update_gamma`
+- WHY IT EXISTS: The same belief for the accumulating modes, so that switching a
+  mode's declared process changes the shape of its uncertainty and not how much of
+  it there is.
+- WHAT IT DOES: With the shape held at the anchored value the only unknown is the
+  scale, and the conjugate prior for a Gamma scale is an inverse gamma. The update
+  is two running numbers again: the first parameter gains the shape times the
+  elapsed days, the second gains the total rise, and both only ever increase. The
+  rate is the shape times the scale, so the belief about the rate follows from the
+  belief about the scale.
+- CHOICES: The two prior parameters are placed so that this posterior's MEAN is
+  arithmetically identical to the Wiener one — verified to 1e-12 on a synthetic
+  series. Both reduce to total rise over total time, counting the prior as seven
+  pseudo-days during which the indicator rose at the prior rate. That is what makes
+  the two genuinely comparable alternatives rather than two different amounts of
+  optimism; what differs between them is the spread, and in 5.2 the first-passage
+  law that spread feeds.
+- ⚠ JUDGEMENT CALL: What necessarily narrows here is the spread AS A FRACTION of
+  the rate, one over the square root of the accumulated first parameter. The
+  absolute spread is that fraction times the mean, so on a fault whose rate is
+  itself climbing the absolute number can widen while the belief genuinely
+  sharpens. This happens once in the report and is not tuned away. Neither of these
+  processes models acceleration, which is the real limitation underneath it.
+
+`analytics/rul/degradation.py` :: `replay`
+- WHY IT EXISTS: The difference between "posterior updating as new data arrives"
+  and "three separate fits printed next to each other". Also the mechanism 5.2
+  needs to store a history the UI can replay.
+- WHAT IT DOES: Walks the as-of dates in order. At the first date where a fit is
+  possible it creates the anchor; from then on it passes that same anchor forward,
+  so only the evidence accumulates. Dates before degradation is confirmed come back
+  as nothing, in order, so the caller can see when the model started having
+  anything to say.
+
+`scripts/run_degradation.py` :: `main`
+- WHY IT EXISTS: The verification, and the only place the numbers in this report
+  come from.
+- WHAT IT DOES: Prints the config table's process declarations, then for every run
+  and asset and applicable mode walks the replay through three dates and prints the
+  fitted rate and spread beside the updated belief and how many standard deviations
+  that belief sits above zero. Then four checks: whether the belief ever gets
+  vaguer, what each mode's final rate reads as against zero, the Gamma parameters
+  and flat-interval fractions where a Gamma was declared, and the clamped spread
+  against the raw spread with the floor that was applied.
+- CHOICES: Reads nothing but the health table and the config table, both as the
+  unprivileged role. No ground truth is touched anywhere in the file, because the
+  question this checkpoint asks is whether the belief sharpens, not whether it is
+  right; that comparison arrives in 5.2.
+
+Skipped as boilerplate: three dataclasses that only carry fields and derived
+properties (`Observation`, `ProcessFit`, `Posterior`), the `fit_process` and
+`update` two-line dispatchers, `prior_rate`, `snapshots`, and the `fmt` helper in
+the script.
+
+### MEASURED RESULT
+
+Rate, spread and posterior spread at three dates, for every mode with a confirmed
+onset, are in the run output. The headline numbers:
+
+    narrows: 12    unchanged because no new data: 1    WIDENS: 1
+
+- The one unchanged row is the second chiller of the bypass-leakage run, whose
+  data ends 87 days before the nominal window closes, so the middle and late dates
+  see the identical series. Precision unchanged is the correct response to no new
+  evidence.
+- The one WIDENS row is condenser fouling on the bypass-leakage run, a
+  Gamma-declared mode on an accelerating fault: absolute spread 0.10009 to 0.107,
+  up 6.9 percent, while the same spread as a fraction of the rate went 0.369 to
+  0.3297, down 10.6 percent. The rate itself rose 20 percent over the same step.
+  Not tuned away; it is what choosing a Gamma process means.
+- Worked example of the tightening, coil valve leak-by: posterior spread 0.010985,
+  then 0.0067269, then 0.0054361, over 17, 57 and 91 post-onset days.
+
+The rate against zero at the last date separates the runs correctly without any
+threshold having been fitted to them: the two coil and chiller faults that reach
+their thresholds read 3.07, 3.50, 3.21, 3.03 and 3.54 standard deviations above
+zero, while both clean-chiller modes read 0.08 and 0.11, the held-out cooling
+tower reads 0.10 and 0.16, and the stuck damper reads 0.11. That is the quantity
+5.3 refuses on, and it is already doing the right thing.
+
+### TWO THINGS 5.3 WILL HAVE TO SETTLE
+
+- The clamp flattens a median of 90 percent of all intervals (range 45 to 100
+  across 38 fits), and the fitted spread
+  falls below the healthy-period spread in 12 of 14 cases. The floor covers it for
+  now, but the underlying problem is upstream in the clamp.
+- 5.3 specifies a minimum of 200 post-onset samples. These series are daily and no
+  run is longer than 117 days, so that minimum can never be met and would refuse
+  everything. It needs restating in days, or the indicator needs sampling finer
+  than daily.
+
+START HERE: `analytics/rul/degradation.py` — `anchor_at`, and the docstring above
+`update_wiener`. Between them they hold the three wrong versions of this checkpoint
+and why the fourth one is right.
