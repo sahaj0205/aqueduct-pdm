@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes api web
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health api web
 
 # Resolve and install the Python environment into .venv
 install:
@@ -100,6 +100,13 @@ baselines:
 # Reads the modes from the database, so seeding a new one needs no code change.
 modes:
 	uv run python scripts/run_modes.py
+
+# Build the health index for every asset on every run, store it, and score the
+# onset detection against the answer key. This is the one target that touches
+# schema groundtruth, and only after every number it scores has been written --
+# the health computation itself runs as app_rw, which cannot read that schema.
+health:
+	uv run python scripts/run_health.py
 
 # Serve the API on :8000
 api:

@@ -619,6 +619,116 @@ ON CONFLICT (mode_id) DO UPDATE SET
 
 
 -- =====================================================================
+-- APP — maintenance events
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS app.maintenance_events (
+    event_id      BIGINT       GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    asset_id      TEXT         NOT NULL
+                               REFERENCES app.assets(asset_id) ON DELETE CASCADE,
+    mode_id       TEXT         REFERENCES app.failure_modes(mode_id) ON DELETE CASCADE,
+    performed_at  TIMESTAMPTZ  NOT NULL,
+    action        TEXT         NOT NULL,
+    UNIQUE NULLS NOT DISTINCT (asset_id, mode_id, performed_at)
+);
+
+CREATE INDEX IF NOT EXISTS maintenance_events_asset_idx
+    ON app.maintenance_events (asset_id, performed_at);
+
+COMMENT ON TABLE app.maintenance_events IS
+    'When somebody repaired something. THIS TABLE IS EMPTY and is expected to be: '
+    'the LBNL datasets record no maintenance, and none of the synthesised runs '
+    'contains a repair. It exists because the health index has to handle repair '
+    'correctly or it is wrong in a way that only shows up in production. '
+    'Degradation is treated as one-directional -- a fouled condenser does not '
+    'un-foul itself -- and the index enforces that by clamping health so it can '
+    'never climb. A cleaned condenser genuinely HAS recovered, so without an '
+    'explicit reset the clamp would hold a repaired machine at its worst-ever '
+    'score forever and the remaining-life estimate would keep predicting a '
+    'failure that had already been prevented.';
+
+COMMENT ON COLUMN app.maintenance_events.mode_id IS
+    'Which failure mode the work addressed, or NULL for a whole-asset overhaul '
+    'that resets every mode. Brushing condenser tubes should not reset the '
+    'evidence that a compressor is wearing out.';
+
+COMMENT ON COLUMN app.maintenance_events.action IS
+    'What was done, in words. Required: a reset with no recorded reason is '
+    'indistinguishable from the health index losing its history.';
+
+
+-- =====================================================================
+-- APP — health state
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS app.health_state (
+    time                 TIMESTAMPTZ       NOT NULL,
+    asset_id             TEXT              NOT NULL
+                                           REFERENCES app.assets(asset_id)
+                                           ON DELETE CASCADE,
+    mode_id              TEXT              REFERENCES app.failure_modes(mode_id)
+                                           ON DELETE CASCADE,
+    indicator_raw        DOUBLE PRECISION,
+    indicator_monotonic  DOUBLE PRECISION,
+    health               SMALLINT          CHECK (health IS NULL
+                                                  OR health BETWEEN 0 AND 100),
+    t_onset              TIMESTAMPTZ,
+    weakest_mode         TEXT,
+    UNIQUE NULLS NOT DISTINCT (asset_id, mode_id, time)
+);
+
+CREATE INDEX IF NOT EXISTS health_state_asset_time_idx
+    ON app.health_state (asset_id, time DESC);
+
+-- Deliberately NOT a hypertable. Health is computed once per day per mode, so
+-- the whole table is a few thousand rows; partitioning it into weekly chunks
+-- would create more chunks than any chunk would hold rows. AI_LOG.md D-01 is
+-- about chunk counts getting out of hand, and the lesson cuts both ways.
+
+COMMENT ON TABLE app.health_state IS
+    'One number per asset per failure mode per day, saying how much of the way to '
+    'failure that mode has travelled. This is the layer that turns a pile of '
+    'residuals into something a human can be shown and a prediction can be fitted '
+    'to. Rows with a mode are the per-mode detail; rows with mode_id NULL are the '
+    'asset roll-up.';
+
+COMMENT ON COLUMN app.health_state.mode_id IS
+    'The failure mode this row scores, or NULL for the asset as a whole. Both are '
+    'stored rather than deriving the roll-up on read, so that what the API serves '
+    'and what the prediction layer fits are the same numbers.';
+
+COMMENT ON COLUMN app.health_state.indicator_raw IS
+    'The mode''s degradation number for this day, as the daily median of its '
+    'five-minute values. Kept next to the clamped version so the clamp can be '
+    'audited rather than trusted.';
+
+COMMENT ON COLUMN app.health_state.indicator_monotonic IS
+    'The same number after enforcing that degradation does not un-happen, by '
+    'isotonic regression over the window since the last repair. Real sensor noise '
+    'makes the raw indicator wobble up and down; the prediction maths downstream '
+    'assumes a one-directional slide toward failure and either breaks or refuses '
+    'to answer if the trend reverses.';
+
+COMMENT ON COLUMN app.health_state.health IS
+    '0 to 100. 100 means the indicator is at or better than the value the asset '
+    'was commissioned at; 0 means it has reached the failure threshold in '
+    'app.failure_modes. Linear in between, so half the score means half the '
+    'distance to a threshold that has a physical justification behind it.';
+
+COMMENT ON COLUMN app.health_state.t_onset IS
+    'When degradation was CONFIRMED to have begun for this mode, from the '
+    'changepoint detector, or NULL if no change has been confirmed. Constant '
+    'within a run. Nothing may project a trend forward before this is set: a '
+    'remaining-life number extrapolated from noise is worse than no number, '
+    'because it looks like an answer.';
+
+COMMENT ON COLUMN app.health_state.weakest_mode IS
+    'On roll-up rows, which mode produced the minimum. The single most useful '
+    'field for a technician: it turns "this chiller is at 40" into "this chiller '
+    'is at 40 because of its condenser".';
+
+
+-- =====================================================================
 -- GROUNDTRUTH — the answer key
 -- =====================================================================
 

@@ -4344,3 +4344,269 @@ not claim severity discrimination on it.
 START HERE: `scripts/schema.sql`, the app.failure_modes seed. Six INSERT rows with
 their rationales are the actual content of this checkpoint; the Python only reads
 them.
+
+## Checkpoint 4.4 — Health index and onset detection
+
+### WHAT WE DID
+
+The system now produces one number per machine per day saying how much of the way
+to failure it has travelled, and separately says whether it is confident anything
+has actually started going wrong. Before this there were degradation indicators
+in physical units that nobody outside the project could read; now there is a
+score from 100 down to 0, where 100 means the machine is no worse than when it
+was last called healthy and 0 means it has reached a failure value with a written
+physical justification behind it.
+
+Two properties make the number usable rather than decorative. It can only fall,
+because equipment does not repair itself, and it falls to the WEAKEST of the
+several ways the machine can fail rather than the average of them — a chiller
+with a perfect compressor and a dying condenser is a chiller about to fail, not a
+chiller in average condition. Every mode's contribution is kept alongside, so the
+score always comes with the reason for it.
+
+Separately, a detector confirms when degradation actually began. That matters
+because the next layer predicts a failure date by extending a trend, and a trend
+extended from noise produces a confident date that means nothing. Nothing may
+project forward until the detector has confirmed a change exists.
+
+### HOW IT WORKS
+
+    scripts/schema.sql :: app.maintenance_events
+      WHY IT EXISTS: Health is clamped so it can never climb, which is right
+        until somebody performs a repair, at which point the machine genuinely
+        HAS recovered and the clamp becomes a lie that holds a fixed asset at its
+        worst-ever score forever.
+      WHAT IT DOES: One row per repair, naming the asset, optionally the specific
+        mode, when, and what was done. THE TABLE IS EMPTY and expected to be —
+        neither the LBNL data nor the synthesised runs contain a repair.
+      CHOICES: A NULL mode_id is a whole-asset overhaul that resets everything; a
+        specific one resets only itself, because brushing condenser tubes should
+        not erase the evidence that a compressor is wearing out.
+
+    scripts/schema.sql :: app.health_state
+      WHY IT EXISTS: What the API serves and what the prediction layer fits.
+      WHAT IT DOES: One row per asset per mode per day with the raw indicator, the
+        clamped one, the 0 to 100 score and the confirmed onset. Rows with
+        mode_id NULL are the asset roll-up and additionally carry which mode
+        produced the minimum.
+      CHOICES: Both the per-mode detail and the roll-up are stored rather than
+        deriving the roll-up on read, so the API and the prediction layer cannot
+        disagree about what an asset's health was.
+      CHOICES: Deliberately NOT a hypertable. Health is one row per mode per day,
+        so the whole table is 3,123 rows; weekly chunks would create more chunks
+        than any chunk would hold rows. AI_LOG.md D-01 is about chunk counts
+        getting out of hand and the lesson cuts both ways.
+
+    analytics/health/changepoint.py :: cusum(series, reference_end)
+      WHY IT EXISTS: To stop the remaining-life layer answering questions it has
+        no business answering. Fit a trend to a flat noisy line and you get a
+        slope, and from that slope a confident failure date. That number is worse
+        than none, because it looks like an answer.
+      WHAT IT DOES: Walks the daily indicator keeping a running total of how far
+        it has sat above where it sat during commissioning, minus a slack
+        allowance. The total is floored at zero, so it stays pinned while the
+        machine behaves and climbs once it does not. When the total passes a
+        decision interval a change is declared.
+      CHOICES: A cumulative sum rather than a threshold on the indicator itself,
+        because the whole difficulty is that early degradation is SMALLER than the
+        noise. One day half a degree high means nothing; thirty consecutive days
+        half a degree high is a machine that has changed, and only a cumulative
+        sum separates those.
+      CHOICES: Slack 0.5 standard deviations and decision interval 5.0. These are
+        the textbook tabular CUSUM values; at that pairing the in-control average
+        run length is about 465 samples, so on a machine that is not degrading a
+        false onset is expected about once per 465 days of daily samples. Chosen
+        from that false-alarm property, NOT from how well it separates any
+        scenario here.
+      CHOICES: Upper-sided only, because every indicator is written so larger is
+        worse. An indicator falling below where it started is a machine better
+        than commissioned, which is not degradation.
+      CHOICES: Two times are returned and they are different questions. The
+        crossing is when we knew. The last sample at which the running total was
+        still zero is the estimate of when it began — CUSUM signals late by
+        construction because it has to accumulate evidence first, so using the
+        crossing as the onset estimate would overstate the lag by design.
+      CHOICES: A reference window shorter than 7 days produces no answer rather
+        than a guess. This bites: three of the chiller modes have only 6 usable
+        reference days and are correctly refused.
+
+    analytics/health/index.py :: to_daily(series)
+      WHY IT EXISTS: Indicators arrive every five minutes, far finer than
+        degradation moves.
+      WHAT IT DOES: Daily median, dropping any day with fewer than 6 samples. A
+        day represented by three readings taken during a start-up transient is
+        not a measurement of that day.
+
+    analytics/health/index.py :: enforce_monotonic(series, resets)
+      WHY IT EXISTS: Equipment health should only ever get worse until someone
+        repairs it. Real readings jitter, so the raw number wobbles, and the
+        prediction maths downstream assumes a one-directional slide — if the line
+        bounces, the fit breaks or produces a slope that means nothing.
+      WHAT IT DOES: Takes the daily values and pulls up any that sit below the one
+        before, so the line can flatten but never fall. It does that with
+        isotonic regression, which finds the closest possible never-decreasing
+        version of a wobbly line in a least-squares sense, rather than crudely
+        clamping each point to the running maximum. The difference matters: a
+        running maximum lets one bad day set a floor the line can never come back
+        under, whereas isotonic regression lets a single outlier be outvoted by
+        the days either side of it.
+      CHOICES: Applied over the whole window between repairs rather than a rolling
+        one, so a noisy first week does not get permanently baked in as the floor.
+      CHOICES: Every recorded repair splits the series and each segment is fitted
+        independently. With an empty maintenance table there is one segment today,
+        but a health index that silently cannot handle repair is wrong in a way
+        that would only surface in production.
+
+    analytics/health/index.py :: to_health(excess, threshold)
+      WHY IT EXISTS: Turns a physical quantity into a number a human can read.
+      WHAT IT DOES: 100 where the mode is no worse than commissioned, 0 where it
+        has travelled the whole failure threshold from there, linear between,
+        clamped at both ends.
+      CHOICES: The input is an EXCESS over the commissioning value, not the raw
+        indicator, and that is what makes 100 mean "baseline" rather than "the
+        indicator happens to read zero". Residual-based indicators read near zero
+        when healthy so it changes nothing for them; directly measured ones do
+        not. Chilled water at full compressor command sits 0.2 K above setpoint on
+        a perfectly healthy machine, and scoring that against absolute zero
+        started the clean chiller at 90 and ended it at 68 with nothing wrong.
+      CHOICES: Clamped at zero rather than allowed negative, because a machine
+        past its failure threshold is not more failed than failed, and a negative
+        contribution would drag an asset roll-up below the scale it defines.
+
+    analytics/health/index.py :: mode_health(...)
+      WHAT IT DOES: Daily median, then onset detection, then centring on the
+        commissioning mean, then the clamp, then the score.
+      CHOICES: The order is load-bearing. Onset detection runs FIRST, on the raw
+        series — a clamped series is monotone by construction, and a changepoint
+        detector run after the clamp would be finding the clamp rather than the
+        fault. Centring reuses the mean the detector already computed, so the two
+        can never disagree about what baseline means.
+      CHOICES: When the commissioning window is too thin to establish a reference,
+        the mode returns nothing rather than falling back to an assumed zero. An
+        indicator that does not read zero when healthy, scored against zero,
+        produces a confident wrong answer.
+
+    analytics/health/index.py :: roll_up(asset_id, modes)
+      WHY IT EXISTS: The asset-level number, and the reason for it.
+      WHAT IT DOES: Takes the minimum health across modes at each day and records
+        which mode produced it.
+      CHOICES: Minimum, never mean. A chiller whose compressor is perfect and
+        whose condenser is at 10 is a chiller about to fail, and the mean of those
+        describes a machine that does not exist. The minimum is also always
+        attributable: exactly one mode is responsible and it is named next to the
+        number.
+      ⚠ JUDGEMENT CALL: A mode with no reading on a given day carries its last
+        known value forward rather than dropping out of that day's minimum. The
+        alternative, taking the minimum only over modes with data, was tried and
+        was clearly wrong: the coil leak indicator is only defined while the valve
+        is commanded shut, so as the weather warmed and the valve stopped closing,
+        the air handler's roll-up CLIMBED from 43 back to 92. Health that recovers
+        because a test stopped running is the worst kind of wrong number.
+
+    analytics/health/index.py :: write_health(...)
+      WHAT IT DOES: Deletes and rewrites this asset's rows over the window, modes
+        then roll-up. The roll-up carries the earliest confirmed onset among its
+        modes, because the asset started degrading when the first of its modes did.
+
+### MEASURED RESULT
+
+Health across every run, first day to last:
+
+    run                           asset       days  start  end  min  weakest at end
+    ahu_cooling_valve_leakage     ahu-1        109    100   43   43  coil-valve-leak-by
+    ahu_sat_sensor_drift          ahu-1        117    100   63   63  fan-bearing-degradation
+    chiller_condenser_fouling     chiller-1    117    100    0    0  chiller-efficiency-loss
+    chiller_bypass_valve_leakage  chiller-1     45    100    0    0  chiller-condenser-fouling
+    ahu_oa_damper_stuck           ahu-1        106    100   95   95  fan-bearing-degradation
+    cooling_tower_fouling         chiller-1    117    100   95   95  chiller-efficiency-loss
+    clean_ahu                     ahu-1        117    100   98   98  fan-bearing-degradation
+    clean_chiller                 chiller-1    117    100   97   97  chiller-efficiency-loss
+
+All four progressive scenarios decline; both clean runs finish at 97 and 98. The
+held-out tower fault moves chiller health by 5 points, which is the right order —
+tower fouling really does cost a chiller a little efficiency, and no seeded mode
+claims it.
+
+Monotonicity: zero per-mode health series increases at any point, across all 8
+runs and every mode.
+
+Min-across-modes with two modes degrading at once, chiller-1 under condenser
+fouling. Days where the roll-up is not exactly the minimum of its modes: 0.
+
+    date          condenser  efficiency    MIN   weakest
+    2036-05-10        100.0       100.0  100.0   condenser
+    2036-06-23        100.0        88.0   88.0   efficiency
+    2036-07-08         99.7        77.0   77.0   efficiency
+    2036-07-22         95.5         0.0    0.0   efficiency
+    2036-09-02         86.7         0.0    0.0   efficiency
+
+The faster mode takes the roll-up and is correctly named; the slower one keeps
+declining underneath and is still visible.
+
+Detection delay, confirmation minus true injected onset, read from
+groundtruth.fault_events over a superuser connection AFTER every number was
+written:
+
+    run                           mode                        estimated  confirmed  delay
+    ahu_cooling_valve_leakage     coil-valve-leak-by          2036-03-19 2036-03-27  +9.8 d
+    ahu_cooling_valve_leakage     fan-bearing-degradation     2036-03-16 2036-03-29 +11.8 d
+    ahu_sat_sensor_drift          coil-valve-leak-by          not detected        -       -
+    ahu_sat_sensor_drift          fan-bearing-degradation     2038-06-17 2038-06-20  +2.8 d
+    chiller_condenser_fouling     chiller-condenser-fouling   2036-07-10 2036-07-21 +50.8 d
+    chiller_condenser_fouling     chiller-efficiency-loss     2036-06-11 2036-06-19 +18.8 d
+    chiller_bypass_valve_leakage  chiller-condenser-fouling   2037-05-30 2037-06-02  +1.8 d
+    chiller_bypass_valve_leakage  chiller-efficiency-loss     2037-05-28 2037-06-02  +1.8 d
+
+The onset ESTIMATES are much better than the confirmation delays: 2036-03-19
+against a true 2036-03-17, 2038-06-17 exactly right, 2037-05-30 one day early.
+That is the CUSUM working as intended — it confirms late and then points back at
+when the evidence started.
+
+The condenser mode's 50.8 day delay is the weak indicator predicted in checkpoint
+4.3: excess lift only reaches 1.17 standard deviations by end of run, so it takes
+seven weeks of accumulation to clear the decision interval. The efficiency mode
+sees the same fault in 18.8 days.
+
+The coil mode correctly does NOT fire on the supply air sensor drift. A sensor
+reading high looks like the opposite of a leak, so the mode stays silent on a
+fault that is not its own.
+
+### TWO FALSE POSITIVES, NOT TUNED AWAY
+
+The onset detector fires on the clean chiller. chiller-1's efficiency mode
+confirms an onset on 2039-06-28 and chiller-2's on 2039-06-01, with peak
+statistics of 3.07 and 4.12 times the decision interval — not marginal. Two false
+onsets among the six clean-run mode series. The air handler's two clean modes do
+not fire, peaking at 0.86 and 0.36.
+
+The cause is not the CUSUM design. It is that the chiller efficiency baseline is
+fitted on 21 days in May and applied through September, so seasonal conditions
+drift outside the fitted envelope and leave a small systematic residual — and a
+small SUSTAINED shift is exactly what a CUSUM is built to find. The false-alarm
+rate of the onset detector is therefore set by how well the baselines extrapolate
+across a season, not by the decision interval.
+
+The thresholds were not adjusted to make this go away. The health consequence is
+small — the clean chiller ends at 97 and 99 — so the index is not misleading even
+where the detector is early, but the detector's own precision is 4 true onsets out
+of 6 firings on chiller assets and that number should be carried into Task 5
+rather than discovered there.
+
+### LIMITATION — the monotone clamp and intermittent excursions
+
+The supply air sensor drift run ends with the air handler at 63, attributed to
+fan bearing degradation, and that attribution is not real. The fan power residual
+on that run has 12 days out of 117 above the 88.9 W threshold, the worst at 406 W,
+scattered at roughly weekly intervals — against zero such days on the clean run,
+where the maximum is 11 W. So the excursions are genuine and specific to that run.
+But the last ten days of the run read 3 to 11 W, entirely normal, and the monotone
+clamp holds health at 63 anyway.
+
+That is the monotone assumption being wrong rather than the implementation being
+wrong: intermittent excursions are not degradation, and clamping converts twelve
+bad days into a permanent 37 point loss. The clamp was kept as specified rather
+than adding an unrequested recovery mechanism, but the behaviour should be a
+decision rather than a discovery.
+
+START HERE: `analytics/health/index.py` — mode_health is five lines and the
+ordering of those five lines is the whole checkpoint.
