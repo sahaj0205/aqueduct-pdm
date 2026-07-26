@@ -7274,3 +7274,347 @@ reading and the first sustained saturated valve, and one of three chiller pipes 
 START HERE: `AI_LOG.md` — the Outcome of D-09. It is the only place in the log that
 records a feature being WRONG on the first real case it was given, and the decision
 being vindicated by that rather than despite it.
+
+
+## Checkpoint 7.1 — Validation harness core
+
+### What we did
+
+The system can now measure its own accuracy against labels it was never allowed to see,
+and write the answer down in a document that is regenerated from scratch every time it
+runs. Before this the project could show what it detected and predicted, but every claim
+about how WELL it did so lived in the terminal output of a verification script that
+nobody would run again. There is now one command that replays every simulation run
+through the whole detection path, compares what fired against the injected faults, and
+produces `VALIDATION.md` with three numbers in it: how often the platform interrupts an
+operator about equipment that was working, how reliably it catches a fault while that
+fault is still at the mildest severity anyone measured, and how many days of warning it
+gives before the equipment reaches the end.
+
+That last question is the one the whole project exists to answer, so it needs an answer
+that is not self-reported. The measurement matters because a predictive-maintenance
+platform is a claim about the future, and the only way to check a claim about the future
+is to make it against data where somebody already knows what happened. It also found
+things: the platform's single worst behaviour — one degradation channel that confirms a
+fault on a chiller that was working perfectly, and then holds that finding for two
+months — is visible in the output for the first time, and so is the fact that the fault
+this project deliberately held out was not caught by anything.
+
+### How it works
+
+`validation/groundtruth.py` :: `admin_dsn` and `load_answer_key`
+  WHY IT EXISTS: The answer key lives in a database schema that the detection path is
+    physically denied access to. Something has to open it, and confining that to one
+    function in one module is what makes "no detector could have seen its own label" a
+    checkable statement rather than an intention.
+  WHAT IT DOES: Reads the environment for the admin credential, connects, and pulls two
+    tables into frozen dataclasses: one row per simulation run saying whether a fault
+    was injected into it, and one row per injected fault saying which machine, which
+    fault, when it started, when it reached its terminal severity, and the list of
+    measured severity rungs the trajectory was built from. It returns values, not a
+    connection, so nothing downstream can reach back through it.
+  CHOICES: The severity rung labels are lifted out of the JSON parameter blob rather
+    than re-read from the scenario files, so the labels shown in the report are the ones
+    recorded at the moment the data was generated.
+
+`validation/groundtruth.py` :: `severity_one_windows`
+  WHY IT EXISTS: The checkpoint requires accuracy at severity level 1 specifically, and
+    nothing in the database records when a run passed each severity. The answer key says
+    where each trajectory ENDED, not when it crossed each rung. Without this function
+    there is no way to restrict the figures to the hard case, and the accuracy numbers
+    would be dominated by the severe end of every trajectory, which any system catches.
+  WHAT IT DOES: For each run it rebuilds the timestamp grid the simulator evaluated its
+    degradation curve on, replays that curve from the run's own integer seed, and maps
+    it onto the severity ladder the same way the simulator did — degradation progress of
+    zero sits on the fault-free source file, progress of one sits on the worst measured
+    file, so multiplying by the number of rungs gives the position on the ladder at every
+    instant. The severity-1 window closes at the first instant that position reaches one,
+    which is the moment the run arrives at the second measured severity. It converts that
+    instant out of the source files' local time into UTC and returns it with a sentence
+    saying how the boundary was chosen.
+  CHOICES: Two awkward cases fall out of the same search rather than being special-cased.
+    A fault with only one measured severity in the source data never leaves level 1, so
+    its window runs all the way to failure — the search finds the failure date because
+    the curve is pinned to one there. A fault that steps rather than progresses arrives at
+    the top rung at the moment of injection, so the search returns the injection instant
+    itself, the window has zero length, and the run is marked unscored with that stated as
+    the reason. The outdoor air damper run is the second case and is excluded from every
+    accuracy figure because of it.
+  ⚠ JUDGEMENT CALL: The timestamp grid is rebuilt from the run's start date, span and
+    resample interval rather than re-read from the source CSVs. Re-reading would be the
+    unarguable choice, but it means parsing 21 large files to recover a set of timestamps
+    that three integers already determine, and it would make regenerating the document
+    depend on the raw dataset being present. Instead the rebuilt length is checked against
+    the number of readings in the database and the comparison is printed in the report —
+    it comes out at 34,560 against 34,560 on all eight runs. The first version of that
+    check reported a mismatch of exactly 72 samples on every run, which turned out to be
+    the six-hour offset between the window the run list declares and the timestamps the
+    data actually carries, not an error in the reconstruction.
+
+`validation/detect.py` :: `windows`
+  WHY IT EXISTS: Defines what "every scenario" means. Eight synthesised runs plus the
+    LBNL fault-free reference year, in calendar order.
+  WHAT IT DOES: Builds the evaluation window list from the run list the baseline layer
+    already uses, and prepends the 2018 reference year.
+  CHOICES: The 2018 year is included because it is the most valuable false-alarm evidence
+    in the project and the least like the rest of it — 365 days of real measured output
+    from a building that was working, with nothing synthesised into it. It also carries an
+    asymmetry that is stated wherever its numbers appear: the health layer has only ever
+    been run over the eight scenario windows, so the reference year contributes rule
+    firings only and no confirmed-degradation detections.
+
+`validation/detect.py` :: `ahu_rule_findings` and `chiller_rule_findings`
+  WHY IT EXISTS: Nothing in this project stores rule firings, so any measurement of them
+    has to recompute them. These two run the six air-side rules and the three chiller
+    performance rules over a window and collapse what fired into findings.
+  WHAT IT DOES: Loads the window's readings, classifies the air handler's operating mode
+    or derives the chiller's running state, runs every rule the machine's semantic class
+    registers, keeps only firings that held for the full sustain delay, groups those into
+    continuous episodes, and then collapses all episodes of one rule on one machine into a
+    single finding carrying the first instant it was raised and the set of calendar days it
+    covered. Each also returns the set of days on which the suppression mask left at least
+    one instant the rules were willing to judge.
+  CHOICES: Nine separate afternoons of the same saturated valve is one finding, not nine.
+    That is the unit an operator disposes of, and counting it the other way would make the
+    false-alarm rate a function of how choppy the weather was.
+  ⚠ JUDGEMENT CALL: The chiller running-state derivation and the plant-setpoint join are
+    imported from `scripts/run_chiller_rules.py` rather than reimplemented. Importing from
+    a scripts directory into a package is ugly, and the alternative was to copy fifteen
+    lines. Copying would create a second definition of "this machine is running" free to
+    drift from the one the chiller rules were actually verified against, and the harness
+    would then be scoring something subtly different from what the project ships. The
+    genuinely right fix is to move that function into `analytics/rules/chiller.py`, which
+    is a refactor outside this checkpoint.
+
+`validation/detect.py` :: `degradation_findings`
+  WHY IT EXISTS: The second of the two detectors that reach an operator. A failure mode
+    whose degradation the changepoint detector has confirmed is a finding in exactly the
+    same sense a rule firing is, and the lead-time metric depends on knowing WHEN it was
+    confirmed.
+  WHAT IT DOES: Rebuilds each mode's daily health trajectory from the measurements exactly
+    as the health layer does — daily median of the indicator, changepoint detection on the
+    raw series, centring on the commissioning mean, then the one-directional clamp — and
+    keeps the modes where the cumulative-sum statistic crossed its decision interval. The
+    finding begins at that crossing and covers every subsequent day the mode's health sits
+    below full.
+  ⚠ JUDGEMENT CALL: This recomputes rather than reading `app.health_state`, and the reason
+    is the difference between two dates that table conflates. The changepoint detector
+    looks back and estimates that the change began on, say, the 3rd; the persisted column
+    stores that estimate, and it is what the health page shows. But nobody learned anything
+    on the 3rd. They learned when the statistic crossed its threshold, which is days later
+    and is written down nowhere. Scoring lead time against the stored estimate would credit
+    this system with warning it never gave — on the air handler's coil leak the gap is
+    ten days of unearned credit. The cost of recomputing is that the harness takes minutes
+    rather than seconds; the alternative was to add a column, which changes what the health
+    layer writes in order to measure it.
+
+`validation/detect.py` :: `_evaluable_days` and `observed_days`
+  WHY IT EXISTS: These decide the denominator of every per-asset-day figure in the report,
+    and getting it wrong is the easiest way to make a false-alarm rate look good.
+  WHAT IT DOES: `_evaluable_days` returns the days on which the suppression mask left at
+    least one instant a rule was willing to judge. `observed_days` separately returns the
+    days that merely hold readings, read from the hourly rollup rather than the raw
+    hypertable. Both are reported, and the gap between them is stated in the document.
+  CHOICES: The scored denominator is evaluable days, not days with data. A chiller that
+    never started is not a chiller that was correctly found healthy — the rules skipped
+    every instant of it, so there was no opportunity to raise a false alarm, and counting
+    the day as a correct silence is padding. One of the three chillers in this plant runs
+    about one percent of the year. The first version of the harness used days-with-readings
+    and reported 2,028 healthy asset-days; the corrected denominator is 1,208, and the
+    false-alarm rate went from 0.0010 to 0.0017 per asset-day. The correction made the
+    headline number worse, which is how it was identified as the right one.
+  CHANGED FROM BEFORE: `observed_days` was originally the denominator. It is now reported
+    beside the denominator instead.
+
+`validation/detect.py` :: `sweep`
+  WHY IT EXISTS: One pass over every window, so the whole detection side of the harness is
+    a single call and the ordering guarantee — detect first, read labels afterwards — can
+    be seen in one place.
+  WHAT IT DOES: For each window it collects the days with readings, counts one point's
+    readings for the grid cross-check, runs all three detectors, unions their evaluable-day
+    sets, and unions in the days any finding was active. It logs each finding as it goes.
+  CHOICES: Days a finding was active are forced into the denominator whatever the
+    suppression masks say. Without that, a false positive could be raised on a day the
+    matrix does not count, and it would vanish from precision — a bug that would flatter
+    the system and be almost impossible to notice.
+
+`validation/metrics.py` :: `INJECTED_INTO_ASSET` and `EXCLUDED_SCENARIOS`
+  WHY IT EXISTS: Two places where the answer key does not line up with the machines the
+    platform monitors, recorded as declarative tables with the reason beside each row
+    rather than resolved silently in code.
+  WHAT IT DOES: The first maps a fault injected into a piece of plant with no
+    instrumentation of its own onto the machine it is actually visible through — the bypass
+    valve belongs to the chilled water plant and shows up on the chiller working against a
+    warmer return; the tower fouling reaches the chiller as warmer condenser water. The
+    second lists runs excluded from the accuracy figures, currently just the held-out
+    cooling tower.
+  CHOICES: The exclusion carries its full justification as data, and the report prints it
+    verbatim. An exclusion that is not visible in the output is indistinguishable from a
+    result that was inconvenient.
+
+`validation/metrics.py` :: `asset_days` and `_label`
+  WHY IT EXISTS: Turns findings and labels into one row per machine per day carrying what
+    was true, what the platform said, and whether the day counts. Everything else in the
+    metrics module is an aggregation of this list.
+  WHAT IT DOES: Walks every scored machine-day and assigns one of four outcomes. A day
+    inside a severity-1 window on a faulted machine is a positive. A day on a fault-free
+    run, or a day before injection on a faulted run, is a negative. A day after the
+    trajectory passed level 1 is excluded — the fault is present, so it is not a negative,
+    but detecting it there is the easy case this document declines to take credit for. A
+    day on a machine sharing a simulated plant with a faulted machine is also excluded.
+  CHOICES: Pre-injection days are ordinary negatives, including the three weeks the
+    baselines are fitted on. A finding raised while the equipment was still healthy is a
+    false alarm whatever else was happening that week.
+  ⚠ JUDGEMENT CALL: The other two chillers during a chiller run are excluded rather than
+    counted as healthy. The source data is a whole-plant simulation, so when one chiller is
+    fouled the other two see a different loop around them; they are neither faulted nor
+    assertably healthy. Counting them as negatives would have added roughly 250 asset-days
+    of free true negatives and a handful of false positives, and I could not defend either
+    reading. The alternative — treating them as faulted — is worse, because nothing was
+    injected into them.
+  CHANGED FROM BEFORE: The first version consulted the severity window before checking
+    whether the day preceded injection, which threw away the entire pre-injection stretch
+    of the step-fault run — three weeks of healthy air handler the false-alarm rate was
+    entitled to. The order is now: injection first, severity window second.
+
+`validation/metrics.py` :: `false_alarms`
+  WHY IT EXISTS: The number the checkpoint asks to lead with, and the number that decides
+    whether anybody keeps using a fault detection system.
+  WHAT IT DOES: Counts, over the machine-days labelled healthy in each run, three things:
+    how many distinct findings stood on any of them, how many of those days carried at
+    least one standing finding, and the raw episode count.
+  CHOICES: Three counts because they answer three different questions. Findings per
+    asset-day is the headline — how many separate things an operator is asked to dispose
+    of. Alarm-days is deliberately identical to the false-positive cell of the confusion
+    matrix, so the two sections of the document cannot quietly disagree. Episodes exists
+    only so these figures can be lined up against the per-rule tables from checkpoints 3.3
+    and 3.4, which counted that way.
+
+`validation/metrics.py` :: `confusion`
+  WHY IT EXISTS: Precision, recall and F1 at severity level 1, as required.
+  WHAT IT DOES: Tallies the four cells over labelled machine-days and exposes the three
+    ratios as properties that return nothing rather than zero when a denominator is empty.
+  CHOICES: The unit is the machine-day, not the injected fault. With five scorable faults
+    a per-fault confusion matrix would rest on five numbers; the machine-day denominator
+    runs to thousands. It also makes precision and the false-alarm rate two views of the
+    same count rather than two unrelated figures.
+  ⚠ JUDGEMENT CALL: Detection is scored at machine level, so a run is credited when ANY
+    channel fires on the faulted machine and not only when the correct fault is named. That
+    is generous and the report says so in those words. On the condenser fouling run the
+    efficiency channel firing is the same fault seen from another angle and crediting it is
+    fair; on the sensor-drift run the fan-bearing channel firing is credited and it is much
+    less clear that it should be. The alternative was to require the named fault to match a
+    mapping from injected fault to platform channel, which turns a detection metric into an
+    attribution metric — a different question with a different answer, and one the
+    following checkpoint is for.
+
+`validation/metrics.py` :: `false_positive_sources`
+  WHY IT EXISTS: A precision figure with nothing behind it is barely honest. Forty-three
+    percent could mean every detector is noisy or it could mean one channel is broken and
+    the rest are silent, and those call for opposite responses.
+  WHAT IT DOES: Attributes every false-positive machine-day to the channel that produced
+    it, with the size of the finding and its share of the total. For each one it also looks
+    for the same channel raising the same finding on the same machine on the same day of
+    the YEAR in other runs.
+  CHOICES: The calendar comparison works because every synthesised run reads the same 2018
+    source window shifted forward by a whole number of years. A detection driven by weather
+    or load lands on the same day of the year in every run; one driven by the injected fault
+    does not. Both false positives in this project have such twins on faulted and fault-free
+    runs alike.
+
+`validation/metrics.py` :: `lead_times`, `percentile` and `lead_summaries`
+  WHY IT EXISTS: The assignment's headline requirement. The gap between the first warning
+    and the end is what the system is for.
+  WHAT IT DOES: For each injected fault, and each channel that raised a finding on the
+    affected machine before the fault reached terminal severity, records the number of days
+    between the two. Then per fault it reports the count, the median, the tenth percentile
+    and the extremes, and repeats the calculation pooled across all faults.
+  CHOICES: The population is one row per fault per channel, not one row per fault. That is
+    what makes a distribution out of five events — condenser fouling is caught by two rules
+    and two degradation channels and those four warnings arrive on four different days.
+    Reporting only the earliest would describe a system that always warns as early as its
+    luckiest detector. The percentile is written out by hand rather than taken from numpy,
+    because with four samples the choice of interpolation convention moves the tenth
+    percentile by days and a reader comparing against their own tooling needs to know which
+    definition produced the number.
+  CHOICES: Findings first raised AFTER the fault reached terminal severity are dropped from
+    the distribution rather than entered as negative leads, and counted separately in their
+    own table. There are two of them.
+
+`validation/metrics.py` :: `held_out`
+  WHY IT EXISTS: The cooling tower fault is held out to test whether anything catches a
+    fault the rule library does not cover. Something did fire on that run, and the obvious
+    reading — that the trending caught what the rules could not — is wrong. This function
+    is what shows it is wrong.
+  WHAT IT DOES: For each finding on the held-out run, looks for the same channel on the
+    same machine firing on the same day of the year on a run with no fault injected at all.
+    A match means the finding tracks the season and not the tower.
+  CHOICES: Both findings on that run have fault-free twins, one day for one day, on both
+    chillers. So the verdict the harness prints is that the held-out fault was NOT detected,
+    and the two findings present on it are the same artefact that fires on a clean run.
+    Without this check the report would have claimed a detection it did not make.
+
+`validation/report.py` :: `render` and its section functions
+  WHY IT EXISTS: The checkpoint requires the document to be regenerated on every run and
+    never hand-written. A validation document with hand-typed numbers decays silently, and
+    the moment one figure in it is stale the whole document is worthless because a reader
+    cannot tell which one.
+  WHAT IT DOES: Takes every computed value as an argument and emits the whole markdown
+    document — header, the false-alarm section, the severity-1 detection section with its
+    confusion matrix and per-fault table, the lead-time section, the held-out fault section
+    and a method appendix. The prose is fixed and every number is interpolated, so a
+    regression shows up as a changed number under unchanged prose.
+  CHOICES: No literal number appears anywhere in the file. Even the sentence describing how
+    large the worst false positive is pulls the health-point figure out of the finding.
+
+`validation/harness.py` :: `main`
+  WHY IT EXISTS: The entry point, and the place the credential ordering is enforced.
+  WHAT IT DOES: Loads the semantic model, opens the restricted connection and runs the
+    whole detection sweep, closes it, and only then calls into the module that opens the
+    admin credential. Scores, renders, writes the file, and prints the same figures to the
+    terminal.
+  CHOICES: The exit status is non-zero only if the document could not be built, never for a
+    bad accuracy figure. This is a measuring instrument, and an instrument that fails when
+    the reading is unwelcome invites the reading to be adjusted.
+
+`Makefile` :: `validate`
+  WHAT IT DOES: `make validate` regenerates the document. Documented as the second target
+    in the project needing the admin credential, and noted as opening it only after every
+    finding has been produced.
+
+### What the numbers came out at, and the one defect they expose
+
+Everything below is in the generated document; this is the summary.
+
+The false-alarm rate is **0.0017 findings per healthy asset-day** — two findings across
+1,208 asset-days of equipment that was working, one every 604 asset-days. The LBNL
+fault-free reference year produced zero findings across 778 evaluable asset-days.
+
+Detection at severity level 1: precision **43.7%**, recall **76.1%**, F1 **0.555** over
+1,350 labelled machine-days. All four scorable faults were caught while still at level 1,
+at 1.8, 2.8, 9.8 and 18.8 days after injection.
+
+Lead time to terminal severity, pooled across thirteen warnings on four faults: median
+**26.6 days**, tenth percentile **12.2 days**, range 3.4 to 87.2.
+
+The precision figure is the interesting one and it is honest. Every false positive in the
+project comes from ONE channel — the chiller efficiency indicator — on the fault-free
+chiller run, on two machines. Two findings, and between them they stand for 139 healthy
+asset-days, which is 65% of that run's evaluable days. Counted as findings, 2 of the 24
+findings raised anywhere in the project were on a machine with nothing wrong with it; counted
+as asset-days, precision is 43.7%. Both framings are in the document because they are the
+same result and they mean different things: the platform put two wrong items in front of an
+operator, and each then sat on the screen for two months.
+
+The finding itself is small — a confirmed change costing one health point out of a hundred
+on one machine and three on the other — so it would arrive at the bottom of the advisory
+queue rather than as an alarm. Ranking it low is not the same as being right about it. It
+is the clearest defect these measurements expose and it belongs to the efficiency
+indicator, not to the harness.
+
+The held-out fault was not detected. No rule fired on it, which is what the held-out design
+intends. Two degradation findings did appear on that run, and both have fault-free twins on
+the same machine on the same day of the year, so neither can be credited to the tower.
+
+START HERE: `validation/detect.py` — everything the report says rests on what this module
+decides counts as a detection and which machine-days count at all.

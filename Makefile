@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories api web web-verify web-verify-detail web-verify-schematic web-build
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories api web web-verify web-verify-detail web-verify-schematic web-build validate
 
 # Resolve and install the Python environment into .venv
 install:
@@ -181,3 +181,11 @@ web-verify-schematic:
 # Typecheck and production-build the frontend.
 web-build:
 	cd web && npm run build
+
+# Run every scenario end to end, score every detection against the answer key, and
+# regenerate VALIDATION.md. The document is overwritten in place on every run and no
+# number in it is written by hand. This is the one target besides `scenarios` that
+# needs ADMIN_DATABASE_URL, and it opens it only after every finding has been produced
+# over the restricted connection.
+validate:
+	uv run python -m validation.harness
