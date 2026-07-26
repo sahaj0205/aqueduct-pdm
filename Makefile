@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules api web
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals api web
 
 # Resolve and install the Python environment into .venv
 install:
@@ -81,6 +81,12 @@ apar:
 # held-out fault check, and false positives per asset-day on fault-free data.
 chiller-rules:
 	uv run python scripts/run_chiller_rules.py
+
+# Evaluate every mvn:constrainedBy residual the semantic model declares and store
+# it, then plot the two air-side constraints for verification.
+residuals:
+	uv run python -m analytics.rules.constraints
+	uv run python scripts/plot_residuals.py
 
 # Serve the API on :8000
 api:

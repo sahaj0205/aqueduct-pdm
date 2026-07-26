@@ -3138,3 +3138,220 @@ both are true.
 
 START HERE: `analytics/rules/chiller.py` — the module docstring explains what
 could not be built and why; the three rules under it are what replaced it.
+
+## Checkpoint 3.5 — Constraint residuals
+
+### WHAT WE DID
+
+The platform can now measure how far the building is from obeying its own
+physics. Checkpoint 2.2 wrote down five statements that must be true if every
+sensor is telling the truth — the air leaving a mixing box must be the blend of
+the two streams entering it, the heat a chiller throws away must equal the heat
+it removed plus the work its compressor did, and so on. Until now those were
+prose attached to the model. They are now evaluated against every reading and
+the leftover is stored.
+
+The distinction from a rule matters. A rule says a machine is behaving badly. A
+residual says a group of readings cannot all be true at once, WITHOUT yet saying
+which of them is lying. That ambiguity is deliberate and is the input the
+sensor-versus-equipment discrimination in Task 5 is built from: a failed sensor
+breaks every statement it appears in and leaves the others untouched, whereas a
+failed machine drags whole groups of statements together.
+
+Running it exposed something the rule engine could not: the supply air
+temperature sensor drift, which every APAR rule missed except through its
+knock-on effect on the cooling valve, shows up directly here as a 1.37 degree
+shift in the coil energy balance.
+
+### HOW IT WORKS
+
+`scripts/schema.sql :: app.constraint_residuals`
+  WHY IT EXISTS: The residuals are a time series in their own right and every
+    later layer joins against them.
+  WHAT IT DOES: One row per constraint per instant, holding the raw imbalance in
+    its natural unit, the same number restated as a robust standard score, the
+    unit, and the worst quality score among the readings that went into it.
+  CHOICES: A hypertable with seven-day chunks rather than the measurements'
+    one-day chunks — five constraints produce about half a million rows a year
+    against a hundred million, so day-sized chunks would be mostly empty.
+    input_quality is stored because a residual is only as trustworthy as its
+    worst input, and without it a diagnosis cannot tell a genuine violation of
+    physics from one sensor having died.
+
+`analytics/rules/constraints.py :: parse_expression`
+  WHY IT EXISTS: The expressions in the model are written over point identifiers
+    like {ahu-1.ma_temp}, which contain dots and hyphens and so cannot be
+    variable names.
+  WHAT IT DOES: Replaces each brace-delimited identifier with a positional
+    placeholder, remembering the order, then parses the result and walks every
+    node of the syntax tree checking it against a whitelist before compiling it.
+  ⚠ JUDGEMENT CALL: The whitelist admits only arithmetic — addition,
+    subtraction, multiplication, division, powers, unary signs, numbers and the
+    generated placeholders. No function calls, no attribute access, no
+    subscripts. These expressions come from a file this project controls, so
+    nothing hostile is expected, but they are still text being turned into
+    executable code and the check costs nothing. Widening it has to be a
+    deliberate act rather than something that happens by accident when someone
+    puts a square root in a .ttl file.
+
+`analytics/rules/constraints.py :: manifest_column_to_point`
+  WHY IT EXISTS: The model declares which points a constraint depends on using
+    graph node names, while the expression names them using database point
+    identifiers. Checking that the two agree needs a dictionary between them.
+  WHAT IT DOES: Reads the ingestion manifests, the one place the mapping from a
+    source file's column to a database point is actually recorded.
+  ⚠ JUDGEMENT CALL: Keyed on the system as well as the column name, which the
+    first version was not, and the cross-check immediately caught the mistake.
+    Column names are only unique within a file: OA_TEMP exists in both datasets
+    and means different things in each — outdoor dry bulb on the air handler,
+    and on the chiller plant a column that actually holds wet bulb, which the
+    manifest un-swaps. Keyed on the column alone, the air handler's outdoor air
+    temperature silently resolved to the chiller plant's wet bulb and the
+    cross-check reported a discrepancy that did not exist.
+
+`analytics/rules/constraints.py :: RUN_GATES`
+  WHY IT EXISTS: A constraint is only a statement about physics while the
+    equipment is running.
+  WHAT IT DOES: Names, per constraint, the points that must all be above a
+    threshold before an instant is evaluated. A mixing box that is switched off
+    has no airflow, so its "mixed air temperature" is the temperature of still
+    air in a box and balances nothing.
+  CHOICES: The chiller gates test power as well as status, because chiller 1's
+    status point reads 1 for the whole year and on its own would gate nothing.
+
+`analytics/rules/constraints.py :: evaluate`
+  WHY IT EXISTS: Turns one compiled expression into a column of numbers.
+  WHAT IT DOES: Substitutes each point's readings as an array, evaluates the
+    expression once across the whole window, then drops any instant where an
+    input was missing, the arithmetic produced infinity, or the run gate was
+    shut. A residual nobody can compute is absent from the table, not zero — the
+    two mean completely different things to anything reading it later.
+
+`analytics/rules/constraints.py :: fit_baseline` and `normalise`
+  WHY IT EXISTS: The raw residuals are not comparable with each other. One is in
+    degrees and sits near zero; another is in watts and sits near minus eighty
+    thousand. A diagnosis has to rank them against each other.
+  WHAT IT DOES: Takes each constraint's fault-free behaviour, subtracts its
+    median and divides by a spread estimated from the median absolute deviation,
+    so every constraint is restated in the same currency: how unusual is this,
+    for this constraint.
+  CHOICES: Median and median absolute deviation rather than mean and standard
+    deviation. The fault-free run is fault-free by label rather than by
+    inspection — it still contains startup transients and occasional excursions —
+    and one of those is enough to inflate a standard deviation so far that every
+    real deviation measured against it afterwards disappears.
+
+`analytics/rules/constraints.py :: write_residuals`
+  WHAT IT DOES: Deletes the constraint's rows over the window and streams the new
+    ones in, in one transaction. Same reasoning as every other derived table
+    here: these rows are a function of the measurements and the model, and a
+    stale one describes a building that no longer exists.
+
+`scripts/plot_residuals.py`
+  WHY IT EXISTS: The verification.
+  WHAT IT DOES: Draws both air-side constraints over the fault-free year as a
+    daily median with an interquartile band, and over the drift scenario with the
+    matched clean scenario overlaid, then prints the numbers.
+  CHOICES: Compares the drift against the clean run occupying the SAME calendar
+    window in a different year, rather than against the fault-free year. The
+    fault-free year is all twelve months and the scenarios are late May to late
+    September; comparing them directly would report a season as if it were a
+    fault.
+
+### MEASURED RESULT
+
+    constraint          window                    n       mean    median      p95   |norm| p95
+    MixedAirBalance     fault-free year      55,728    +1.053    +0.426   +3.673        2.54
+    MixedAirBalance     clean_ahu            18,576    -0.184    -0.180   +0.403        0.95
+    MixedAirBalance     ahu_sat_sensor_drift 18,576    -0.224    -0.216   +0.347        0.96
+                        SHIFT drift vs matched clean   -0.036 degC
+
+    CoilEnergyBalance   fault-free year      55,728    +0.919    +0.532   +3.153        1.52
+    CoilEnergyBalance   clean_ahu            15,792    +0.867    +0.782   +3.004        1.44
+    CoilEnergyBalance   ahu_sat_sensor_drift 15,792    -0.509    -0.590   +2.557        2.58
+                        SHIFT drift vs matched clean   -1.372 degC
+
+500,810 residual rows written across the two spans in 1.1 minutes.
+
+Baselines fitted on the fault-free year:
+
+    ChillerEnergyBalance_1   centre     -1414.0 W   scale     120.4 W   99,528 samples
+    ChillerEnergyBalance_2   centre    -84289.0 W   scale   29421.6 W   12,901 samples
+    ChillerEnergyBalance_3   centre    -83262.3 W   scale   15434.8 W      456 samples
+    CoilEnergyBalance        centre        +0.53 degC  scale    1.73 degC 55,728 samples
+    MixedAirBalance          centre        +0.43 degC  scale    1.28 degC 55,728 samples
+
+### THE VERIFICATION ASKS FOR THE WRONG CONSTRAINT
+
+The checkpoint asks for the mixed air balance to sit near zero on fault-free data
+and to diverge on the supply air sensor drift. The first half holds. The second
+cannot, and the reason is visible in the expression itself:
+
+    MixedAirBalance = ma_temp - (oa_damper * oa_temp + (1 - oa_damper) * ra_temp)
+
+Supply air temperature does not appear. The mixed air balance reads mixed,
+outdoor and return air and the damper position, and a drifting supply air sensor
+is downstream of all four. Measured against its matched clean run the mixed air
+residual moves by 0.036 degC, which is nothing.
+
+The constraint that DOES contain supply air temperature is the coil energy
+balance, and it moves by 1.372 degC — from +0.782 on the clean run to -0.590 on
+the drift, a sign change, with the p95 normalised deviation rising from 1.44 to
+2.58. So the capability the checkpoint is testing for is present and works; it is
+carried by the other constraint. Both are plotted rather than just the one asked
+for, so the contrast is visible.
+
+This is the layer that finally sees this fault. Checkpoint 3.3 reported that the
+APAR rules caught the drift only through its knock-on effect on the cooling
+valve, and predicted the residuals would catch it directly. They do.
+
+### TWO DEFECTS IN THE 2.2 MODEL THAT THIS CHECKPOINT EXPOSES
+
+**The mixed air balance assumes a linear damper, and this one is not.** The
+expression uses damper POSITION where the physics needs outdoor air FRACTION,
+treating them as the same number. Measured on the fault-free year with the fan
+running:
+
+    damper 0.100  ->  true outdoor air fraction 0.016
+    damper 0.187  ->  0.027
+    damper 0.585  ->  0.373
+    damper 0.712  ->  0.609
+
+The two converge near full open and diverge by a factor of six near the minimum
+position, which is the ordinary characteristic of a damper blade. The consequence
+is that the raw residual carries a bias that varies with damper position and with
+the gap between outdoor and return air: over the fault-free year with the fan
+running it averages +1.053 degC rather than zero, reaching +3.673 at the 95th
+percentile. The normalisation absorbs the average of that bias but not its
+variation with operating condition, which is a condition-normalised baseline and
+therefore Task 4's job.
+
+The expression was left exactly as the model declares it. Rewriting it here would
+mean calibrating a damper curve against fault-free data, and a constraint
+calibrated to be satisfied is a constraint that can no longer detect the thing it
+was calibrated on.
+
+**The coil energy balance declares a point it never reads.** The model lists five
+member points for it but the expression uses four; chw-plant-1.sec_return_temp is
+declared and never appears. Harmless to the arithmetic, but the declared
+membership is what Task 5 will use to work out which sensors a residual depends
+on, and an over-broad declaration would make it think that sensor influences a
+number it cannot touch. One triple to fix in extensions.ttl.
+
+### A THIRD THING WORTH KNOWING BEFORE TASK 5
+
+The chiller energy balance normalisation saturates. Chiller 1's fault-free
+residual sits at -1414 W with a spread of only 120 W — the balance is
+consistently wrong by a fixed amount and very precisely so — so the scenario
+era's median of -30,473 W comes out at roughly 240 standard deviations, and the
+95th percentile of the absolute normalised value reaches 1288. Chiller 2, which
+runs intermittently, has a spread of 29,422 W and never exceeds about 2.5.
+
+Both numbers are arithmetically correct. They are not comparable with each other,
+and anything that combines constraints by summing normalised scores will be
+entirely dominated by chiller 1. The underlying cause is the non-closure of the
+chiller energy balance already recorded in checkpoint 2.2, and the fix is a
+condition-normalised baseline rather than a single median and spread.
+
+START HERE: `analytics/rules/constraints.py` — `parse_expression` and `evaluate`
+are the whole mechanism; everything else is configuration and storage.

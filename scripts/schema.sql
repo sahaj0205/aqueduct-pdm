@@ -312,6 +312,71 @@ COMMENT ON COLUMN app.sensor_advisories.detail IS
 
 
 -- =====================================================================
+-- APP — constraint residuals
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS app.constraint_residuals (
+    time           TIMESTAMPTZ       NOT NULL,
+    constraint_id  TEXT              NOT NULL,
+    residual       DOUBLE PRECISION,
+    normalised     DOUBLE PRECISION,
+    unit           TEXT,
+    input_quality  SMALLINT          CHECK (input_quality IS NULL
+                                            OR input_quality BETWEEN 0 AND 100),
+    UNIQUE (constraint_id, time)
+);
+
+SELECT create_hypertable(
+    'app.constraint_residuals',
+    by_range('time', INTERVAL '7 days'),
+    if_not_exists => TRUE
+);
+
+CREATE INDEX IF NOT EXISTS constraint_residuals_id_time_idx
+    ON app.constraint_residuals (constraint_id, time DESC);
+
+COMMENT ON TABLE app.constraint_residuals IS
+    'How far the building is from obeying its own physics, one row per '
+    'constraint per instant. Each row answers a question of the form "mixed air '
+    'temperature should be the blend of outdoor and return air — how far off is '
+    'it?". A rule says a machine is behaving badly; a residual says a set of '
+    'readings cannot all be true at once, without yet saying which one is '
+    'lying. That distinction is what the sensor-versus-equipment discrimination '
+    'in Task 5 is built on: a broken sensor breaks every constraint it appears '
+    'in and leaves the others intact, while a broken machine moves whole groups '
+    'of constraints together.';
+
+COMMENT ON COLUMN app.constraint_residuals.constraint_id IS
+    'Local name of the mvn:Constraint in the semantic model, e.g. '
+    'MixedAirBalance. The expression evaluated is mvn:residualExpression on '
+    'that node, so this column is the join back to the physics that produced '
+    'the number.';
+
+COMMENT ON COLUMN app.constraint_residuals.residual IS
+    'The raw imbalance, in the natural unit of the expression — degrees for the '
+    'air-side balances, watts for the chiller energy balances. Kept unscaled so '
+    'the number stays physically interpretable: three degrees of mixed air '
+    'error means three degrees, whatever the normalisation says.';
+
+COMMENT ON COLUMN app.constraint_residuals.normalised IS
+    'The raw residual restated as a robust standard-score against how that same '
+    'constraint behaves during fault-free operation: the fault-free median '
+    'subtracted, then divided by a spread estimated from the median absolute '
+    'deviation. Needed because the raw residuals are not comparable — one is in '
+    'degrees and sits near zero, another is in watts and sits near a hundred '
+    'thousand — and a diagnosis has to rank them against each other. Robust '
+    'statistics rather than mean and standard deviation because the fault-free '
+    'run still contains outliers and a single excursion would otherwise inflate '
+    'the scale and hide everything after it.';
+
+COMMENT ON COLUMN app.constraint_residuals.input_quality IS
+    'The LOWEST quality score among the readings the expression consumed. A '
+    'residual is only as trustworthy as its worst input, and without this a '
+    'diagnosis could not tell a genuine violation of physics from one sensor '
+    'having died.';
+
+
+-- =====================================================================
 -- GROUNDTRUTH — the answer key
 -- =====================================================================
 
