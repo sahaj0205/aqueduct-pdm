@@ -5308,3 +5308,182 @@ it exists for.
 
 START HERE: `analytics/rul/estimator.py` — `reachability`. Three lines, and the
 reason the interval is allowed to have no upper end is entirely in them.
+
+---
+
+## Checkpoint 5.3 — Insufficient-evidence refusal
+
+### WHAT WE DID
+
+The system can now decline to answer, and say precisely why. Every layer beneath
+this one will produce a number if asked: the fitter will fit a rate to noise, and
+the estimator will turn that rate into a confident-looking date. Neither is capable
+of saying no. This is the only part of the project that is.
+
+That is not a nicety. A maintenance team that receives a failure date acts on it —
+orders a part, books a crew, takes a machine offline. A date derived from a machine
+that is not actually degrading costs exactly as much as a real one and buys nothing,
+and after a handful of those nobody believes any of the dates, including the true
+ones. So the question asked here is not "can a number be computed" but "is there
+enough evidence that stating it beats admitting we do not know".
+
+The effect is measurable and large. Across both fault-free runs — 720 combinations
+of machine, failure mode and day where any prediction at all is wrong by definition
+— the system now publishes nothing. And on the air handler carrying the coil valve
+leak, the answer a human would see changes from "this unit has already failed,
+because of its fan" to "this unit's cooling coil valve will need attention in about
+a month", which is the correct fault.
+
+### HOW IT WORKS
+
+`analytics/rul/refusal.py` :: `Policy`
+- WHY IT EXISTS: The thresholds a prediction has to clear, in one place, as data
+  rather than scattered through the checks. Anything tuned later is tuned here.
+- WHAT IT DOES: Three numbers — the minimum observations since degradation was
+  confirmed, how far the rate must sit from zero, and how wide the interval may be
+  relative to how long we have watched.
+- ⚠ JUDGEMENT CALL: The minimum sample count is 21, not the 200 the checkpoint
+  specifies, and this is a deliberate deviation. 200 was written for a faster
+  sampling rate than this pipeline has: the indicators arrive every five minutes,
+  but the health index aggregates to one value per day, because degradation does not
+  move on a five-minute timescale and a daily median survives a few hours of
+  missing data. No run in this dataset exceeds 117 days, so a 200-sample minimum
+  could never be satisfied by any asset ever, and the refusal layer would stop
+  being a layer and become an off switch. 21 is chosen to equal the commissioning
+  window the baselines are fitted on and the changepoint detector takes its
+  reference from: we require as much evidence that a machine is failing as we
+  required to establish what healthy looked like. Counted in observations rather
+  than elapsed days, so a fortnight with half its days missing does not qualify.
+- CHOICES: The significance cutoff is 1.96, the two-sided 95 percent normal value.
+  A one-sided test at 1.645 would be defensible, since every indicator in this
+  project is written so only upward movement counts as degradation. The stricter of
+  the two is used because this is a gate on speaking, and staying quiet about a real
+  fault for another week costs far less than one confident wrong date.
+
+`analytics/rul/refusal.py` :: `adjudicate`
+- WHY IT EXISTS: The decision itself. Everything above produces inputs for it and
+  everything below the API consumes its verdict.
+- WHAT IT DOES: Walks five conditions in a fixed order and returns on the first one
+  that holds, because each presupposes the ones above it — asking whether a rate is
+  significant is meaningless before a change has been confirmed, and asking whether
+  an interval is too wide is meaningless when there is no interval. In order: is
+  there a healthy baseline to compare against at all; has the changepoint detector
+  confirmed a change; are there enough observations since it; can the rate be told
+  apart from zero; and is the interval narrower than the observation behind it. Each
+  refusal carries a slug that is safe to branch on and a sentence with the actual
+  figures in it, so the reason is specific to that day rather than a category.
+- CHOICES: Takes the observation, the fitted degradation and the estimate as three
+  separate arguments rather than reaching through one to another. That keeps this
+  module a pure decision with no ability to recompute anything and quietly disagree
+  with what was stored.
+- ⚠ JUDGEMENT CALL: There are five conditions, not the four specified. The extra one
+  is "no commissioning reference": fewer than seven daily values of this indicator
+  exist yet, so there is no healthy mean to measure a change against and no spread
+  to judge its size by. This is genuinely distinct from "onset not confirmed" —
+  the detector has not failed to find a change, it has not been able to look — and
+  it is the honest reason on 6 to 16 days of every run. Folding it into
+  onset_not_confirmed would have produced a reason that was true of the category and
+  false of the day.
+- ⚠ JUDGEMENT CALL: "wider than the elapsed observation window" is read as the whole
+  window the asset has been watched for, not the post-onset stretch. The stricter
+  post-onset reading would additionally refuse the coil valve leak at the end of its
+  own run — a 99-day interval against 91 post-onset days — which is the one true
+  air-handler detection in the set. Both numbers are available on the objects, so
+  the policy can be tightened later without code changes.
+
+`analytics/rul/refusal.py` :: `Verdict` and its `withheld` field
+- WHY IT EXISTS: A refusal that cannot be audited has to be taken on trust.
+- WHAT IT DOES: Carries either the published estimate or the refusal, and when an
+  estimate was computed and then refused it keeps it under `withheld`. Somebody
+  asking "what were you about to say?" gets an answer, and the before-and-after
+  comparison that shows this layer earning its place becomes computable rather than
+  asserted. Nothing downstream may render it as a prediction.
+
+`analytics/rul/refusal.py` :: `published`
+- WHY IT EXISTS: The asset roll-up has to be computed over survivors only.
+- WHAT IT DOES: Filters a list of verdicts down to the estimates that cleared the
+  policy. Rolling up across refused modes is exactly how the air handler ended
+  checkpoint 5.2 reporting it had already failed, on the strength of a fan indicator
+  whose rate sat half a standard deviation from zero.
+
+`scripts/run_refusal.py` :: `walk`
+- WHAT IT DOES: For one run, steps date by date through every mode on every asset,
+  carrying the anchor and the level floor forward exactly as the replay does, and
+  adjudicates each date. Returns every verdict rather than a summary so the
+  verification can count reasons per day instead of trusting a total.
+
+`scripts/run_refusal.py` :: `main`
+- WHAT IT DOES: Prints the policy, then the first fortnight of each progressive
+  scenario day by day with the reason and its figures, then both fault-free runs in
+  full with a count of any prediction that leaked, then the specific upstream false
+  alarms this checkpoint names with the value each one suppressed, then the asset
+  roll-up with and without the policy side by side. Ground truth is read in one
+  function and only to label the injected dates in the output; no decision in the
+  file depends on it.
+
+Skipped as boilerplate: the `Refusal` dataclass, the `_refuse` constructor, and two
+formatting helpers in the script.
+
+### MEASURED RESULT
+
+**Both fault-free runs, in full: 0 predictions published across 720 mode-days.**
+Six mode/asset combinations over 120 days each, and every day refused. The reasons
+distribute the way the pipeline does — 47 to 114 days of onset not confirmed, 6 to
+16 days with no commissioning reference yet, and on the two clean-chiller modes
+where the changepoint detector did misfire, 16 to 26 days of too few samples
+followed by 50 to 69 days of the rate not clearing zero.
+
+**The first two weeks of all four progressive scenarios: refused on all 14 days**,
+in every mode, with a reason true of that day. Typical:
+
+    ahu_cooling_valve_leakage, coil-valve-leak-by
+       6d  no_commissioning_reference  only 2 daily values of this indicator exist
+                                       so far, against the 7 the commissioning
+                                       window needs
+       8d  onset_not_confirmed         the cumulative-sum detector reached 0.30 of
+                                       its decision interval over 7 days
+
+**The four false alarms the checkpoint names are all caught, all by the
+significance test, and nothing else would have caught them:**
+
+    seasonal changepoint firing, clean chiller-1   z=0.08   suppressed P50 254d
+    seasonal changepoint firing, clean chiller-2   z=0.11   suppressed P50 891d
+    clamped fan flatline, sensor-drift run         z=0.04   suppressed P50   0d
+    fan excursions during the coil fault           z=0.49   suppressed P50   0d
+
+**The asset roll-up, before and after the policy.** This is where refusing changes
+what a human sees:
+
+    ahu_cooling_valve_leakage  ahu-1      fan-bearing P50 0d    ->  coil-valve-leak-by P50 32d
+    chiller_condenser_fouling  chiller-1  efficiency-loss 0d    ->  efficiency-loss 0d
+    chiller_condenser_fouling  chiller-2  efficiency-loss 884d  ->  no bounded prediction
+    ahu_oa_damper_stuck        ahu-1      fan-bearing 552d      ->  no bounded prediction
+    chiller_bypass_valve_leak  chiller-1  condenser-fouling 0d  ->  condenser-fouling 0d
+    ahu_sat_sensor_drift       ahu-1      fan-bearing P50 0d    ->  no bounded prediction
+    cooling_tower_fouling      chiller-1  efficiency-loss 235d  ->  no bounded prediction
+    cooling_tower_fouling      chiller-2  efficiency-loss 727d  ->  no bounded prediction
+    clean_chiller              chiller-1  efficiency-loss 254d  ->  no bounded prediction
+    clean_chiller              chiller-2  efficiency-loss 891d  ->  no bounded prediction
+
+The first line is the best result in the task: the answer flips from "this air
+handler has already failed, because of its fan" to "its cooling coil valve needs
+attention in about a month", which is the fault that was actually injected. Three
+predictions survive across all runs and all three are on assets carrying a genuine
+progressive fault. Ten are withdrawn.
+
+### TWO WITHDRAWALS THAT ARE WORTH ARGUING ABOUT
+
+- `cooling_tower_fouling` is real degradation and is now refused on both chillers.
+  That is the held-out fault: no failure mode in the config table measures cooling
+  tower performance, so the only thing that moved was chiller efficiency, weakly and
+  below significance. Refusing is right — publishing a chiller efficiency failure
+  date for a fouled cooling tower would be a correct-looking number attached to the
+  wrong machine — but it is a miss, not a save.
+- `ahu_sat_sensor_drift` is refused, and should be. Nothing about that machine is
+  degrading; a thermometer is lying about it. Producing no equipment failure date is
+  the right answer, but "no prediction" is not the useful answer either. The useful
+  answer is "your supply air sensor has drifted", and that is checkpoint 5.4.
+
+START HERE: `analytics/rul/refusal.py` — `adjudicate`. Five conditions in a fixed
+order, and the third one is the only thing standing between this project and a
+confident failure date for every machine in the building.

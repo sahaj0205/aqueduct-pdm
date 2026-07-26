@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul api web
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal api web
 
 # Resolve and install the Python environment into .venv
 install:
@@ -121,6 +121,12 @@ degradation:
 # ground-truth read happens after every number it scores has been written.
 rul:
 	uv run python scripts/run_rul.py
+
+# Show the refusal layer declining to predict and giving the specific reason: the
+# first two weeks of every progressive scenario, the whole of both fault-free runs,
+# the named upstream false alarms, and the asset roll-up before and after the policy.
+refusal:
+	uv run python scripts/run_refusal.py
 
 # Serve the API on :8000
 api:
