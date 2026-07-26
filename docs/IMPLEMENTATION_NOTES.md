@@ -3487,3 +3487,344 @@ D-05 is the only place in the log where a recommendation of mine is recorded as
 having been overruled and the overrule as having been correct. The Outcome of
 D-01 is the one piece of live technical debt the project is carrying, with the
 measurement that quantifies it and the hour it would cost to clear.
+
+## Checkpoint 4.1 — Condition-normalised baselines, air handler only
+
+### WHAT WE DID
+
+The system can now say what a healthy air handler *should* be doing right now,
+given what is being asked of it, and report how far the real one is from that.
+Before this it could only compare readings against fixed limits. That difference
+matters because almost every quantity worth watching moves far more with
+operating conditions than with equipment health: a supply fan drawing 900 watts
+is alarming at half airflow and unremarkable at full airflow, so a fixed limit
+fires on the busy afternoon rather than on the failing bearing, and a team fed
+those alerts stops reading them.
+
+Two models are fitted, one for fan electrical power and one for supply air
+temperature, using three weeks of operation at the start of each run as the
+definition of healthy. Both are written in the form of the physics the equipment
+actually obeys rather than as generic curve fits, so their coefficients are
+readable quantities — coil authority, fan temperature rise — and they behave
+sensibly just outside the conditions they were fitted on. The gap between what
+each model expects and what the sensors report is stored for every instant the
+unit is running, and that gap, not the raw reading, is what the health index and
+the remaining-life prediction will consume.
+
+### HOW IT WORKS
+
+    scripts/schema.sql :: app.residuals
+      WHY IT EXISTS: The store every layer above the baselines reads from. A raw
+        supply air temperature of 15 degrees means nothing on its own; the same
+        number is correct on a mild morning and alarming on a hot afternoon. Once
+        the operating conditions have been subtracted out, a number near zero
+        means the equipment is doing what its own commissioning data says it
+        should, whatever the weather is doing, and that is a statement the health
+        index can act on.
+      WHAT IT DOES: One row per modelled point per instant, holding the
+        observation, what the baseline predicted, the difference, the difference
+        restated in standard deviations of the model's own error, and the worst
+        quality score among the inputs. Both the observation and the prediction
+        are kept, not just the difference, because an engineer asked to trust a
+        residual will want to see the two numbers that produced it.
+      CHOICES: baseline_id is part of the unique key alongside point and time, so
+        a point can carry more than one model without the second silently
+        overwriting the first. Seven-day chunks, not the one-day interval
+        app.measurements uses — that interval is the debt recorded in AI_LOG.md
+        D-01, and this table starts on the right side of it. 163,374 rows land in
+        72 chunks across the four runs; a one-day interval would have made 480.
+
+    analytics/baselines/fit.py :: AHU_SPANS and COMMISSIONING_DAYS
+      WHY IT EXISTS: A baseline has to be fitted on data somebody is willing to
+        call healthy, and something has to say which data that is. In a real
+        building it is "the unit was serviced on this date"; here it is
+        configuration.
+      WHAT IT DOES: Names the air handler's four 120-day runs with their start
+        and end, and sets the commissioning window to the first 21 days of each.
+        One set of baselines is fitted per run and applied across that run only.
+      CHOICES: 21 days at a five-minute cadence gives about 3,100 to 3,800 usable
+        samples against three or four fitted parameters, which is ample. Fitting
+        per run rather than once globally is what makes a residual a statement
+        about drift WITHIN a run — each run starts from its own zero, so a
+        residual that grows means the equipment has moved away from where it was
+        three weeks ago, not that two runs were simulated in different seasons.
+      ⚠ JUDGEMENT CALL: These windows coincide exactly with the pre-onset period
+        of each scenario, because that is how the scenarios were built, and that
+        is said plainly in the module docstring rather than left to be noticed.
+        The declaration is an input to the system, not an answer: it says nothing
+        about which fault is coming or whether one is coming at all, and the
+        clean run carries the identical declaration. Nothing in the module reads
+        schema groundtruth, and nothing reads onset, fault mode or severity
+        waypoints from the scenario manifests. The alternative was to discover
+        run boundaries from gaps in the data and take the first three weeks of
+        each, which reaches the same four windows without naming them; it was
+        rejected as machinery for its own sake, since the dates are already
+        hardcoded the same way in the quality scorer and the constraint
+        evaluator.
+
+    analytics/baselines/fit.py :: CHILLED_WATER_SUPPLY_C
+      WHY IT EXISTS: The coil model needs a cold-side temperature or it has no
+        driving temperature difference to work with. The air handler does not
+        measure one. The LBNL single-duct dataset publishes 30 columns and not
+        one is water side — the coil is instrumented with a valve position and
+        nothing else.
+      WHAT IT DOES: Stands in a constant 6.7 degC wherever the chilled water
+        supply temperature would appear.
+      CHOICES: It costs very little, and that was measured rather than assumed:
+        sweeping the assumed value from 4 to 8 degC moves the fit R-squared by
+        less than 0.003 and the residual spread by 0.02 K, because the
+        effectiveness coefficients rescale to absorb whatever value is chosen.
+        6.7 degC is the standard design chilled water supply temperature for
+        commercial coils, and the chiller plant in this same project holds its
+        own primary supply setpoint between 6.67 and 6.74 degC.
+      ⚠ JUDGEMENT CALL: The rejected alternative was joining the chiller plant's
+        measured supply temperature. Two of the four air-handler runs begin
+        before the chiller data exists at all — the air handler record starts
+        2036-02-25 and the chiller record starts 2036-05-10 — and the two
+        datasets are independent LBNL simulations of different buildings, so the
+        join would assert a water connection that is not there. Raised and
+        confirmed before implementing.
+
+    analytics/baselines/fit.py :: RUN_GATE_POINT
+      WHY IT EXISTS: A baseline must only be fitted on instants when the machine
+        was actually running. A stopped fan draws no power and a coil with no air
+        over it has no supply temperature, and letting those rows into the fit
+        would define healthy as mostly-switched-off.
+      WHAT IT DOES: Gates on the supply fan's speed command being off its stop,
+        at 0.05.
+      ⚠ JUDGEMENT CALL: Deliberately NOT ahu-1.sf_status, which the rest of the
+        project uses. That point is not a fan status despite its name. It is
+        byte for byte identical to ahu-1.occupancy across all 138,240 samples of
+        the record — zero differing — and the fan runs during morning pull-down
+        while it still reads zero, 7,686 samples or 5.6 percent of the record.
+        Gating on it drops every start-up and every after-hours run out of the
+        fit. Checked against the speed command, which agrees with fan power
+        exactly: both select the same 3,780 running samples in the clean
+        commissioning window, where sf_status selects 3,276.
+
+    analytics/baselines/fit.py :: load_ahu_frame(conn, t_from, t_to)
+      WHY IT EXISTS: Pulls every point the two models need in one query and hands
+        back usable quality scores alongside the values, so no caller has to
+        remember to fetch trust separately from data.
+      WHAT IT DOES: Reads the six model points plus the run gate over a window,
+        pivots them into a frame indexed by time, then recomputes every quality
+        score with the staleness dimension discounted.
+      CHOICES: Staleness is discounted because it says a reading stopped
+        changing, not that it is wrong: a fan resting at full command for two
+        hours is scored badly for not moving and is still a correct statement of
+        where the fan is. This is not a general excuse — it was checked. Every
+        reading scoring below 70 in these windows is below 70 for staleness
+        alone, so judging on the raw composite would throw away real operating
+        points and nothing else.
+
+    analytics/baselines/fit.py :: fan_power_terms(flow, speed)
+      WHY IT EXISTS: Builds the design matrix for fan power. Fan power is the
+        quantity the bearing-degradation indicator in checkpoint 4.3 will be
+        built on, so how well it is modelled sets the noise floor for detecting a
+        worn fan.
+      WHAT IT DOES: Returns three columns — speed cubed, speed squared times
+        airflow, and speed times airflow squared — each of total degree three in
+        speed and airflow jointly.
+      CHOICES: This is the fan similarity law in its general form, which says the
+        dimensionless power coefficient is a function of the flow coefficient,
+        airflow divided by speed. Writing that function as a quadratic and
+        clearing denominators gives exactly these three terms. No intercept: at
+        zero speed the fan is stopped and draws nothing, and a fitted constant
+        would let the model claim otherwise. Enforcing that costs 0.0008 of
+        R-squared.
+      ⚠ JUDGEMENT CALL: The checkpoint asked for fan kW as a function of airflow
+        alone. That does not fit and cannot be made to. Airflow on its own
+        explains 15 to 55 percent of fan power depending on the window and the
+        fitted cubic coefficient comes out negative, which is physically
+        impossible. The reason is that the affinity law "power goes as the cube
+        of airflow" only holds along a FIXED system curve, and this is a
+        variable-air-volume unit whose system curve moves every time a terminal
+        box modulates. Adding speed takes R-squared from 0.146 to 0.989 on the
+        same rows. Conditioning on speed does not hide fan degradation, because a
+        worn bearing draws more power at matched speed AND flow. Raised and
+        confirmed before implementing.
+
+    analytics/baselines/fit.py :: supply_air_terms(mixed_air, valve, flow)
+      WHY IT EXISTS: Builds the design matrix for the cooling coil. This is the
+        model the coil leak-by indicator in checkpoint 4.3 rests on.
+      WHAT IT DOES: A cooling coil is a heat exchanger, and the standard
+        description of one is its effectiveness — the fraction of the available
+        temperature difference it actually delivers. The available difference is
+        between the air arriving at the coil and the water inside it, so the
+        cooling delivered is effectiveness times the gap from mixed air
+        temperature down to 6.7 degC, minus the heat the supply fan adds on the
+        way out. Effectiveness itself is not constant: it rises as the valve
+        opens and admits more water, and it falls as airflow rises, because
+        faster air spends less time against the tubes. The three effectiveness
+        columns are valve position, valve position squared and valve position
+        times airflow, each multiplied by that temperature gap; the fourth column
+        is a constant fan temperature rise.
+      CHOICES: Every effectiveness term carries valve position as a factor, which
+        forces effectiveness to zero when the valve is shut. A closed valve
+        delivers no cooling, and a model free to disagree with that would absorb
+        the coil-leak fault this baseline exists to expose. The fan rise is
+        fitted rather than computed from fan power and airflow, because the
+        published wattage and the published airflow are not on consistent scales
+        in this dataset and the computed rise comes out roughly six times too
+        small; fitted, it lands at 0.51 to 0.56 K in the winter windows, which
+        matches the 0.50 to 0.55 K measured directly with the valve shut.
+      CHOICES: Because the driving temperature difference enters multiplicatively
+        rather than as another additive term, the model cannot predict cooling
+        when there is nothing to cool with, and its error does not grow without
+        bound outside the fitted range. That is the "sane extrapolation" the
+        checkpoint asked for, and it is load-bearing: in the stuck-damper run
+        32.5 percent of mixed air temperatures fall outside the fitted range,
+        because the fault itself is what moves them there.
+
+    analytics/baselines/fit.py :: fit_supply_air_temp(...)
+      WHY IT EXISTS: Fits the coil model on one commissioning window.
+      WHAT IT DOES: Selects running, complete, trustworthy rows; checks the valve
+        actually moved during the window; then fits by ordinary least squares.
+      CHOICES: Fitted on the cooling the coil delivers — mixed air temperature
+        minus supply air temperature — rather than directly on supply air
+        temperature. The two carry identical information, but supply air
+        temperature is a controlled variable pinned near setpoint, so in a winter
+        window it barely varies and an R-squared measured against it reports how
+        flat the controller holds it rather than how good the model is. The same
+        fit scores 0.859 against supply air temperature and 0.994 against coil
+        duty in the February window. Duty has real range in every window, so the
+        statistic means the same thing in all four.
+      CHOICES: MIN_VALVE_RANGE of 0.10 refuses the fit if the valve never moved,
+        because every effectiveness term is multiplied by valve position and a
+        window with the valve always shut carries no information about coil
+        authority at all. Not triggered by any of the four windows — the
+        narrowest spans 0.69 — so it is a guard, not a filter.
+
+    analytics/baselines/fit.py :: _solve(...)
+      WHY IT EXISTS: The single place least squares is called, so every baseline
+        reports the same statistics computed the same way.
+      WHAT IT DOES: Solves for the coefficients, then measures R-squared, the
+        standard deviation of the fit errors, and their median.
+      CHOICES: The centre is a median and the scale is a plain standard
+        deviation, and mixing the two is deliberate. The median guards the offset
+        — a handful of start-up transients would drag a mean off zero and bake a
+        permanent bias into every residual measured against it. The scale
+        deliberately does NOT use a median absolute deviation, which is what the
+        constraint residuals in checkpoint 3.5 use.
+      CHANGED FROM BEFORE: The first version did use a median absolute deviation
+        for the scale, for consistency with 3.5, and it was wrong. These error
+        distributions mix two regimes — in steady operation the model is very
+        accurate, in the minutes after a fan start it is not — and the measured
+        kurtosis runs from 30 to 250 against 3 for a normal distribution. The
+        robust estimator sees only the steady regime: on the clean window it
+        reported a spread of 0.55 watts where the standard deviation reported 24.
+        Normalising on that turned every ordinary morning start-up into a
+        fifty-sigma event and put the clean run's 95th percentile at 53.9 sigma.
+        On the standard deviation the same run sits at 1.23. The reason 3.5 goes
+        the other way is that it has no fitted model and so no fit-error scale
+        available, and has to estimate spread from the raw residuals themselves,
+        where one excursion really would dominate.
+
+    analytics/baselines/fit.py :: predict(baseline, values)
+      WHY IT EXISTS: Applies a fitted baseline to arbitrary rows, which is what
+        turns a fit into a continuously computed expectation.
+      WHAT IT DOES: Rebuilds the design matrix from the drivers at each instant
+        and multiplies by the coefficients. For the coil it converts back: the
+        model predicts how much cooling the coil delivers, so the predicted
+        supply air temperature is the measured mixed air temperature minus that
+        cooling.
+
+    analytics/baselines/residual.py :: compute(baseline, values, quality)
+      WHY IT EXISTS: Produces the rows that everything downstream consumes.
+      WHAT IT DOES: Predicts at every instant, subtracts prediction from
+        observation, divides the result by the model's own error spread after
+        removing its median offset, and records the worst quality score among the
+        observation and every driver.
+      CHOICES: Instants when the fan is off are dropped, not stored as zero.
+        Recording a manufactured zero for every night would put a long flat run
+        into the health index and flatten any real trend it was meant to see.
+      CHOICES: Input quality is stored rather than used to filter. A residual
+        computed from a doubtful reading stays visible downstream with its score
+        attached instead of quietly vanishing, which is the same choice the
+        constraint residuals make.
+
+    analytics/baselines/residual.py :: write_residuals(...)
+      WHY IT EXISTS: Puts the residuals in the database.
+      WHAT IT DOES: Deletes this baseline's rows over the window, then binary
+        COPYs the new ones.
+      CHOICES: Deleted and rewritten rather than merged, like every other derived
+        table here: these rows are a function of the measurements and the fitted
+        model, so a row left over from a previous fit describes a baseline that
+        no longer exists. Non-finite values are written as NULL rather than NaN,
+        which is neither SQL nor a measurement.
+
+    scripts/plot_baselines.py :: main()
+      WHY IT EXISTS: The verification for this checkpoint.
+      WHAT IT DOES: Refits every baseline on every run and prints R-squared and
+        residual spread; summarises the stored residuals over each whole run;
+        splits the coil-leak run at the end of its commissioning window to show
+        before against after; and draws both baselines for the clean run beside
+        the coil-leak run, with the fitted window shaded.
+      CHOICES: Daily medians with an interquartile band rather than raw points —
+        22,374 five-minute samples over four months is unreadable as a scatter,
+        and the band keeps the spread visible rather than smoothing it away.
+
+### MEASURED RESULT
+
+Fits, one set per run, on the first 21 days of each:
+
+    run                        baseline                     R2   resid sd  unit
+    ahu_cooling_valve_leakage  fan-similarity          0.98909    20.6764  watt
+    ahu_cooling_valve_leakage  coil-effectiveness      0.99395     0.2276  degC
+    ahu_oa_damper_stuck        fan-similarity          0.97688    26.3223  watt
+    ahu_oa_damper_stuck        coil-effectiveness      0.99588     0.2403  degC
+    ahu_sat_sensor_drift       fan-similarity          0.98354    24.0224  watt
+    ahu_sat_sensor_drift       coil-effectiveness      0.99094     0.2931  degC
+    clean_ahu                  fan-similarity          0.98354    24.0224  watt
+    clean_ahu                  coil-effectiveness      0.99094     0.2931  degC
+
+The sat-drift and clean runs fit identically because both scenarios are built
+from the same source window and neither has a fault injected during its first
+21 days. That is a consistency check passing, not a duplicate.
+
+Flat against drifting, measured as the swing in 30-day medians across each run
+and expressed in that fit's own error spread:
+
+    run                        baseline              swing    in sigma
+    clean_ahu                  coil-effectiveness   0.027 K       0.09
+    clean_ahu                  fan-similarity       0.824 W       0.03
+    ahu_cooling_valve_leakage  coil-effectiveness   0.456 K       2.00
+    ahu_cooling_valve_leakage  fan-similarity       3.669 W       0.18
+
+The leak's coil residual runs +0.025, +0.118, -0.153, -0.338 degC across its
+four 30-day windows: monotone downward after the commissioning window, and
+negative, which is the right sign. A leaking valve admits chilled water the model
+does not know about, so the air leaves colder than the model predicts; where the
+coil is modulating, the controller closes the valve to compensate, the model sees
+a smaller opening, predicts less cooling, and the residual goes negative by the
+same mechanism.
+
+The fan residual is the control. It barely moves on either run — 0.18 sigma on
+the leaking run against 0.09 sigma for the coil on the clean one — which is what
+rules out the coil drift being a generic seasonal or extrapolation artifact of
+fitting on three weeks, since an artifact of the method would move both.
+
+- 163,374 residual rows written across the four runs, in 13 seconds.
+- Extrapolation beyond the fitted driver range is small on three runs: 0.2 to
+  5.7 percent of samples outside the fitted range on the coil-leak run, 0.1 to
+  4.9 percent on the two summer runs. On the stuck-damper run 32.5 percent of
+  mixed air temperatures fall outside it, because the fault is what puts them
+  there — the case the physics form was chosen to survive.
+- 5.3 percent of the coil-leak run's fan residuals exceed 100 watts against 1.7
+  percent on the clean run. Fan starts are over-represented among them by four
+  times — 29 percent of the large residuals fall in the first hour after a start,
+  which is 7 percent of the rows — so start transients account for part of it and
+  not all of it. The daily medians are unaffected.
+
+### FINDING, NOT PART OF THIS CHECKPOINT
+
+`ahu-1.sf_status` is not a fan status. It is identical to `ahu-1.occupancy` in
+all 138,240 samples, and the fan runs while it reads zero in 7,686 of them. The
+constraint run gates in `analytics/rules/constraints.py` and the operating-mode
+classifier in `analytics/rules/mode.py` both gate on it, so both are currently
+blind to morning pull-down and after-hours operation. Not changed here — it is
+Task 3 code and outside this checkpoint.
+
+START HERE: `analytics/baselines/fit.py` — the two design-matrix functions are
+the whole checkpoint. Everything else loads rows for them or stores what comes
+out.

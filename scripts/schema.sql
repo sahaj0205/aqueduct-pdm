@@ -377,6 +377,80 @@ COMMENT ON COLUMN app.constraint_residuals.input_quality IS
 
 
 -- =====================================================================
+-- APP — baseline residuals
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS app.residuals (
+    time           TIMESTAMPTZ       NOT NULL,
+    point_id       TEXT              NOT NULL
+                                     REFERENCES app.points(point_id)
+                                     ON DELETE CASCADE,
+    baseline_id    TEXT              NOT NULL,
+    observed       DOUBLE PRECISION,
+    expected       DOUBLE PRECISION,
+    residual       DOUBLE PRECISION,
+    normalised     DOUBLE PRECISION,
+    input_quality  SMALLINT          CHECK (input_quality IS NULL
+                                            OR input_quality BETWEEN 0 AND 100),
+    UNIQUE (point_id, baseline_id, time)
+);
+
+-- Seven-day chunks, not the one-day interval app.measurements uses. That
+-- interval is the technical debt recorded in AI_LOG.md entry D-01: this project
+-- holds several thousand days of simulated time, so daily chunks produce
+-- thousands of them and a query that forgets its time range spends over half a
+-- minute in the planner before reading a row.
+SELECT create_hypertable(
+    'app.residuals',
+    by_range('time', INTERVAL '7 days'),
+    if_not_exists => TRUE
+);
+
+CREATE INDEX IF NOT EXISTS residuals_baseline_time_idx
+    ON app.residuals (baseline_id, time DESC);
+
+COMMENT ON TABLE app.residuals IS
+    'How far a modelled point sits from what its own operating conditions say it '
+    'should be, one row per point per instant. A fixed threshold on a raw signal '
+    'fires whenever conditions are unusual rather than when the equipment is '
+    'unhealthy -- a fan drawing 900 watts is alarming at low airflow and '
+    'unremarkable at high airflow, and a threshold cannot tell the two apart. '
+    'Subtracting a baseline fitted against the drivers removes the part of the '
+    'signal that operating conditions explain, and what is left is the part that '
+    'has to be explained by the state of the machine. Everything from the health '
+    'index onward consumes these rows rather than the raw measurements.';
+
+COMMENT ON COLUMN app.residuals.baseline_id IS
+    'Which fitted model produced the expectation, e.g. '
+    'ahu-1.sf_power.fan-similarity. A point can carry more than one baseline, so '
+    'this is part of the key: without it a second model of the same sensor would '
+    'silently overwrite the first.';
+
+COMMENT ON COLUMN app.residuals.expected IS
+    'What the baseline predicted at this instant given the drivers measured at '
+    'this instant. Stored alongside the observation rather than only the '
+    'difference, because an engineer asked to trust a residual will want to see '
+    'both numbers that produced it.';
+
+COMMENT ON COLUMN app.residuals.residual IS
+    'observed minus expected, in the natural unit of the point -- watts for fan '
+    'power, degrees for supply air temperature. Kept unscaled so it stays '
+    'physically interpretable.';
+
+COMMENT ON COLUMN app.residuals.normalised IS
+    'The residual restated as robust standard deviations of how that same '
+    'baseline scattered across its own fit window: the fit-window median '
+    'subtracted, then divided by a spread from the median absolute deviation. '
+    'Needed because a 200 watt fan residual and a 2 degree temperature residual '
+    'are not comparable until both are expressed against their own noise.';
+
+COMMENT ON COLUMN app.residuals.input_quality IS
+    'Lowest quality score among the readings that went into the prediction and '
+    'the observation, ignoring the staleness dimension. A residual is only as '
+    'trustworthy as its worst input.';
+
+
+-- =====================================================================
 -- GROUNDTRUTH — the answer key
 -- =====================================================================
 

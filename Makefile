@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals api web
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines api web
 
 # Resolve and install the Python environment into .venv
 install:
@@ -87,6 +87,13 @@ chiller-rules:
 residuals:
 	uv run python -m analytics.rules.constraints
 	uv run python scripts/plot_residuals.py
+
+# Fit the air-handler baselines on the commissioning window at the start of each
+# run, store observed-minus-expected for every modelled point, then report every
+# fit and plot the clean run against the coil valve leak.
+baselines:
+	uv run python -m analytics.baselines.residual
+	uv run python scripts/plot_baselines.py
 
 # Serve the API on :8000
 api:
