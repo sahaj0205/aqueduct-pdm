@@ -5487,3 +5487,256 @@ progressive fault. Ten are withdrawn.
 START HERE: `analytics/rul/refusal.py` — `adjudicate`. Five conditions in a fixed
 order, and the third one is the only thing standing between this project and a
 confident failure date for every machine in the building.
+
+---
+
+## Checkpoint 5.4 — Sensor versus equipment discrimination
+
+### WHAT WE DID
+
+The system can now tell a lying instrument from a worn machine. That distinction is
+the whole point of the layer: sent for equipment when it is a sensor, somebody
+dismantles a healthy cooling coil; sent for a sensor when it is equipment, somebody
+recalibrates a thermometer that was telling the truth and the machine carries on
+failing. Before this, both looked the same — supply air temperature not where the
+controller wants it — and the system had no way to choose.
+
+It works by asking a falsifiable question rather than pattern-matching. Every
+relation between measurements that ought to hold is written down. When some of them
+stop holding, the system asks whether there is ONE measurement such that assuming it
+reads consistently wrong makes all of them hold again. If yes, that instrument is
+the suspect and the machine is probably fine. If no single measurement can do it —
+if fixing one relation would break another the same measurement appears in — then
+the measurements are agreeing with each other and the machine is what changed.
+
+Two things fall out that were not designed in. An actuator that will not obey its
+own command is a third kind of fault, distinct from both, and it is detectable
+without any reference at all. And "we cannot tell" is a real outcome with a real
+cause: a measurement that appears in only one relation can always be blamed for it,
+so blaming it carries no information. Saying so is more useful than guessing,
+because the fix is known — one more relation covering that point makes the case
+decidable.
+
+### HOW IT WORKS
+
+`analytics/diagnosis/isolation.py` :: `constraint_relations`
+- WHY IT EXISTS: Turns the stored physics residuals into the rows of a linear system.
+- WHAT IT DOES: For each constraint touching the asset, reads its residual over both
+  windows and records how far the mean has moved. Violation is always a SHIFT, never
+  a departure from zero, because these constraints deliberately do not close at zero
+  — the chiller energy balance is documented as being out by about 99 kW because the
+  source simulation's own reported power disagrees with its own thermal terms.
+- ⚠ JUDGEMENT CALL: The reference window is the FAULT-FREE run at the same time of
+  year, not the commissioning window at the start of the same run. That was the
+  original design and it was badly wrong. The coil-leak run starts in late February
+  and its fault is developed by May, so comparing the two put the mixed air balance
+  out by −2.36 K, about two of its own spreads, and every bit of it was the seasons
+  changing — outdoor air is a term in that relation and February in Chicago does not
+  resemble June. Season-matched, the same shift is +0.03 K. The cost of the fix is
+  that a run with no season-matched fault-free counterpart cannot use this test; the
+  stuck-damper run is one, and its output says so.
+
+`analytics/diagnosis/isolation.py` :: `baseline_relations`
+- WHY IT EXISTS: This is the checkpoint. Without it the key test cannot be done at
+  all, and finding that out was most of the work.
+- WHAT IT DOES: Treats every condition-normalised baseline from checkpoint 4.1 as a
+  relation. A baseline says a point should read what its drivers predict, so observed
+  minus expected ought to sit at zero exactly like a constraint residual — and its
+  derivative with respect to its own target point is exactly plus one, needing no
+  differentiation and no fitted coefficients to know.
+- CHOICES: Supply air temperature appears in exactly ONE physical constraint, the
+  coil energy balance. One relation with one suspect can always be reconciled by
+  biasing that suspect: one equation, one unknown, no way to be wrong. So on the
+  constraints alone the supply air sensor is unfalsifiable and BOTH faults come out
+  as "a sensor explains it". It is the target of two baselines, which takes it from
+  one relation to three and makes it falsifiable. The measured separation:
+
+      relation                        d/d(sa_temp)    drift     leak
+      CoilEnergyBalance                    -1        -2.11s   -0.03s
+      sa_temp.shut-valve-supply-air        +1       +12.18s   -7.91s
+      sa_temp.coil-effectiveness           +1       +11.92s   -1.11s
+
+  One bias reproduces the drift column. The leak column disagrees in sign.
+- ⚠ JUDGEMENT CALL: The spread each shift is measured against is NOT the spread over
+  the reference window. For a baseline that is an in-sample fit error — those are the
+  very points the coefficients were chosen to pass through — and using it made the
+  drift's two baseline relations read as 12.7 and 12.0 sigma while a hypothesis
+  explaining 94 percent of everything was still rejected, because five percent of
+  twelve sigma is three sigma. The honest scale is the baseline's own fitted residual
+  spread, recovered from the ratio of the stored raw and normalised columns, which is
+  exact because one is a linear transform of the other. Driver points are left
+  undifferentiated: their sensitivities would need the fitted coefficients, and every
+  driver in this model appears in a physical constraint anyway.
+
+`analytics/diagnosis/isolation.py` :: `constraint_sensitivities`
+- WHY IT EXISTS: How much a relation moves per unit of bias is its partial
+  derivative, and the code needs those without anybody deriving them by hand.
+- WHAT IT DOES: Nudges one point's values up and down and re-evaluates the compiled
+  expression, at every instant, averaging the central difference over the window.
+  Averaging matters because these are not all linear: the coil balance multiplies
+  valve position by a temperature difference, so its sensitivity to mixed air
+  temperature is one minus the valve position and changes through the day.
+- CHOICES: Numerical rather than symbolic so that editing a constraint in the .ttl
+  needs no corresponding code change — the same reason the residuals themselves are
+  evaluated from the expression rather than reimplemented.
+
+`analytics/diagnosis/isolation.py` :: `feedback_gaps`
+- WHY IT EXISTS: A commanded actuator is its own redundant measurement, and this is
+  the only test in the layer that needs no reference and no baseline.
+- WHAT IT DOES: Pairs each point with its `_cmd` sibling by naming convention — Brick
+  has no way to say "commanded value of" — and measures how far position sits from
+  command. Two opposite uses: a large gap is a control fault, and a small gap
+  EXONERATES that position sensor. On the drift run, isolation wanted to blame the
+  chilled water valve for reading 0.217 high; its command sitting 0.0013 away said
+  otherwise, and the hypothesis was struck out without any physics being consulted.
+
+`analytics/diagnosis/isolation.py` :: `isolate` and `Hypothesis.verdict`
+- WHY IT EXISTS: The sweep that produces the evidence a human reads.
+- WHAT IT DOES: Builds the violation vector and sensitivity matrix with every row
+  divided by that relation's own spread — without which the chiller energy balance in
+  watts, running to six figures, would drown every air-side relation in kelvin and
+  the least squares would only ever be about the chiller. Then for each point solves
+  the one-unknown least squares, and records the implied bias, the fraction of the
+  violation removed, and what it would do to every relation the point touches.
+- ⚠ JUDGEMENT CALL: A hypothesis is falsified when applying it would make some
+  relation the point appears in MORE inconsistent than it already was. The first
+  version demanded the leftover fall under one sigma, which is really demanding 92
+  percent accuracy per relation on a 12-sigma violation, and it rejected the correct
+  answer. Getting worse is the right test because it is scale-free and it is what
+  contradiction looks like: on the leak, a bias chosen to fix the shut-valve baseline
+  pushes the coil-effectiveness baseline from −1.11 sigma to +2.88, flipping its sign.
+- ⚠ JUDGEMENT CALL: A second requirement is that at least two VIOLATED relations
+  agree on the bias, not merely that the point appears in two relations. One violated
+  relation corroborates nothing — every point in it explains all of it by
+  construction. Condenser fouling is the case that forced this: fouling genuinely
+  raises compressor power, so "the meter reads 63 kW high" is arithmetically
+  indistinguishable from "the machine now draws 63 kW more" from that relation alone,
+  and the energy balance would be pushed to 0.95 sigma by the bias — just under the
+  threshold for being called worse. Without this the fouled chiller was diagnosed as
+  a faulty power meter.
+
+`analytics/diagnosis/isolation.py` :: `sparse_reconciliation`
+- WHAT IT DOES: Coordinate descent on the L1-penalised least squares over all points
+  at once, soft-thresholding each coefficient to exactly zero when its fit is smaller
+  than the penalty. Answers a different question from the sweep: not "which one
+  point" but "how MANY points have to be wrong". A fault needing several sensors
+  simultaneously wrong is not a sensor fault. On the drift run it puts +2.415 on
+  supply air temperature and +0.001 on everything else, which is the sweep's answer
+  arrived at independently.
+
+`analytics/diagnosis/coherence.py` :: `locality`
+- WHY IT EXISTS: The independent second opinion. Isolation asks whether a bias can be
+  made to FIT; this asks a purely structural question about WHERE the trouble sits,
+  fitting nothing.
+- WHAT IT DOES: Sums the violation carried by relations containing the candidate, and
+  divides by the violation across its whole neighbourhood — every relation reachable
+  through points it shares a relation with. Near one means the trouble is confined to
+  relations this point can explain. Near zero means its neighbours are as upset as it
+  is and a bias on it cannot be the story. The drift scores 1.00.
+- ⚠ JUDGEMENT CALL: Computed on residuals, not on raw readings, and the obvious
+  reading of the checkpoint's wording is the raw one. It does not work: these air
+  handlers run closed loops, so when the supply air sensor drifts high the controller
+  opens the chilled water valve until the READING returns to setpoint. Mean valve
+  position goes from 0.310 fault-free to 0.445 on the drift run while supply air
+  relative to setpoint moves LESS than on the clean run. In raw space a drifting
+  sensor looks distributed and its neighbours look guilty. A control loop can hide a
+  fault from a measurement but it cannot make a physical relation hold that does not.
+
+`analytics/diagnosis/coherence.py` :: `independent_sets`
+- WHAT IT DOES: Counts violated relations sharing no point with any other violated
+  one. Two violated relations with nothing in common cannot be explained by any
+  single measurement at all — a structural fact that holds before any least squares
+  runs and cannot be argued with.
+
+`analytics/diagnosis/classify.py` :: `classify`
+- WHY IT EXISTS: The one word a technician acts on, with the reasoning attached.
+- WHAT IT DOES: Five branches in a fixed order. An unresponsive actuator; then one
+  measurement that explains everything and is localised; then a violation no single
+  measurement can account for; then measurements that all agree while a confirmed
+  degradation trend says the machine is declining anyway; then nothing to report.
+  Each returns the class, the subject, a sentence saying why this class and not
+  another, and an `Evidence` record naming every relation and number involved.
+- CHOICES: The order is load-bearing, not tidiness. An actuator ignoring its command
+  appears in the physics as a measurement that lies, so isolation offers a perfectly
+  good sensor hypothesis for it — on the stuck-damper run, supply air temperature
+  survives as a suspect explaining 87 percent. Testing the actuator first settles it
+  before that arises. The equipment branch is deliberately the fallback, because
+  every measurement agreeing while output falls IS what a worn machine looks like.
+- ⚠ JUDGEMENT CALL: The control test requires the gap to have GROWN by a factor of
+  three over the fault-free window, not merely to exceed a deadband. One actuator
+  here fails an absolute test permanently: supply fan speed sits about 0.5 of full
+  travel from its own command on every run including the fault-free one, which is the
+  same source-data defect Task 3 recorded when it found `sf_status` byte-identical to
+  the occupancy schedule. On an absolute test that made a healthy air handler a
+  control fault, and because control is checked first it masked BOTH of the faults
+  this checkpoint exists to tell apart. The relative test leaves the stuck damper
+  firing at 0.612 against a reference of 0.000 and drops the fan at 0.506 against
+  0.429.
+
+`analytics/diagnosis/classify.py` :: `untrusted_points`
+- WHAT IT DOES: Reads the quality advisories from checkpoint 3.1 and attaches them as
+  a caveat that can downgrade confidence from clear to weak but cannot change a class.
+- ⚠ JUDGEMENT CALL: The checkpoint asks for the quality flags as a third test and
+  they cannot serve as one. Measured across these runs, the supply air sensor draws
+  `stale` advisories on ALL FOUR, the fault-free run included — 16 times there
+  against 8 on the run where it is genuinely drifting. The quality layer answers "can
+  this reading be trusted right now", which is about dropouts and stuck values, and
+  is silent on whether a reading arriving perfectly on time is correct. Treating it as
+  evidence of a sensor fault would have made the fault-free run the most suspicious
+  of the four. It is wired in, and it changes no classification here.
+
+Skipped as boilerplate: the `Relation`, `Feedback`, `Locality`, `Evidence` and
+`Diagnosis` dataclasses and their derived properties, `single_bias`, `neighbours`,
+`feedback_pairs`, `spread`, `most_localised`, `violated_summary`, `stuck_actuators`,
+and the formatting in the verification script.
+
+### MEASURED RESULT — THE KEY TEST
+
+      ahu_sat_sensor_drift        expected sensor      got sensor      PASS
+      ahu_cooling_valve_leakage   expected equipment   got equipment   PASS
+
+**Drift, classified SENSOR on `ahu-1.sa_temp`.** Assuming that sensor reads +2.434 K
+wrong reconciles 94 percent of the violation across the three relations it appears
+in without making any of them worse, and 100 percent of the nearby violation is on
+relations it can reach. **The true injected bias is +4 °F, which is +2.22 K** — so
+the recovered bias is out by 0.21 K, under ten percent, and the system was never
+told the answer. Three competing hypotheses were struck out with named reasons: the
+chilled water valve exonerated by its own command feedback, the plant's secondary
+supply water temperature unfalsifiable at one relation, mixed air temperature leaving
+100 percent unexplained.
+
+**Leak, classified EQUIPMENT.** No single measurement can be biased to reconcile
+what is violated. The supply air sensor is the only candidate that fits at all and it
+is falsified: the bias that fixes the shut-valve baseline pushes the
+coil-effectiveness baseline from −1.11 sigma to +2.88 sigma. The two relations
+disagree in sign, so one bias cannot produce both, and the measurements are therefore
+consistent with each other while the machine underperforms.
+
+### THE OTHER FOUR, SAME MACHINERY
+
+    ahu_oa_damper_stuck        CONTROL     oa_damper 0.612 from command vs 0.000 clean
+    chiller_condenser_fouling  EQUIPMENT   no single measurement reconciles it
+    clean_ahu                  AMBIGUOUS   nothing violated, nothing degrading
+    clean_chiller              AMBIGUOUS   nothing violated, nothing degrading
+
+Six for six, and all four classes are reached including `ambiguous`. On both
+fault-free runs every relation sits below 0.5 of its own spread — the largest is 0.48
+— against 12.18 on the drift run, so the separation is not marginal.
+
+### WHAT THIS LAYER CANNOT DO, STATED PLAINLY
+
+- The stuck-damper run has no season-matched fault-free counterpart, because it is a
+  late-winter run and the clean air handler run is summer. Its constraint evidence is
+  therefore not trustworthy and the output says so. Its classification does not
+  depend on it: an actuator disagreeing with its own command needs no reference.
+- `chw-plant-1.sec_supply_temp` appears in one relation and can never be exonerated
+  or convicted. In this dataset it cannot even be cross-checked, because the .ttl
+  already records that the two LBNL systems are independent simulations and the water
+  in that expression is not physically the water that cooled that air.
+- Every "ambiguous" verdict on a real fault would be resolved by adding one relation
+  containing the suspect. That is a modelling change in the semantic model, not a
+  threshold change here, which is the decision D-08 records.
+
+START HERE: `analytics/diagnosis/isolation.py` — `baseline_relations`. The checkpoint
+is impossible without it: the physical constraints alone leave supply air temperature
+in one relation, and one relation with one suspect can never be wrong.

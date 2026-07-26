@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal api web
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis api web
 
 # Resolve and install the Python environment into .venv
 install:
@@ -127,6 +127,12 @@ rul:
 # the named upstream false alarms, and the asset roll-up before and after the policy.
 refusal:
 	uv run python scripts/run_refusal.py
+
+# Classify every scenario's fault as sensor, equipment, control or ambiguous, with
+# the evidence attached. The key test is printed first: a drifting supply air sensor
+# and a leaking coil valve present identically and must come out differently.
+diagnosis:
+	uv run python scripts/run_diagnosis.py
 
 # Serve the API on :8000
 api:
