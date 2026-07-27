@@ -22,7 +22,7 @@ serving the answer key to a dashboard.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import cache
 from typing import Annotated
 
@@ -47,9 +47,12 @@ from api.models import (
     SiteSummary,
     TimeseriesPoint,
     TimeseriesResult,
+    TwinAssetState,
     TwinEdge,
     TwinNode,
     TwinPoint,
+    TwinPointState,
+    TwinState,
     TwinTopology,
 )
 from model.graph import downstream_assets, upstream_assets
@@ -118,6 +121,48 @@ _ADVISORY_COUNTS = """
     SELECT asset_id, count(*) AS n FROM app.advisories
      WHERE status = 'open' GROUP BY asset_id
 """
+
+
+# How far back a queue may have been computed and still describe "now". The replay
+# writes one per day, so anything inside two days is the current one; anything older
+# means this run has no queue yet. Deliberately not larger -- the gap between two runs
+# in this database is a whole year, and the only thing a bigger number buys is the
+# chance of serving one run's advisories against another run's clock.
+_VINTAGE_HOURS = 48.0
+
+
+def _vintage(conn: psycopg.Connection, as_of: datetime | None) -> datetime | None:
+    """Which day's advisory queue to serve for a given moment.
+
+    app.advisories now holds one complete queue per day, each identified by the date
+    its observation window ends on. "The queue at 3 June" therefore means the rows
+    from the most recent queue computed at or before 3 June -- NOT every row whose
+    window ends before then, which would pile six hundred days of history into one
+    response and show an advisory that had already been superseded next to the one
+    that superseded it.
+
+    With no moment given, the newest queue in the table. That keeps the plain
+    /advisories call meaning "the current queue", which is what it meant when the
+    table held exactly one.
+
+    THE BOUND IS NOT OPTIONAL. Without it, "the most recent queue at or before this
+    moment" walks backwards as far as the table goes, so a clock sitting in a run
+    that has no queue yet is served one computed in a DIFFERENT RUN, years earlier
+    and about different equipment. That was observed rather than theorised: a clock
+    at 2038-09-20 came back with the queue of 2036-09-06 and three advisories that
+    had nothing to do with the machine on screen. Beyond the bound the honest answer
+    is that no queue exists, and an empty queue is a fact -- it is what a healthy
+    building looks like.
+    """
+    floor = None if as_of is None else as_of - timedelta(hours=_VINTAGE_HOURS)
+    row = conn.execute(
+        "SELECT max(window_to) FROM app.advisories "
+        " WHERE %(as_of)s::timestamptz IS NULL "
+        "    OR (window_to <= %(as_of)s::timestamptz "
+        "        AND window_to > %(floor)s::timestamptz)",
+        {"as_of": as_of, "floor": floor},
+    ).fetchone()
+    return None if row is None else row[0]
 
 
 def _asset_rows(conn: psycopg.Connection, asset_id: str | None = None) -> list[tuple]:
@@ -217,6 +262,10 @@ def get_health(
     conn: Conn,
     t_from: Annotated[datetime | None, Query(alias="from")] = None,
     t_to: Annotated[datetime | None, Query(alias="to")] = None,
+    as_of: Annotated[
+        datetime | None,
+        Query(description="Truncate the series here. Same edge as `to`."),
+    ] = None,
 ) -> HealthSeries:
     """Health over time, one series per failure mode plus the asset roll-up.
 
@@ -235,7 +284,7 @@ def get_health(
            AND (%(t_to)s::timestamptz IS NULL OR time < %(t_to)s::timestamptz)
          ORDER BY time, mode_id NULLS FIRST
         """,
-        {"asset": asset_id, "t_from": t_from, "t_to": t_to},
+        {"asset": asset_id, "t_from": t_from, "t_to": t_to or as_of},
     ).fetchall()
     if not rows:
         raise HTTPException(
@@ -328,7 +377,14 @@ def get_timeseries(
 @app.get(
     "/assets/{asset_id}/rul-history", response_model=RulHistory, tags=["assets"]
 )
-def get_rul_history(asset_id: str, conn: Conn) -> RulHistory:
+def get_rul_history(
+    asset_id: str,
+    conn: Conn,
+    as_of: Annotated[
+        datetime | None,
+        Query(description="Only estimates published at or before this moment"),
+    ] = None,
+) -> RulHistory:
     """Every remaining-life estimate ever published for this asset, oldest first.
 
     This is the endpoint the narrowing-interval chart is drawn from, and the reason
@@ -338,19 +394,21 @@ def get_rul_history(asset_id: str, conn: Conn) -> RulHistory:
     """
     rows = conn.execute(
         "SELECT mode_id, as_of, p10, p50, p90, mu_hat, sigma_hat, n_samples "
-        "  FROM app.rul_estimates WHERE asset_id = %s AND mode_id IS NOT NULL "
+        "  FROM app.rul_estimates WHERE asset_id = %(asset)s AND mode_id IS NOT NULL "
+        "   AND (%(as_of)s::timestamptz IS NULL "
+        "        OR as_of <= %(as_of)s::timestamptz) "
         " ORDER BY mode_id, as_of",
-        (asset_id,),
+        {"asset": asset_id, "as_of": as_of},
     ).fetchall()
     if not rows:
         raise HTTPException(
             status_code=404, detail=f"no remaining-life history for {asset_id!r}"
         )
     modes: dict[str, list[RulPoint]] = {}
-    for mode_id, as_of, p10, p50, p90, mu, sigma, n in rows:
+    for mode_id, published, p10, p50, p90, mu, sigma, n in rows:
         modes.setdefault(mode_id, []).append(
             RulPoint(
-                as_of=as_of, p10=p10, p50=p50, p90=p90,
+                as_of=published, p10=p10, p50=p50, p90=p90,
                 width=None if p10 is None or p90 is None else p90 - p10,
                 mu_hat=mu, sigma_hat=sigma, n_samples=n,
             )
@@ -393,6 +451,10 @@ def list_advisories(
         Query(ge=0.0, le=1.0, description="Minimum severity to include"),
     ] = None,
     fault_class: Annotated[str | None, Query()] = None,
+    as_of: Annotated[
+        datetime | None,
+        Query(description="Serve the queue as it stood at this moment"),
+    ] = None,
 ) -> list[AdvisorySummary]:
     """The operator's queue, in the order it should be worked.
 
@@ -420,13 +482,20 @@ def list_advisories(
                (v.detail #>> '{forecast,p90}')::float8
           FROM app.advisories v
           JOIN app.assets a ON a.asset_id = v.asset_id
-         WHERE (%(status)s::text IS NULL OR v.status = %(status)s::text)
+         -- No "IS NULL OR" escape here on purpose. A null vintage means no queue
+         -- was computed anywhere near this moment, and the answer to that is no
+         -- rows, not every row. Written as a plain equality so the null propagates
+         -- and the comparison is simply never true: an earlier version treated null
+         -- as "do not filter" and served all six hundred days at once.
+         WHERE v.window_to = %(vintage)s::timestamptz
+           AND (%(status)s::text IS NULL OR v.status = %(status)s::text)
            AND (%(severity)s::float8 IS NULL OR v.severity >= %(severity)s::float8)
            AND (%(fault_class)s::text IS NULL
                 OR v.fault_class = %(fault_class)s::text)
          ORDER BY (v.priority IS NULL), v.priority DESC, v.severity DESC, v.asset_id
         """,
-        {"status": status, "severity": severity, "fault_class": fault_class},
+        {"status": status, "severity": severity, "fault_class": fault_class,
+         "vintage": _vintage(conn, as_of)},
     ).fetchall()
     return [
         AdvisorySummary(
@@ -445,23 +514,34 @@ def list_advisories(
 
 
 @app.get("/advisories/summary", response_model=SiteSummary, tags=["advisories"])
-def advisory_summary(conn: Conn) -> SiteSummary:
+def advisory_summary(
+    conn: Conn,
+    as_of: Annotated[
+        datetime | None,
+        Query(description="Summarise the queue as it stood at this moment"),
+    ] = None,
+) -> SiteSummary:
     """The strip along the top of the dashboard.
 
     Declared before /advisories/{advisory_id} on purpose: FastAPI matches routes in
     declaration order, so with the parameterised route first this path would be read
     as an advisory whose id is the word "summary" and return 404.
     """
+    vintage = _vintage(conn, as_of)
     row = conn.execute(
         "SELECT count(*), count(*) FILTER (WHERE consequential), "
         "       count(*) FILTER (WHERE priority IS NULL), "
         "       coalesce(sum(cost_usd), 0), coalesce(sum(effort_usd), 0), "
         "       max(generated_at) FROM app.advisories WHERE status = 'open'"
+        "   AND window_to = %(v)s::timestamptz",
+        {"v": vintage},
     ).fetchone()
     by_class = dict(
         conn.execute(
             "SELECT fault_class, count(*) FROM app.advisories "
-            " WHERE status = 'open' GROUP BY 1"
+            " WHERE status = 'open' AND window_to = %(v)s::timestamptz"
+            " GROUP BY 1",
+            {"v": vintage},
         ).fetchall()
     )
     assets = conn.execute("SELECT count(*) FROM app.assets").fetchone()[0]
@@ -641,3 +721,168 @@ def twin_topology() -> TwinTopology:
     Static for the lifetime of the process. Live values are a separate call.
     """
     return _twin()
+
+
+# How far back a value may be and still be called current. The eras this database
+# holds are separated by whole years, so without a bound the "latest reading at or
+# before 2039-06-01" for a point that stopped reporting in 2036 is a three-year-old
+# number presented as live. Twenty-four hours covers any gap inside a run and cannot
+# reach across a gap between runs.
+_STALE_HOURS = 24.0
+
+# The daily tables need a longer bound than the hourly one for a reason that has
+# nothing to do with staleness: health and remaining life are written once per day,
+# so a clock sitting at 00:30 is already thirty minutes past a row written at 00:00
+# the previous midnight, and a 24-hour bound would drop it. Two days always catches
+# exactly one, never reaches the previous era.
+_STALE_DAYS_HOURS = 48.0
+
+
+@app.get("/twin/state", response_model=TwinState, tags=["twin"])
+def twin_state(
+    conn: Conn,
+    as_of: Annotated[datetime, Query(description="The moment to report")],
+    stale_after_hours: Annotated[
+        float, Query(gt=0, le=8760, description="How old a reading may be and count")
+    ] = _STALE_HOURS,
+) -> TwinState:
+    """Every live number the twin needs for one moment, in one call.
+
+    ONE CALL AND NOT ONE PER NODE. A dashboard whose clock is running asks for this
+    on every tick. Thirty-one nodes and a hundred and seven readings at one request
+    each is thirty-one round trips per frame, so everything is fetched in four
+    queries and assembled here.
+
+    NOTHING AFTER as_of IS VISIBLE, which is the rule the whole replay rests on. Each
+    query takes the most recent row at or before the moment asked for, and rejects it
+    if it is older than the staleness bound -- so a machine that stopped reporting
+    reads as silent rather than as frozen at its last value.
+
+    THE COVERAGE GAP IS REPORTED, NOT HIDDEN. Only the readings a baseline was fitted
+    for carry `expected` and `sigma`; every other reading comes back with a value and
+    nulls. That is a real property of this system -- baselines were fitted where a
+    residual drives a detection rule and nowhere else -- and points_with_baseline
+    beside points_reporting says so in the response rather than leaving a caller to
+    infer it from a screen full of grey.
+    """
+    floor = as_of - timedelta(hours=stale_after_hours)
+    floor_daily = as_of - timedelta(hours=max(stale_after_hours, _STALE_DAYS_HOURS))
+
+    values = conn.execute(
+        """
+        SELECT DISTINCT ON (point_id) point_id, bucket, avg_value_si
+          FROM app.measurements_hourly
+         WHERE bucket <= %(as_of)s AND bucket > %(floor)s
+         ORDER BY point_id, bucket DESC
+        """,
+        {"as_of": as_of, "floor": floor},
+    ).fetchall()
+
+    residuals = conn.execute(
+        """
+        SELECT DISTINCT ON (point_id) point_id, baseline_id, expected, residual,
+               normalised, observed, time
+          FROM app.residuals
+         WHERE time <= %(as_of)s AND time > %(floor)s
+         ORDER BY point_id, time DESC
+        """,
+        {"as_of": as_of, "floor": floor},
+    ).fetchall()
+
+    health = conn.execute(
+        """
+        SELECT DISTINCT ON (asset_id) asset_id, time, health, weakest_mode
+          FROM app.health_state
+         WHERE mode_id IS NULL AND time <= %(as_of)s AND time > %(floor)s
+         ORDER BY asset_id, time DESC
+        """,
+        {"as_of": as_of, "floor": floor_daily},
+    ).fetchall()
+
+    # Every mode's newest estimate, then the soonest one per asset is chosen below.
+    # A node shows one remaining life and it should be the one that runs out first.
+    rul = conn.execute(
+        """
+        SELECT DISTINCT ON (asset_id, mode_id) asset_id, mode_id, as_of,
+               p10, p50, p90
+          FROM app.rul_estimates
+         WHERE mode_id IS NOT NULL AND as_of <= %(as_of)s AND as_of > %(floor)s
+         ORDER BY asset_id, mode_id, as_of DESC
+        """,
+        {"as_of": as_of, "floor": floor_daily},
+    ).fetchall()
+
+    vintage = _vintage(conn, as_of)
+    counts = dict(
+        conn.execute(
+            "SELECT asset_id, count(*) FROM app.advisories "
+            " WHERE status = 'open' AND window_to = %(v)s::timestamptz"
+            " GROUP BY 1",
+            {"v": vintage},
+        ).fetchall()
+    )
+
+    by_residual = {r[0]: r for r in residuals}
+    points = {
+        point_id: TwinPointState(
+            point_id=point_id,
+            value=None if value is None else float(value),
+            at=bucket,
+            observed=None if point_id not in by_residual else by_residual[point_id][5],
+            residual_at=None if point_id not in by_residual else by_residual[point_id][6],
+            expected=None if point_id not in by_residual else by_residual[point_id][2],
+            residual=None if point_id not in by_residual else by_residual[point_id][3],
+            sigma=None if point_id not in by_residual else by_residual[point_id][4],
+            baseline_id=None if point_id not in by_residual else by_residual[point_id][1],
+        )
+        for point_id, bucket, value in values
+    }
+
+    soonest: dict[str, tuple] = {}
+    for row in rul:
+        asset_id, _mode, _published, _p10, p50, _p90 = row
+        current = soonest.get(asset_id)
+        if current is None or (p50 is not None and (current[4] is None or p50 < current[4])):
+            soonest[asset_id] = row
+
+    assets = {}
+    for asset_id, time, score, weakest in health:
+        row = soonest.get(asset_id)
+        assets[asset_id] = TwinAssetState(
+            asset_id=asset_id,
+            health=None if score is None else int(score),
+            weakest_mode=weakest,
+            health_at=time,
+            rul_mode=None if row is None else row[1],
+            rul_p10=None if row is None else row[3],
+            rul_p50=None if row is None else row[4],
+            rul_p90=None if row is None else row[5],
+            rul_as_of=None if row is None else row[2],
+            open_advisories=counts.get(asset_id, 0),
+        )
+    # An asset can have a prediction or a queue without a health row inside the
+    # window -- health is daily and can be missing at the very start of a run -- so
+    # those are added rather than dropped.
+    for asset_id in set(soonest) | set(counts):
+        if asset_id in assets:
+            continue
+        row = soonest.get(asset_id)
+        assets[asset_id] = TwinAssetState(
+            asset_id=asset_id, health=None, weakest_mode=None, health_at=None,
+            rul_mode=None if row is None else row[1],
+            rul_p10=None if row is None else row[3],
+            rul_p50=None if row is None else row[4],
+            rul_p90=None if row is None else row[5],
+            rul_as_of=None if row is None else row[2],
+            open_advisories=counts.get(asset_id, 0),
+        )
+
+    return TwinState(
+        as_of=as_of,
+        advisory_vintage=vintage,
+        points=points,
+        assets=dict(sorted(assets.items())),
+        points_reporting=len(points),
+        points_with_baseline=sum(1 for p in points.values() if p.sigma is not None),
+        stale_after_hours=stale_after_hours,
+    )

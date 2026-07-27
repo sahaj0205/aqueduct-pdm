@@ -8845,3 +8845,151 @@ Served over HTTP from a running server:
 
 START HERE: `model/twin.py` — the module docstring states why this cannot be served
 from `app.asset_edges`, which is the decision the whole checkpoint rests on.
+
+
+## Demo Phase 1, Checkpoint 1.2 — As-of truncation and bulk twin state
+
+### What we did
+
+Every screen can now be asked what it looked like at a chosen moment, and will answer
+with only what was known then. Before this the API had one tense — the present — and
+returned whatever was newest in the table, so a clock could not be moved without the
+screen showing the ending. That is the difference between a recording and a replay,
+and it is the whole illusion the demonstration rests on: the prediction interval has
+to narrow while somebody watches, an advisory has to appear rather than always have
+been there. Alongside it there is now a single call that returns every live number the
+building drawing needs for one moment — every reading, how far each has drifted from
+what it should be, and each machine's condition and remaining life — so a running
+clock costs one request per tick rather than one per node.
+
+### How it works
+
+    api/main.py :: _vintage()
+      WHY IT EXISTS: The advisory table now holds one complete queue per day. Asking
+        for "the queue on 3 June" has to mean one of those queues, and the obvious
+        reading is wrong.
+      WHAT IT DOES: Finds the most recent day at or before the moment asked for on
+        which a queue was computed, and returns that date. Callers then match on it
+        exactly.
+      CHOICES: NOT "every row whose window ends before this moment" -- that would pile
+        six hundred days into one response and stand an advisory next to the one that
+        superseded it.
+      ⚠ JUDGEMENT CALL: It is bounded to forty-eight hours, and that bound was added
+        after seeing what happened without it. A clock at 2038-09-20 came back with
+        the queue computed on 2036-09-06 -- two years earlier, about different
+        machines -- because the replay had not reached 2038 yet and "most recent at or
+        before" walked backwards through the whole table. The runs in this database
+        sit a whole year apart, so any bound between two days and a year behaves the
+        same; two days was chosen because the replay writes daily and anything older
+        than that is not a stale queue, it is a different building's afternoon.
+
+    api/main.py :: the null-vintage filter
+      WHY IT EXISTS: Fixing the leak above created a worse one, and the fix is worth
+        recording because the shape of the mistake is common.
+      WHAT IT DOES: The three queries match `window_to = vintage` with no "or the
+        parameter is null" escape. A null vintage means no queue exists near that
+        moment, so the comparison is never true and no rows come back.
+      CHANGED FROM BEFORE: The first version wrote `vintage IS NULL OR window_to =
+        vintage`, which is the usual way to make a filter optional. Here it meant that
+        the moment the bound correctly found nothing, the filter switched itself off
+        and served the entire history -- six hundred and seventy-seven advisories for
+        a date that should have had none. Absent and unfiltered are not the same
+        thing, and SQL's null propagation already expresses the difference.
+
+    api/main.py :: /advisories, /advisories/summary, /assets/{id}/rul, /assets/{id}/health
+      WHY IT EXISTS: These are what the dashboard reads. Each had no way to be asked
+        about a past moment.
+      WHAT IT DOES: Each takes an as-of moment. The queue and the site summary serve
+        one day's queue; the remaining-life series returns only estimates published at
+        or before that moment, so the fan chart draws itself as the clock advances
+        instead of arriving complete; the health series truncates at the same edge.
+      CHOICES: With no moment given, behaviour is unchanged -- the newest queue, the
+        whole series. Existing callers and the current dashboard keep working.
+
+    api/main.py :: GET /twin/state
+      WHY IT EXISTS: A dashboard with a running clock asks for this on every tick.
+        Thirty-one nodes and a hundred and seven readings at one request each is
+        thirty-one round trips per frame.
+      WHAT IT DOES: Four queries and one count, assembled into one response. For every
+        reading: its value and when it was taken, and where a baseline exists, what the
+        reading should have been, how far off it is, and how far off that is in units
+        of its own normal spread. For every machine: its health, which failure mode is
+        worst, the remaining life of whichever mode runs out soonest, and how many
+        advisories are open. Each query takes the most recent row at or before the
+        moment and rejects anything older than a staleness bound.
+      CHOICES: The staleness bound exists for the same reason the vintage bound does.
+        Without it a machine that stopped reporting in 2036 reads as live in 2039,
+        frozen at its last value. Twenty-four hours for readings, which are hourly;
+        forty-eight for health and remaining life, which are daily -- a clock at
+        00:30 is already past a row written at the previous midnight, and a
+        twenty-four hour bound would drop it. Checked: a moment with no data anywhere
+        near it returns zero points rather than the last thing in the table.
+      CHOICES: One remaining life per machine, from the mode predicted to fail
+        soonest. A node shows one number and it should be the one that runs out first.
+
+    api/models.py :: TwinPointState.observed and .residual_at
+      WHY IT EXISTS: Caught by reading the response rather than by a check. The
+        drifting chiller came back with a value of 49,069 W and an expectation of
+        37,077 W, which subtract to 11,992 -- while the residual field said 16,994.
+      WHAT IT DOES: Carries the raw sample the residual was actually computed from,
+        and the instant it belongs to, next to the expectation and the residual.
+      CHANGED FROM BEFORE: The two numbers disagreed because they come from different
+        places: the value is an hourly AVERAGE from the rollup, and the residual is
+        computed from one five-minute sample. Neither is wrong and the pair is
+        misleading, because a caller would reasonably subtract one from the other.
+        Now the triple observed-expected-residual agrees with itself exactly, the
+        hourly value stands separately as the number to display, and both carry their
+        own timestamp.
+
+    api/models.py :: TwinState.points_with_baseline
+      WHY IT EXISTS: Only six of a hundred and seven readings have a fitted baseline,
+        so the deviation number that would colour a node exists for almost none of
+        them. That is a real property of this system -- baselines were fitted where a
+        residual drives a detection rule and nowhere else -- and it decides what the
+        drawing can show.
+      WHAT IT DOES: Reports how many of the reporting readings carry an expectation,
+        beside how many are reporting at all.
+      CHOICES: Reported rather than worked around. The alternative was to invent a
+        second deviation measure for the other hundred readings -- a z-score against
+        some quiet period -- which would have been a new statistical quantity nobody
+        asked for, weaker than the condition-normalised residual, and easy to mistake
+        for it on a screen. The coverage gap is a decision for the next checkpoint to
+        take deliberately, with the number in front of it.
+
+### Verification
+
+The queue moves with the clock, which is the property the demonstration needs:
+
+    as_of 2036-04-15: vintage 2036-04-15   2 advisories  [coil-valve-leak-by, fan-bearing-degradation]
+    as_of 2036-06-20: vintage 2036-06-20   4 advisories  [+ chiller-efficiency-loss x2]
+    as_of 2036-08-02: vintage 2036-08-02   7 advisories  [+ chiller-condenser-fouling]
+    as_of 2038-09-20: vintage None         0 advisories  (replay has not reached 2038)
+
+Nothing after the moment asked for is ever served:
+
+    vintages later than their as_of                    : 0   OK
+    remaining-life estimates published after as_of      : 0   at every moment tested
+    points reporting at 2042-01-01, where no data exists: 0   OK
+
+Twin state over HTTP, 14.6 KB for the whole building:
+
+    as_of 2036-08-02  vintage 2036-08-02  77 points reporting, 2 with baseline
+      chiller-1.power  value 49069.0 W (hourly)  observed 54070.5  expected 37076.9
+                       residual 16993.6  sigma 2.49  self-consistent: True
+      chiller-1        health 0  weakest chiller-efficiency-loss  rul_p50 0.0  4 open
+
+    as_of 2039-07-01 (the clean run)  107 points reporting, 6 with baseline
+      health  ahu-1 98, chiller-1 97, chiller-2 99   rul_p50  chiller-2 229.2
+
+`uv run ruff check` passes.
+
+### Carried forward
+
+Six of 107 readings have a modelled expectation, so on the evidence available a
+building drawing coloured by deviation would colour four nodes. Deciding what the
+other twenty-seven show is checkpoint 1.7's problem and it now has a number attached.
+
+START HERE: `api/main.py` — `_vintage()` and the comment above the filter it feeds.
+Both bugs found in this checkpoint were the same bug in different clothes: a lookup
+that walks backwards further than the data means anything, and a filter that turns
+itself off when it finds nothing.

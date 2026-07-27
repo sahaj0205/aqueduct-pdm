@@ -361,3 +361,80 @@ class TwinTopology(BaseModel):
             "three and counted once."
         )
     )
+
+
+class TwinPointState(BaseModel):
+    """What one reading was doing at one moment."""
+
+    point_id: str
+    value: float | None
+    at: datetime | None = Field(
+        description="Bucket the value came from. Null when nothing was reported."
+    )
+    observed: float | None = Field(
+        description=(
+            "The raw sample the residual was computed from. Carried next to expected "
+            "and residual because those three must agree with each other: `value` "
+            "above is an HOURLY AVERAGE from the rollup and is a different number at "
+            "a different instant, so subtracting expected from it gives a third "
+            "answer that is not the residual. Subtract from this one."
+        )
+    )
+    residual_at: datetime | None = Field(
+        description="Instant the residual triple belongs to, which is not `at`"
+    )
+    expected: float | None = Field(
+        description=(
+            "What the fitted baseline said this reading should be under the "
+            "conditions of that moment. Null for the great majority of points: only "
+            "the ones a baseline was fitted for carry an expectation."
+        )
+    )
+    residual: float | None
+    sigma: float | None = Field(
+        description=(
+            "Residual in units of the baseline's own residual spread -- the number "
+            "to colour a node by. Null wherever expected is null."
+        )
+    )
+    baseline_id: str | None
+
+
+class TwinAssetState(BaseModel):
+    """Condition and prognosis for one machine at one moment."""
+
+    asset_id: str
+    health: int | None
+    weakest_mode: str | None
+    health_at: datetime | None
+    rul_mode: str | None = Field(
+        description="The mode predicted to fail soonest, which is the one shown"
+    )
+    rul_p10: float | None
+    rul_p50: float | None
+    rul_p90: float | None
+    rul_as_of: datetime | None
+    open_advisories: int
+
+
+class TwinState(BaseModel):
+    """Every live number the twin needs for one moment, in one response."""
+
+    as_of: datetime
+    advisory_vintage: datetime | None = Field(
+        description=(
+            "Which day's advisory queue these counts come from -- the most recent "
+            "queue computed at or before as_of. Null when none had been computed yet."
+        )
+    )
+    points: dict[str, TwinPointState]
+    assets: dict[str, TwinAssetState]
+    points_reporting: int
+    points_with_baseline: int = Field(
+        description=(
+            "How many of the reporting points carry a modelled expectation. This is "
+            "much smaller than points_reporting and the gap is real: baselines were "
+            "fitted only where a residual drives a detection rule."
+        )
+    )
+    stale_after_hours: float
