@@ -52,9 +52,18 @@ back up.
 Two databases' worth of tables in one database, under two credentials. Schema `app` is
 everything the platform computes. Schema `groundtruth` is the answer key. The role every
 analytics layer connects as has **no grant of any kind** on `groundtruth` — not restricted
-access, none — and exactly one module in the repository opens the credential that does.
-That is the architectural spine of every accuracy claim this project makes, and it is
-enforced by the database rather than by discipline.
+access, none. That is the architectural spine of every accuracy claim this project makes,
+and it is enforced by the database rather than by discipline.
+
+Two components open the other credential, and neither of them detects, scores, predicts or
+diagnoses: `validation/`, which regenerates `VALIDATION.md`, and `reveal/`, which serves the
+demonstration's answer-key screen as **a separate process on a separate port**. The reveal
+was built that way rather than as three more routes on `api/` precisely because the
+alternative would have put the answer key inside the process that serves detections, leaving
+the separation resting on nobody adding the wrong import. The claim is therefore not "the
+answer key is unreachable from the running system" — it is reachable, by design, from one
+process that computes nothing — but "the detection path connects as a role that cannot read
+it", which is checkable and is checked.
 
 About 21,000 lines of Python and 2,400 lines of TypeScript.
 

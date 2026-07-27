@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api web web-verify web-verify-detail web-verify-schematic web-build validate
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-schematic web-build validate
 
 # Resolve and install the Python environment into .venv
 install:
@@ -168,6 +168,14 @@ demo: db-up load scenarios quality residuals baselines health rul advisories-wri
 # Serve the API on :8000
 api:
 	uv run uvicorn api.main:app --reload --port 8000
+
+# Serve the reveal API on :8001 -- the answer key, on the admin credential, in its own
+# process. Deliberately a second application rather than three more routes on `api`:
+# that process connects as app_rw, which has no grant of any kind on schema groundtruth,
+# and keeping it that way is the whole basis of the claim that no detector here can have
+# seen the label it is scored against. Run alongside `api` for the demo.
+reveal:
+	uv run uvicorn reveal.main:app --reload --port 8001
 
 # Serve the frontend dev server on :5173. Needs `make api` running in another
 # terminal -- the dev server proxies /api to :8000, so nothing in the frontend

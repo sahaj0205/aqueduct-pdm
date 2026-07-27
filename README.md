@@ -167,9 +167,16 @@ fault's own effect is added to a real fault-free signal.
 **Every accuracy number in [`VALIDATION.md`](VALIDATION.md) is computed against labels this
 project did not create**, and the separation is enforced by the database rather than by
 discipline: every layer that detects, scores, baselines, predicts or diagnoses connects as a
-role with no grant of any kind on the schema holding the answer key, and exactly one module in
-the repository opens the credential that can read it. No detector here can have seen the label
-it is scored against.
+role with no grant of any kind on the schema holding the answer key. No detector here can
+have seen the label it is scored against — an endpoint that asked for one fails with
+`permission denied for schema groundtruth`, which is checked rather than asserted.
+
+**Two processes read that schema and neither of them computes anything.** The validation
+harness, which produces `VALIDATION.md`, and the reveal API, which serves the demonstration's
+answer-key screen. Both connect on a separate credential and run as separate processes from
+the detection API. That is a weaker statement than "nothing in the running system can reach
+the answer key", and it is the true one now that the demonstration shows both sides of the
+line on one dashboard — so it is the one stated here.
 
 ## Scope and limitations
 

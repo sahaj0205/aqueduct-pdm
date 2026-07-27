@@ -9158,3 +9158,149 @@ is resumable and takes roughly the same time as the replay.
 START HERE: `analytics/trace/funnel.py` — the module docstring lists the ten stages and
 says why the unit changes three times, which is the one thing a caller has to
 understand before drawing this.
+
+
+## Demo Phase 1, Checkpoint 1.5 — Reveal service
+
+### What we did
+
+The demonstration can now show the answer. Until this checkpoint the record of what was
+actually wrong with the building — which fault was put into which machine, when, and how
+bad it got — was readable by exactly one thing, the offline scoring harness, and there
+was no way to put it on a screen next to what the system had worked out for itself. That
+comparison is the point of the demonstration: a number the engine produced is only
+interesting beside the number it was trying to find. The system can also now say, for
+each injected fault, the order in which it showed up in the machine's own instruments —
+on the fouled chiller, the compressor draws more power fifty days before the machine
+starts failing to hold its water temperatures, and that ordering is the fault's
+signature rather than a claim about it.
+
+### How it works
+
+    reveal/__init__.py :: the package boundary
+      WHY IT EXISTS: To record a decision that is invisible in the code and easy to
+        undo by accident.
+      WHAT IT DOES: States that this is a second application on a second credential,
+        and why it is not three more routes on the existing API. The dashboard needs
+        both sides of the line on one screen; adding the routes to `api/` would put the
+        answer key inside the process that serves detections, and the separation would
+        then rest on nobody adding the wrong import.
+      ⚠ JUDGEMENT CALL: A second process is more to run and more to deploy than three
+        routes. It is worth it because the alternative quietly converts an enforced
+        property into a convention, and this project's accuracy claims all rest on that
+        property.
+
+    reveal/db.py :: admin_dsn()
+      WHY IT EXISTS: The privileged credential, in one place.
+      WHAT IT DOES: Reads the admin connection string and strips the driver prefix
+        psycopg does not accept.
+      CHOICES: Deliberately identical to the resolution in the validation harness.
+        These two are the only callers in the repository and a divergence between them
+        would be a security-relevant difference discovered by accident.
+
+    reveal/main.py :: GET /reveal/scenarios
+      WHY IT EXISTS: The whole answer key, for the configuration screen.
+      WHAT IT DOES: Every run, the fault put into it, the machine it went into, when it
+        started, when it reached failure, and the ladder of measured severities the
+        trajectory walks between.
+
+    reveal/main.py :: GET /reveal/at
+      WHY IT EXISTS: What the reveal button on the dashboard calls.
+      WHAT IT DOES: Splits every fault three ways against the moment asked for: running
+        now, not injected yet, already past failure.
+      CHOICES: Split rather than filtered. "Nothing was injected yet" and "it had
+        already reached failure" are different answers, and a screen showing an empty
+        list for both would hide the more interesting one. At 2 August 2036 the answer
+        is one fault running, one already failed and four not yet injected — which is a
+        far better thing to show than one row.
+
+    reveal/cascade.py :: compute()
+      WHY IT EXISTS: To answer which instrument moved first and what followed it.
+      WHAT IT DOES: Every run reads the same 2018 source year shifted by whole years, so
+        a faulted run and a fault-free run share weather, occupancy and control
+        decisions day for day. Subtracting one from the other on matching days leaves
+        only the fault. Each reading is then compared against how much it normally moves
+        from one day to the next in the clean run, and the order in which readings cross
+        that is the cascade.
+      CHOICES: The threshold is one normal day's movement, held for three days. Low on
+        purpose: this is not a detector and is scored against nothing. It describes what
+        the fault did, and the interesting output is the ORDER — a higher bar compresses
+        it by pushing every reading past the line on the same late day.
+      ⚠ JUDGEMENT CALL: Restricted to the faulted machine's own readings. The first
+        version looked at every point in the era and produced nonsense: for the fouled
+        chiller of 2036 the earliest "divergences" were all on the AIR HANDLER, dated
+        one day BEFORE the chiller fault was injected — because that era also contains a
+        leaking coil valve, and the comparison was reporting somebody else's fault.
+        Cross-asset cascade cannot be measured this way while two faults share an era,
+        and claiming it anyway would have put a confident wrong answer on the screen.
+      CHANGED FROM BEFORE: The first two attempts at the scale were both wrong and the
+        way they failed is worth keeping. Normalising by the clean run's spread over the
+        whole window found nothing at all: that spread is dominated by the change of
+        season, and a fault's effect disappears against it. Normalising by the spread of
+        the pre-injection DIFFERENCE found everything on day one: before injection the
+        difference is not small, it is exactly zero on 77 of 104 points, so any
+        movement afterwards is infinitely many standard deviations. That zero is
+        actually the strongest evidence in this checkpoint that the calendar twin holds
+        — it just cannot be used as a denominator.
+
+    reveal/main.py :: _cascade_cached()
+      WHY IT EXISTS: A cascade takes about three seconds and none of them changes.
+      CHOICES: Cached in the process rather than stored in a table. Six of them, static
+        for the life of the run — a table would mean a migration and a driver for what a
+        dictionary does.
+
+    README.md and ARCHITECTURE.md :: the separation claim
+      WHY IT EXISTS: The old wording became an overclaim the moment this service existed.
+      CHANGED FROM BEFORE: It said the answer key was reachable by exactly one module in
+        the repository. There are now two, and one of them is a running web service.
+        Both documents now say what is actually true and still strong: the detection path
+        connects as a role with **no grant of any kind** on that schema, an endpoint that
+        asked for a label fails with permission denied, and the two components that can
+        read it — the validation harness and this service — compute nothing. Weaker than
+        the old sentence, and the true one.
+
+### Verification
+
+The answer key, served:
+
+    6 injected faults, 2 clean runs
+      ahu_cooling_valve_leakage     ahu-1        progressive  1 rung  -> leaking (single measured severity)
+      chiller_condenser_fouling     chiller-1    progressive  2 rungs -> 65% heat transfer retained
+      ahu_oa_damper_stuck           ahu-1        step         3 rungs -> stuck at 75% open
+      chiller_bypass_valve_leakage  chw-plant-1  progressive  3 rungs -> 75% bypass leakage
+      cooling_tower_fouling         ct-1         progressive  3 rungs -> 65% heat transfer retained
+      ahu_sat_sensor_drift          ahu-1        progressive  2 rungs -> +4F sensor bias
+
+At one moment, split three ways:
+
+    as_of 2036-08-02
+      active            [chiller_condenser_fouling]
+      already_failed    [ahu_cooling_valve_leakage]
+      not_yet_injected  [ahu_oa_damper_stuck, chiller_bypass_valve_leakage,
+                         cooling_tower_fouling, ahu_sat_sensor_drift]
+
+The cascade on the fouled chiller, compared against the clean run three years later over
+120 days and nine instruments:
+
+    2036-07-20  +50d  chiller-1.power              peak 3.47 x its normal daily movement
+    2036-07-25  +55d  chiller-1.compressor_cmd     peak 2.72
+    2036-08-04  +65d  chiller-1.chw_return_temp    peak 2.48
+    2036-08-04  +65d  chiller-1.chw_supply_temp    peak 2.03
+
+That order is the physics: a fouled condenser makes the compressor work harder, the
+controller asks for more, and only fifteen days later does the machine start failing to
+deliver the water temperature it was asked for. The same computation on the drifting
+supply air sensor gives fan powers at 31 days, the chilled water valve at 55, and the
+zone temperatures at 73 — a control loop over-cooling the building long before anybody
+in it would notice.
+
+The separation still holds, checked rather than asserted:
+
+    app_rw reaching for groundtruth.fault_events
+      -> permission denied for schema groundtruth
+
+`uv run ruff check` passes on the new package.
+
+START HERE: `reveal/cascade.py` — the module docstring records two wrong ways of
+measuring divergence before the one that works, and the reason the second failed is the
+single best piece of evidence that the scenarios were built correctly.
