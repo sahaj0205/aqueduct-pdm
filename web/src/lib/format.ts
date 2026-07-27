@@ -12,7 +12,7 @@
  * read. None of them invents a number.
  */
 
-import type { AdvisorySummary } from "../types.ts";
+import type { AdvisorySummary, FaultClass } from "../types.ts";
 
 /** USD, no decimals. Cents on a five-figure estimate are false precision. */
 export function usd(value: number): string {
@@ -129,4 +129,84 @@ export function buildRows(advisories: AdvisorySummary[]): QueueRow[] {
         ? { asset: advisory.cause_asset, fault: advisory.cause_fault }
         : null,
   }));
+}
+
+/* --------------------------------------------------------------------------
+ * colour, which is data here and not decoration
+ * ------------------------------------------------------------------------ */
+
+/**
+ * The four states a drawn component can be in.
+ *
+ * Moved here from lib/schematic.ts when the twin replaced it, for the reason that
+ * module already gave for putting the health thresholds here: two pictures of the same
+ * building that disagreed about what amber means would be worse than one picture.
+ *
+ * Held as fill and stroke values rather than CSS classes so a rendered SVG stands on
+ * its own — scripts/verify-twin.ts writes one to a file, and a class-styled drawing
+ * would arrive there colourless.
+ */
+export const COLOURS = {
+  unknown: { fill: "#1e2833", stroke: "#3a4655", text: "#8d9bad" },
+  healthy: { fill: "#16302a", stroke: "#3fb27f", text: "#8fd9bb" },
+  degrading: { fill: "#332a17", stroke: "#d9a13b", text: "#e8c583" },
+  critical: { fill: "#33191c", stroke: "#d95757", text: "#f0a0a0" },
+} as const;
+
+export type NodeState = keyof typeof COLOURS;
+
+export const CLASS_COLOUR: Record<FaultClass, string> = {
+  sensor: "#4f9ad8",
+  equipment: "#d97a3b",
+  control: "#9b6fd4",
+  ambiguous: "#7d8794",
+};
+
+/**
+ * How a node is filled: by remaining life if there is one, otherwise by health.
+ *
+ * The fallback is deliberate and is the difference between a useful picture and a grey
+ * one. Most machines here have a health score long before the remaining-life model
+ * will bound a crossing — it refuses until a changepoint is confirmed and the drift is
+ * separable from zero — so filling only on remaining life would grey out equipment
+ * whose condition is perfectly well known. Remaining life is preferred where it exists
+ * because "fails in three weeks" is a stronger statement than "scores 61".
+ */
+export function conditionBand(
+  rulDays: number | null,
+  health: number | null,
+): NodeState {
+  if (rulDays !== null) {
+    if (rulDays < RUL_CRITICAL_DAYS) return "critical";
+    if (rulDays < RUL_DEGRADING_DAYS) return "degrading";
+    return "healthy";
+  }
+  const band = healthBand(health);
+  if (band === "none") return "unknown";
+  if (band === "ok") return "healthy";
+  if (band === "warn") return "degrading";
+  return "critical";
+}
+
+/* Thresholds in days. Presentational only — nothing branches on them outside this
+   file. Thirty days is the shortest horizon a technician can be scheduled inside
+   without disrupting other work; ninety matches the planning horizon every advisory's
+   cost of inaction is already computed over, so the two agree. */
+const RUL_CRITICAL_DAYS = 30;
+const RUL_DEGRADING_DAYS = 90;
+
+/**
+ * How far a reading has drifted, as a band for the node's border.
+ *
+ * Null for the great majority of readings, and that is reported rather than filled in:
+ * only six of this building's hundred and seven points have a fitted baseline, so only
+ * the nodes carrying those can say anything about drift at all. A node with no border
+ * is a node nothing is being claimed about.
+ */
+export function driftBand(sigma: number | null): NodeState | null {
+  if (sigma === null) return null;
+  const magnitude = Math.abs(sigma);
+  if (magnitude >= 3) return "critical";
+  if (magnitude >= 2) return "degrading";
+  return "healthy";
 }

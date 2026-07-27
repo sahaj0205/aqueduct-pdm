@@ -8,12 +8,14 @@ import type { ClockState } from "./components/ControlBar.tsx";
 import { NavTabs } from "./components/NavTabs.tsx";
 import { clampToEra, toIso } from "./lib/clock.ts";
 import { Operations } from "./screens/Operations.tsx";
+import { Twin } from "./screens/Twin.tsx";
 import type {
   AdvisorySummary,
-  AssetSummary,
   ClockRange,
   InjectedFault,
   SiteSummary,
+  TwinState,
+  TwinTopology,
 } from "./types.ts";
 
 /**
@@ -55,8 +57,8 @@ export function App() {
   const [summary, setSummary] = useState<SiteSummary | null>(null);
   const [advisories, setAdvisories] = useState<AdvisorySummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [assets, setAssets] = useState<AssetSummary[] | null>(null);
-  const [zones, setZones] = useState<string[]>([]);
+  const [topology, setTopology] = useState<TwinTopology | null>(null);
+  const [twinState, setTwinState] = useState<TwinState | null>(null);
 
   // The clock. One position, shared by every screen, so the queue and the building
   // drawing can never disagree about what day it is. Null until the range is known --
@@ -69,20 +71,18 @@ export function App() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [nextRange, nextAssets, downstream, key] = await Promise.all([
+      const [nextRange, nextTopology, key] = await Promise.all([
         api.eras(),
-        api.assets(),
-        // Zone names come from the graph traversal rather than being written into the
-        // frontend, so a building with a sixth zone gets a sixth box with no code
-        // change. Tolerated as optional: the drawing renders without zones.
-        api.downstream("ahu-1").catch(() => null),
+        // The shape of the building, fetched once. Every node, every relation and every
+        // instrument comes from the semantic model rather than being written into the
+        // frontend, so a building with a sixth zone gets a sixth box with no code change.
+        api.twinTopology(),
         // The answer key is optional and its absence is not an error: the reveal
         // service is a separate process and the dashboard is fully usable without it.
         reveal.scenarios(),
       ]);
       setRange(nextRange);
-      setAssets(nextAssets);
-      setZones(downstream?.zones ?? []);
+      setTopology(nextTopology);
       setFaults(key?.faults ?? null);
       // Start at the end of the first run rather than its beginning. A run opens with
       // three weeks of healthy commissioning data, so a dashboard that started there
@@ -120,13 +120,15 @@ export function App() {
     let cancelled = false;
     void (async () => {
       try {
-        const [nextSummary, nextAdvisories] = await Promise.all([
+        const [nextSummary, nextAdvisories, nextTwinState] = await Promise.all([
           api.summary(at),
           api.advisories("open", at),
+          api.twinState(at),
         ]);
         if (cancelled) return;
         setSummary(nextSummary);
         setAdvisories(nextAdvisories);
+        setTwinState(nextTwinState);
       } catch (cause) {
         if (!cancelled) {
           setError(cause instanceof Error ? cause.message : String(cause));
@@ -174,13 +176,18 @@ export function App() {
               <Operations
                 summary={summary}
                 advisories={advisories}
-                assets={assets}
-                zones={zones}
+                topology={topology}
+                twinState={twinState}
               />
             }
           />
           <Route path="/advisory/:advisoryId" element={<AdvisoryRoute />} />
-          <Route path="/twin" element={<NotBuilt name="The digital twin" />} />
+          <Route
+            path="/twin"
+            element={
+              <Twin at={clock ? toIso(clock.at) : null} advisories={advisories} />
+            }
+          />
           <Route path="/engine" element={<NotBuilt name="The engine trace" />} />
           <Route
             path="/prediction"

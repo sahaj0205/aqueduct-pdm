@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit",
     "verify": "node scripts/run-ts.mjs scripts/verify-queue.ts",
     "verify:detail": "node scripts/run-ts.mjs scripts/verify-detail.ts",
-    "verify:schematic": "node scripts/run-ts.mjs scripts/verify-schematic.ts",
-    "verify:clock": "node scripts/run-ts.mjs scripts/verify-clock.ts"
+    "verify:clock": "node scripts/run-ts.mjs scripts/verify-clock.ts",
+    "verify:twin": "node scripts/run-ts.mjs scripts/verify-twin.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

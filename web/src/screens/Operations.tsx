@@ -1,9 +1,14 @@
 import { useNavigate } from "react-router-dom";
 
 import { AdvisoryQueue } from "../components/AdvisoryQueue.tsx";
-import { PlantSchematic } from "../components/PlantSchematic.tsx";
+import { DigitalTwin } from "../components/DigitalTwin.tsx";
 import { SummaryStrip } from "../components/SummaryStrip.tsx";
-import type { AdvisorySummary, AssetSummary, SiteSummary } from "../types.ts";
+import type {
+  AdvisorySummary,
+  SiteSummary,
+  TwinState,
+  TwinTopology,
+} from "../types.ts";
 
 /**
  * The operations screen: what is wrong with the building right now, ranked.
@@ -17,26 +22,30 @@ import type { AdvisorySummary, AssetSummary, SiteSummary } from "../types.ts";
 interface Props {
   summary: SiteSummary | null;
   advisories: AdvisorySummary[] | null;
-  assets: AssetSummary[] | null;
-  zones: string[];
+  topology: TwinTopology | null;
+  twinState: TwinState | null;
 }
 
-export function Operations({ summary, advisories, assets, zones }: Props) {
+export function Operations({ summary, advisories, topology, twinState }: Props) {
   const navigate = useNavigate();
 
   return (
     <>
       {summary && <SummaryStrip summary={summary} />}
-      {assets && advisories && (
-        <PlantSchematic
-          assets={assets}
+      {topology && advisories && (
+        <DigitalTwin
+          topology={topology}
+          state={twinState}
           advisories={advisories}
-          zones={zones}
-          onSelectAsset={(assetId) => {
-            // Clicking a machine opens its highest-priority advisory. The queue is
-            // already in priority order, so the first match is that advisory, and a
-            // component with nothing open simply does not respond.
-            const first = advisories.find((a) => a.asset_id === assetId);
+          selected={null}
+          onSelect={(nodeId) => {
+            // On the operations screen a node click goes to that machine's
+            // highest-priority advisory -- the queue is already in priority order, so
+            // the first match is that advisory. The twin screen opens the instrument
+            // list instead, which is the difference between the two screens.
+            const node = topology.nodes.find((n) => n.node_id === nodeId);
+            if (!node?.asset_id) return;
+            const first = advisories.find((a) => a.asset_id === node.asset_id);
             if (first) navigate(`/advisory/${encodeURIComponent(first.advisory_id)}`);
           }}
         />

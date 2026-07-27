@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-schematic web-verify-clock web-build validate
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-twin web-verify-clock web-build validate
 
 # Resolve and install the Python environment into .venv
 install:
@@ -200,11 +200,14 @@ web-verify:
 web-verify-detail:
 	cd web && npm run verify:detail
 
-# Render the plant schematic with live data OUTSIDE a browser, check its structure and
-# its geometry, and write it to docs/plots/plant_schematic.svg. An SVG is text, so that
-# file is a reproducible screenshot rather than a description.
-web-verify-schematic:
-	cd web && npm run verify:schematic
+# Render the digital twin with live data OUTSIDE a browser, check its geometry, and write
+# it to docs/plots/digital_twin.svg. An SVG is text, so that file is a reproducible
+# screenshot rather than a description. Checks the things a drawing of a building can
+# actually get wrong: a node placed left of something that feeds it, two boxes on top of
+# each other, an edge pointing at a node that was not drawn, and any colour claiming
+# knowledge the data does not support. Needs `make api`.
+web-verify-twin:
+	cd web && npm run verify:twin
 
 # Check the clock outside a browser: that every run is reachable and self-consistent,
 # that stepping never leaves a run into the empty years between them, that the scrubber

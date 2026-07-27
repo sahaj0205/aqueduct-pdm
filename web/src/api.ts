@@ -15,6 +15,8 @@ import type {
   HealthSeries,
   RulHistory,
   SiteSummary,
+  TwinState,
+  TwinTopology,
 } from "./types.ts";
 
 const BASE = "/api";
@@ -64,6 +66,12 @@ export const api = {
   summary: (at: string | null = null) =>
     get<SiteSummary>(`/advisories/summary${asOf(at, true)}`),
   eras: () => get<ClockRange>("/clock/eras"),
+  // The building's shape, fetched once -- it cannot change while the API runs.
+  twinTopology: () => get<TwinTopology>("/twin/topology"),
+  // Every live number for one moment, in one call, so a running clock costs one
+  // request per tick rather than one per node.
+  twinState: (at: string) =>
+    get<TwinState>(`/twin/state?as_of=${encodeURIComponent(at)}`),
   assets: () => get<AssetSummary[]>("/assets"),
   advisory: (id: string) =>
     get<AdvisoryDetail>(`/advisories/${encodeURIComponent(id)}`),

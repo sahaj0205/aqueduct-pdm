@@ -289,3 +289,79 @@ export interface AnswerKey {
   faults: InjectedFault[];
   clean_runs: CleanRun[];
 }
+
+/* --------------------------------------------------------------------------
+ * the digital twin
+ * ------------------------------------------------------------------------ */
+
+export interface TwinPoint {
+  graph_name: string;
+  /** Null where the model declares a sensor that never became a stored column. */
+  point_id: string | null;
+  brick_class: string;
+  name: string | null;
+  unit_si: string | null;
+}
+
+export interface TwinNode {
+  node_id: string;
+  label: string;
+  brick_class: string;
+  /** Null for nodes the database does not model as an asset: the two water loops. */
+  asset_id: string | null;
+  parent: string | null;
+  points: TwinPoint[];
+}
+
+export interface TwinEdge {
+  from_node: string;
+  to_node: string;
+  /** feeds = flow, and the direction a fault travels. hasPart = containment. */
+  relation: string;
+}
+
+export interface TwinTopology {
+  nodes: TwinNode[];
+  edges: TwinEdge[];
+  node_count: number;
+  edge_count: number;
+  point_count: number;
+  point_attachments: number;
+}
+
+export interface TwinPointState {
+  point_id: string;
+  value: number | null;
+  at: string | null;
+  /** The raw sample the residual was computed from. Subtract from THIS, not `value`. */
+  observed: number | null;
+  residual_at: string | null;
+  expected: number | null;
+  residual: number | null;
+  /** Drift in units of the baseline's own spread. Null wherever expected is null. */
+  sigma: number | null;
+  baseline_id: string | null;
+}
+
+export interface TwinAssetState {
+  asset_id: string;
+  health: number | null;
+  weakest_mode: string | null;
+  health_at: string | null;
+  rul_mode: string | null;
+  rul_p10: number | null;
+  rul_p50: number | null;
+  rul_p90: number | null;
+  rul_as_of: string | null;
+  open_advisories: number;
+}
+
+export interface TwinState {
+  as_of: string;
+  advisory_vintage: string | null;
+  points: Record<string, TwinPointState>;
+  assets: Record<string, TwinAssetState>;
+  points_reporting: number;
+  points_with_baseline: number;
+  stale_after_hours: number;
+}

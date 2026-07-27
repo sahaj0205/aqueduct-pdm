@@ -9543,3 +9543,154 @@ links above prove. Recorded because a config entry nobody needs is worse than no
 
 START HERE: `web/src/App.tsx` — the shell, and the comment that used to argue against
 this change sitting one commit back in the history of the same file.
+
+
+## Demo Phase 1, Checkpoint 1.7b — The digital twin
+
+### What we did
+
+The building is now drawn as the model rather than as a summary of it. The picture it
+replaces had eleven boxes, one per database asset, which is the level at which an air
+handler is a single rectangle. This one draws thirty-one nodes — the cooling coil, both
+fans, the dampers, both water loops, five occupied rooms — so the chain a fault actually
+travels along, from a cooling tower on the roof to the people in Zone 3, is on the screen
+instead of implied. Clicking any node lists the instruments on it with what each reads
+now, what a fitted baseline expects it to read, and how far apart those are. Three
+separate things are shown by colour at once, and kept separate: how the machine is
+doing, how far its readings have drifted today, and what kind of fault it is.
+
+### How it works
+
+    web/src/lib/format.ts :: COLOURS, conditionBand, driftBand
+      WHY IT EXISTS: The colour vocabulary, moved here when the twin replaced the
+        schematic.
+      CHANGED FROM BEFORE: It lived in lib/schematic.ts. That module already gave the
+        reason for putting the health thresholds in format.ts -- so the queue and the
+        drawing cannot disagree about what amber means -- and the same argument applies
+        now that a second thing is drawn.
+      CHOICES: conditionBand prefers remaining life and falls back to health. "Fails in
+        three weeks" is a stronger statement than "scores 61", but the remaining-life
+        model refuses to answer until a changepoint is confirmed, so filling only on
+        remaining life would grey out machines whose condition is perfectly well known.
+        Thresholds are 30 and 90 days: thirty is the shortest horizon a technician can
+        be scheduled inside without disrupting other work, ninety matches the planning
+        horizon every advisory's cost of inaction is already computed over.
+
+    web/src/lib/twin-layout.ts :: columnsOf()
+      WHY IT EXISTS: Where each node sits left to right.
+      WHAT IT DOES: Longest path from the sources of the flow graph, so a node can never
+        be drawn at or left of something that feeds it. Then one adjustment: a node that
+        nothing feeds and that feeds exactly one thing is a source -- a pump, a tower, a
+        valve -- and is placed immediately before what it feeds.
+      CHOICES: Without that adjustment the chilled water pumps land in the same column
+        as the cooling towers, three columns from the loop they push water into. True
+        about graph depth, misleading about a building.
+      ⚠ JUDGEMENT CALL: Computed rather than hand-placed. The schematic argued for hand
+        placement so "an operator learns where the chiller is", and thirty-one hand-
+        placed coordinate pairs would break the first time the model gained a node. The
+        column comes from flow depth instead, which is deterministic and identical on
+        every load -- which is the property that argument actually needs.
+
+    web/src/lib/twin-layout.ts :: buildTwin()
+      WHY IT EXISTS: Every number the drawing uses, computed outside the component so
+        the picture can be rendered and checked without a browser.
+      WHAT IT DOES: Places each node, works out its three colours, counts how many of
+        its instruments are reporting, finds the worst drift among them, and builds the
+        orthogonal polylines between them.
+      ⚠ JUDGEMENT CALL: CONDITION IS FOR MACHINES ONLY, and this was wrong in the first
+        version. Every one of the five occupied rooms maps to the same database asset as
+        the air handler that serves them, because that is where their thermometers live
+        -- so colouring by asset painted five rooms with the air handler's health and
+        claimed the rooms were failing. A room is a space, not a machine, and has no
+        condition of its own. The coil, the fans and the dampers DO take the air
+        handler's condition, because they are the parts that machine is made of.
+      CHOICES: Edges are orthogonal, not straight. Thirty diagonal lines crossing each
+        other reads as a graph theory exercise; a building reads as plumbing.
+
+    web/src/components/DigitalTwin.tsx
+      WHY IT EXISTS: Shapes and text.
+      CHOICES: Every colour is a fill or stroke attribute rather than a CSS class, which
+        is what lets the verification write a standalone SVG that opens correctly on its
+        own. A class-styled drawing would arrive there colourless.
+      CHOICES: A thick border means drift is being measured on that node; a thin one is
+        the node's own outline and claims nothing. The distinction is in the legend,
+        because "no border" and "border showing no drift" are different statements and
+        the second one is much rarer here than the first.
+      CHOICES: The coverage sentence is printed ON the drawing rather than in a
+        footnote. A picture where most nodes are grey has to say why, or it reads as a
+        broken feed.
+
+    web/src/components/NodeInspector.tsx
+      WHY IT EXISTS: A node is not a coloured box, it is a set of named instruments.
+      WHAT IT DOES: Lists every reading on the node with its current hourly value, the
+        raw five-minute sample, what a baseline expected, the drift between them, and
+        the unit.
+      ⚠ JUDGEMENT CALL: Three numeric columns where a simpler panel would show one. The
+        hourly average and the sample are genuinely different numbers taken at different
+        instants -- the residual is computed from the sample -- so a panel showing only
+        the average next to the expectation would invite subtracting one from the other
+        and getting a third answer that is not the drift. The note under the table says
+        so in one sentence.
+      CHOICES: A refused remaining life is printed as a refusal, not left blank.
+
+    web/scripts/verify-twin.ts
+      WHY IT EXISTS: Replaces verify-schematic.ts for the reason that one gave: an SVG
+        is text, so this is the one visual in the project that can be verified rather
+        than described.
+      WHAT IT DOES: Renders the real component against the live API and checks the
+        things a drawing of a building can actually get wrong -- a node left of
+        something that feeds it, two boxes overlapping, an edge pointing at a node that
+        was not drawn, a colour claiming knowledge the data does not support -- then
+        writes docs/plots/digital_twin.svg.
+      CHANGED FROM BEFORE: It first tested the last day of the first run, which is past
+        the END of that run's air-side scenario, so only the chillers were reporting and
+        the picture under test was emptier than the one a demonstration shows. It now
+        finds the busiest day in the database by asking, rather than assuming one.
+
+### Verification
+
+    the building at 2037-06-16
+      31 nodes in the model, 31 drawn, 30 flow edges
+      79 readings reporting, 1 node able to show drift
+
+      ok  no node is drawn at or left of something it feeds
+      ok  every drawn edge joins two drawn nodes
+      ok  no two boxes overlap                             0 pairs
+      ok  every box is inside the canvas
+      ok  no node shows drift without a measured sigma
+      ok  the chilled water path is lit only when something is blamed on a chiller
+      ok  no node is coloured as scored without a health or a remaining life
+      ok  all 7 nodes of tower-to-zone are drawn
+      ok  and they run left to right in order
+          Cooling_Tower_1@0 CDW_Loop@1 Chiller_1@2 CHW_Loop@3
+          Cooling_Coil@4 Supply_Air_Fan@5 Zone_3@6
+      ok  the component rendered an svg
+
+    wrote docs/plots/digital_twin.svg (15,907 bytes)
+
+`npx tsc --noEmit` clean, `npm run build` clean, `npm run verify` (the queue) still
+passes unchanged, `uv run ruff check .` clean.
+
+### How much of the picture is actually coloured, corrected
+
+The plan was written expecting four of thirty-one nodes to carry colour. Measured, it is
+fewer, and the reason is the shape of the database rather than anything in the drawing:
+
+    fill (condition)   2 of 31 at a typical moment — the machines with a scored history
+                       in whichever run the clock is standing in
+    border (drift)     1 of 31 — six readings in this building have a fitted baseline,
+                       and at any one instant only the ones inside the current run report
+
+At 2037-06-16 both readings carrying a drift figure belong to the same machine, which is
+why one node shows a border rather than two. This database holds four separate runs
+placed years apart, so at any single moment only the one or two scenarios live in that
+run have health, remaining life or residuals at all. The other machines are not missing
+data; they are genuinely not running in that year.
+
+That is a real limit on how much the twin can say, it is printed on the drawing itself,
+and it is the coverage boundary this project has been explicit about since the baselines
+were fitted. It also means the twin is at its most informative when the clock is inside a
+faulted run — which is where a demonstration puts it.
+
+START HERE: `docs/plots/digital_twin.svg` — open it. It is the rendered output of the
+real component against real data, not a description of one.
