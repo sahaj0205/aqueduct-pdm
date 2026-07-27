@@ -221,7 +221,7 @@ def configured_modes(conn: psycopg.Connection, graph: Graph, brick_class: str) -
 def stored_stages(
     conn: psycopg.Connection, asset_id: str, as_of: datetime,
     window: tuple[datetime, datetime], vintage: datetime | None,
-    rule_findings: int = 0,
+    rules_reporting: list[str] | None = None,
     declared_modes: list[str] | None = None,
 ) -> list[Stage]:
     """Stages 7 to 10, read from what the later layers already wrote.
@@ -275,6 +275,16 @@ def stored_stages(
     ).fetchall()
     demoted = [f for f, c in raised if c]
 
+    # What could have become an advisory: every rule that reported, and every mode
+    # past its changepoint. NOT the modes with a BOUNDED prediction, which is what
+    # this counted first and is wrong -- a confirmed degradation whose remaining life
+    # the model declines to bound still raises an advisory, unpriced, and there are
+    # days where that is the only advisory on the machine. Counting bounded
+    # predictions claimed one advisory arrived from zero candidates.
+    reporting = set(rules_reporting or [])
+    raised_ids = {f for f, _ in raised}
+    candidates = reporting | set(confirmed_modes)
+
     return [
         Stage(7, "baseline coverage", "points", total_points, with_baseline,
               dropped={"no baseline was fitted for this point":
@@ -290,20 +300,26 @@ def stored_stages(
               len(published), len(bounded),
               dropped={"model declines to bound the crossing": len(refused)},
               detail={"bounded": bounded, "refused": refused}),
-        # Candidates are the rule findings that survived stage 6 plus the failure
-        # modes the remaining-life layer would answer for. Both become one advisory
-        # each, so this is the one place the funnel narrows in findings rather than
-        # changing what it counts. Demotion is NOT a drop and is not counted as one:
-        # a consequential advisory is still on the operator's screen, ranked below
-        # the fault it was blamed on. That distinction is the whole design of the
-        # cross-asset layer and collapsing it here would misreport it as suppression.
+        # Candidates are counted BY IDENTITY, not by number. Each rule that reported
+        # and each mode past its changepoint becomes at most one advisory, so the two
+        # sets can be compared against what was actually raised and anything left over
+        # named. Counting them instead produced a row claiming one advisory came from
+        # zero candidates, which the table refused -- see the note below on why the
+        # obvious count was wrong.
+        #
+        # Demotion is NOT a drop and is not counted as one: a consequential advisory
+        # is still on the operator's screen, ranked below the fault it was blamed on.
+        # That distinction is the whole design of the cross-asset layer, and
+        # collapsing it here would misreport it as suppression.
         Stage(10, "advisory raised", "findings",
-              rule_findings + len(bounded), len(raised),
-              dropped={"candidate carried no cost or impact, so no advisory":
-                       max(0, rule_findings + len(bounded) - len(raised))},
-              detail={"faults": [f for f, _ in raised],
-                      "candidates": {"rules reporting": rule_findings,
-                                     "modes with a bounded prediction": len(bounded)},
+              len(candidates | raised_ids), len(raised),
+              dropped={"candidate raised no advisory":
+                       len(candidates - raised_ids)},
+              detail={"faults": sorted(raised_ids),
+                      "candidates": {"rules that reported": sorted(reporting),
+                                     "modes past their changepoint": confirmed_modes},
+                      "raised with no candidate this trace can account for":
+                          sorted(raised_ids - candidates),
                       "demoted as consequential on an upstream cause": demoted,
                       "note": "demotion is a ranking, not a suppression -- a demoted "
                               "advisory is still in the queue",
@@ -325,8 +341,24 @@ ON CONFLICT (asset_id, as_of, stage) DO UPDATE SET
 def store(
     conn: psycopg.Connection, asset_id: str, as_of: datetime, stages: list[Stage]
 ) -> int:
-    """Write one machine's funnel for one day, replacing that day only."""
+    """Write one machine's funnel for one day, replacing that day only.
+
+    Checks the funnel's own arithmetic before the database does. The table refuses a
+    stage where more things left than arrived, which is right -- it has caught two
+    real accounting errors -- but it refuses it as a truncated row in a psycopg
+    exception, three minutes into a run that takes hours. Raising here names the
+    stage and shows both numbers, so the next one is diagnosed from the message
+    rather than from the traceback.
+    """
     import json
+
+    for s in stages:
+        if s.passed > s.entered:
+            raise ValueError(
+                f"{asset_id} {as_of:%Y-%m-%d} stage {s.ordinal} {s.stage!r}: "
+                f"{s.passed} {s.unit} passed but only {s.entered} entered. "
+                f"The funnel's accounting for this stage is wrong, not the data."
+            )
 
     rows = [
         (asset_id, as_of, s.ordinal, s.stage, s.unit, s.entered, s.passed,

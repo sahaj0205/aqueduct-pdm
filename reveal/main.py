@@ -1,7 +1,7 @@
 """The reveal API: what was actually injected, served separately from what was detected.
 
-    uv run uvicorn reveal.main:app --reload --port 8001
-    open http://localhost:8001/docs
+    uv run uvicorn reveal.main:app --reload --port 8002
+    open http://localhost:8002/docs
 
 Three endpoints. What was injected into each run and when; what was running at a given
 moment, which is what the reveal button on the dashboard asks; and, per run, the order

@@ -100,11 +100,11 @@ def trace_day(
     # operator disposes of, and the rule layer collapses them before an advisory is
     # built. Counting episodes here made stage 10 read "18 candidates, 4 advisories,
     # 14 raised nothing" -- which described a collapse as a rejection.
-    findings = next(
-        (len(s.detail.get("rules reporting", [])) for s in stages if s.ordinal == 6), 0
+    reporting = next(
+        (list(s.detail.get("rules reporting", [])) for s in stages if s.ordinal == 6), []
     )
     return stages + stored_stages(
-        conn, asset_id, as_of, window, vintage_for(conn, as_of), findings,
+        conn, asset_id, as_of, window, vintage_for(conn, as_of), reporting,
         configured_modes(conn, graph, brick_class),
     )
 
