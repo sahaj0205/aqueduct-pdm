@@ -486,8 +486,7 @@ when coverage drifts, and a property test asserting the health series never incr
 | **Work order lifecycle** | `app.advisories.status` has three values and nothing moves a row off `open`. An operator can see and rank, but cannot acknowledge, assign or close. This is the largest functional gap in the product. |
 | **Additional dashboards** | Energy, water, and per-zone comfort views. The one dashboard that exists is the one the prediction needs. |
 | **Natural-language query** | Interesting and not on the critical path to predicting a failure. |
-| **Floorplan and 3D** | Same. The plant schematic covers the one spatial question the cross-asset story needs: which machine feeds which. |
-| **A router in the frontend** | The open advisory is React state, so the detail view cannot be linked to or bookmarked. |
+| **Floorplan and 3D** | Same. The plant drawing covers the one spatial question the cross-asset story needs: which machine feeds which. |
 | **Authentication** | There are no users. Adding a login to a single-operator prototype would have been theatre. |
 | **Multi-building or multi-tenant** | One building, by scope. Nothing in the schema forbids a second, and nothing has been done to support one. |
 

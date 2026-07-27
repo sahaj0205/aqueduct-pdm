@@ -46,6 +46,14 @@ scores the whole thing against third-party labels and regenerates
 - **Interval calibration: 10.1% against a nominal 80%.** This is a defect, it is the first
   item in the next section, and it is reported rather than buried.
 
+**Since the validation run, in the demonstration build:** a shared clock every screen
+reads from, so any moment in any run can be asked for and every screen answers about the
+same day; the advisory queue rebuilt once per day across all four runs rather than once;
+the detection pipeline recorded as a ten-stage funnel, which is the first time what the
+engine DECLINED to judge is visible anywhere; the answer key served from a separate
+process on a separate credential; and the frontend on a real router, which retires what
+was item 1.2 of the next section — every advisory now has a URL.
+
 ---
 
 ## 2. Next, in priority order
@@ -138,11 +146,6 @@ layer's clamp reset, so closing a work order would correctly recover the machine
 score. That is the piece that makes this more than CRUD.
 *Effort:* medium. *Why first among the features:* it is the difference between a monitoring
 demo and a maintenance tool.
-
-**1.2 A router in the frontend.**
-The open advisory is React state, so no advisory can be linked to, bookmarked, or sent to a
-colleague. Trivial to add and currently blocks the most basic collaborative act there is.
-*Effort:* small.
 
 ### Tier 2 — new capability the existing data can support
 

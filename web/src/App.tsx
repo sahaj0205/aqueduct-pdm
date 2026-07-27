@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
+import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 
 import { api, reveal } from "./api.ts";
 import { AdvisoryDetail } from "./components/AdvisoryDetail.tsx";
-import { AdvisoryQueue } from "./components/AdvisoryQueue.tsx";
 import { ControlBar } from "./components/ControlBar.tsx";
 import type { ClockState } from "./components/ControlBar.tsx";
-import { PlantSchematic } from "./components/PlantSchematic.tsx";
-import { SummaryStrip } from "./components/SummaryStrip.tsx";
+import { NavTabs } from "./components/NavTabs.tsx";
 import { clampToEra, toIso } from "./lib/clock.ts";
+import { Operations } from "./screens/Operations.tsx";
 import type {
   AdvisorySummary,
   AssetSummary,
@@ -17,23 +17,44 @@ import type {
 } from "./types.ts";
 
 /**
- * The operations screen.
+ * The shell: the clock, the navigation, the error state, and everything the screens
+ * share. Each screen is a plain component below it.
+ *
+ * WHY THE CLOCK LIVES HERE AND NOT IN A SCREEN. Every screen shows one moment and they
+ * must all show the SAME moment. Held in the shell, the clock survives navigation —
+ * open an advisory and come back and the day has not jumped — and no screen can grow
+ * its own copy.
  *
  * Three states, all of them explicit: loading, failed, and loaded. The failed state
  * carries the message and how to fix it, because the alternative — an empty table —
  * would read as "nothing is wrong with the building", which is the most dangerous
- * thing this screen could imply.
+ * thing this dashboard could imply.
  */
+
+/** The advisory detail, reading its id from the URL rather than from a state flag. */
+function AdvisoryRoute() {
+  const { advisoryId } = useParams<{ advisoryId: string }>();
+  const navigate = useNavigate();
+  if (!advisoryId) return <Navigate to="/" replace />;
+  return <AdvisoryDetail advisoryId={advisoryId} onBack={() => navigate("/")} />;
+}
+
+function NotBuilt({ name }: { name: string }) {
+  return (
+    <div className="notice">
+      <strong>{name} is not built yet.</strong>
+      <div className="muted" style={{ marginTop: 6 }}>
+        The route exists so the shape of the dashboard is visible from the first
+        screen. See ROADMAP.md for the order these arrive in.
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const [summary, setSummary] = useState<SiteSummary | null>(null);
   const [advisories, setAdvisories] = useState<AdvisorySummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Which advisory is open, or null for the queue. Held in state rather than in the
-  // URL: adding a router for one nested view would be a dependency and a build step
-  // for a screen with exactly two states. The cost is that the detail view is not
-  // linkable, which is worth naming -- an operator cannot paste a colleague an
-  // advisory. That is the first thing a router would buy.
-  const [openId, setOpenId] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetSummary[] | null>(null);
   const [zones, setZones] = useState<string[]>([]);
 
@@ -48,14 +69,12 @@ export function App() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      // Fetched together rather than in sequence: the strip and the queue are two
-      // views of one queue and should never be rendered from different vintages.
       const [nextRange, nextAssets, downstream, key] = await Promise.all([
         api.eras(),
         api.assets(),
         // Zone names come from the graph traversal rather than being written into the
         // frontend, so a building with a sixth zone gets a sixth box with no code
-        // change. Tolerated as optional: the schematic renders without zones.
+        // change. Tolerated as optional: the drawing renders without zones.
         api.downstream("ahu-1").catch(() => null),
         // The answer key is optional and its absence is not an error: the reveal
         // service is a separate process and the dashboard is fully usable without it.
@@ -124,7 +143,7 @@ export function App() {
       <header className="masthead">
         <h1>Aqueduct PDM</h1>
         <span className="sub">
-          operations · one air handler, three chillers, three cooling towers
+          one air handler, three chillers, three cooling towers
         </span>
       </header>
 
@@ -136,49 +155,42 @@ export function App() {
           </div>
           <div className="muted" style={{ marginTop: 8 }}>
             Start it with <code>make api</code>, then reload. The queue itself is
-            written by <code>make advisories</code>.
+            written by <code>make advisory-replay</code>.
           </div>
         </div>
       )}
 
       {!error && range && clock && (
-        <ControlBar
-          range={range}
-          clock={clock}
-          onChange={setClock}
-          faults={faults}
-        />
+        <ControlBar range={range} clock={clock} onChange={setClock} faults={faults} />
       )}
 
-      {!error && openId !== null && (
-        <AdvisoryDetail advisoryId={openId} onBack={() => setOpenId(null)} />
-      )}
+      {!error && <NavTabs />}
 
-      {!error && openId === null && (
-        <>
-          {summary && <SummaryStrip summary={summary} />}
-          {assets && advisories && (
-            <PlantSchematic
-              assets={assets}
-              advisories={advisories}
-              zones={zones}
-              onSelectAsset={(assetId) => {
-                // Clicking a machine opens its highest-priority advisory. The queue is
-                // already in priority order, so the first match is that advisory, and
-                // a component with nothing open simply does not respond.
-                const first = advisories.find((a) => a.asset_id === assetId);
-                if (first) setOpenId(first.advisory_id);
-              }}
-            />
-          )}
-          {advisories && (
-            <AdvisoryQueue
-              advisories={advisories}
-              onSelect={(advisory) => setOpenId(advisory.advisory_id)}
-            />
-          )}
-          {!advisories && <div className="muted">Loading the queue…</div>}
-        </>
+      {!error && (
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <Operations
+                summary={summary}
+                advisories={advisories}
+                assets={assets}
+                zones={zones}
+              />
+            }
+          />
+          <Route path="/advisory/:advisoryId" element={<AdvisoryRoute />} />
+          <Route path="/twin" element={<NotBuilt name="The digital twin" />} />
+          <Route path="/engine" element={<NotBuilt name="The engine trace" />} />
+          <Route
+            path="/prediction"
+            element={<NotBuilt name="Prediction versus truth" />}
+          />
+          <Route path="/reveal" element={<NotBuilt name="The reveal" />} />
+          <Route path="/config" element={<NotBuilt name="Configuration" />} />
+          {/* An unknown path goes to the queue rather than to a blank screen. */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       )}
     </div>
   );

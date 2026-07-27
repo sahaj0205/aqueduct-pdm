@@ -9448,3 +9448,98 @@ service holds a common port is a bad way to start a meeting, and 8001 is a commo
 START HERE: `web/src/lib/clock.ts` — every screen's notion of "now" comes from this
 file, and the two judgement calls in it (not rolling between runs, severity as a
 position) are the ones that decide how the demonstration reads.
+
+
+## Demo Phase 1, Checkpoint 1.7a — Router and navigation shell
+
+### What we did
+
+Every screen in this dashboard now has an address. Before this the one nested view —
+an opened advisory — was a flag in memory, so nobody could send a colleague a link to
+the fault they were talking about, and a demonstration paused halfway could not be
+resumed anywhere except the top. That limitation was recorded in three documents as
+something worth fixing, and Phase 1 adds five more screens, which would have meant five
+more things reachable only by clicking in the right order. The dashboard is now a shell
+holding the clock and the navigation, with each screen underneath it as a plain
+component and a real path.
+
+### How it works
+
+    web/src/main.tsx :: BrowserRouter
+      WHY IT EXISTS: Real paths rather than fragments.
+      CHOICES: BrowserRouter and not HashRouter, so a deployment serves /twin directly
+        and a pasted link has no # in it. The cost is that whatever serves the built
+        files must fall back to index.html on an unknown path. Checked rather than
+        assumed -- see below.
+
+    web/src/App.tsx :: the shell
+      WHY IT EXISTS: Every screen shows one moment and they must all show the SAME
+        moment.
+      WHAT IT DOES: Holds the clock, the navigation, the error state and the two
+        fetches, and renders whichever screen the path names underneath.
+      CHANGED FROM BEFORE: It used to BE the operations screen. The clock living in
+        the shell rather than in a screen is what makes navigation non-destructive:
+        open an advisory, come back, and the day has not jumped. It also means no
+        screen added later can grow its own copy of the clock, which is the failure
+        this split exists to prevent.
+      CHANGED FROM BEFORE: The comment explaining why there was no router is deleted,
+        because it stopped being true. It argued a router was "a dependency and a build
+        step for a screen with exactly two states" -- correct when there were two, and
+        the reason it names for adding one, that an operator cannot paste a colleague
+        an advisory, is exactly what changed.
+
+    web/src/App.tsx :: AdvisoryRoute
+      WHY IT EXISTS: The advisory detail reads its id from the path now.
+      WHAT IT DOES: Takes the id from the URL, renders the existing detail component
+        unchanged, and sends Back to the queue. A path with no id redirects rather than
+        rendering an empty detail.
+
+    web/src/screens/Operations.tsx
+      WHY IT EXISTS: The dashboard body, lifted out of the shell.
+      WHAT IT DOES: The summary strip, the plant drawing and the queue, exactly as
+        before, with selection navigating instead of setting a flag.
+      CHOICES: Takes its data as props rather than fetching. The shell owns the fetches
+        because two screens will want the same queue, and a screen that fetched its own
+        would refetch on every navigation.
+
+    web/src/components/NavTabs.tsx
+      WHY IT EXISTS: The screen switcher.
+      CHOICES: Real links, not buttons, because they are real URLs -- a demonstration
+        can be paused mid-flow and the address pasted to somebody else.
+      ⚠ JUDGEMENT CALL: Screens not yet built are listed and DISABLED rather than
+        hidden. The shape of Phase 1 is then visible from the first screen, and no tab
+        moves sideways when the next one lands -- a tab strip that grows during a
+        series of demonstrations looks unrehearsed. The cost is five visible dead ends,
+        each of which says so when opened.
+
+    ARCHITECTURE.md and ROADMAP.md
+      CHANGED FROM BEFORE: "A router in the frontend" was listed in the not-built table
+        and as item 1.2 of the next section, described as blocking "the most basic
+        collaborative act there is". Both entries are removed and the Shipped section
+        records it, along with the clock, the daily advisory replay, the engine trace
+        and the reveal service, which had all landed since the validation run and none
+        of which the document mentioned.
+
+### Verification
+
+The production bundle built and served, and every path fetched over HTTP -- which is
+the only check that matters here, because a router that works in the dev server and
+404s on a deployment is the classic way this goes wrong:
+
+    /                            http 200   serves the app: yes
+    /twin                        http 200   serves the app: yes
+    /engine                      http 200   serves the app: yes
+    /advisory/some-advisory-id   http 200   serves the app: yes
+    /nonsense                    http 200   serves the app: yes
+
+`npx tsc --noEmit` clean, `npm run build` clean at 643 kB, `uv run ruff check .` clean.
+
+### One planned change that turned out unnecessary
+
+The plan called for a history-fallback setting in `vite.config.ts`. It is not needed:
+both the dev server and `vite preview` already fall back to index.html, which the deep
+links above prove. Recorded because a config entry nobody needs is worse than no entry
+-- it implies something is being handled that is not.
+
+START HERE: `web/src/App.tsx` — the shell, and the comment that used to argue against
+this change sitting one commit back in the history of the same file.
