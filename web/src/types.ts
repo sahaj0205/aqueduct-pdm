@@ -229,3 +229,63 @@ export interface GraphResult {
   zones: string[];
   occupants: number;
 }
+
+/* --------------------------------------------------------------------------
+ * the clock, and the answer key that labels it
+ * ------------------------------------------------------------------------ */
+
+export interface EraSummary {
+  era: number;
+  t_from: string;
+  t_to: string;
+  days: number;
+  assets: string[];
+  /** Days inside the run with an advisory queue. Fewer than `days` is normal. */
+  queue_days: number;
+}
+
+export interface ClockRange {
+  eras: EraSummary[];
+  t_from: string;
+  t_to: string;
+}
+
+export interface Rung {
+  level: number;
+  label: string;
+  source_file: string;
+}
+
+/**
+ * One fault the answer key says was injected.
+ *
+ * Served by the reveal API, which runs as a separate process on a separate
+ * credential. Everything here is ground truth and nothing in the operator view may
+ * depend on it — the control bar uses it for labels only, and works without it.
+ */
+export interface InjectedFault {
+  scenario_id: string;
+  system: string;
+  asset_id: string;
+  fault_mode: string;
+  terminal_severity: string;
+  profile: string;
+  t_onset: string;
+  t_failure: string | null;
+  t_start: string;
+  t_end: string;
+  ladder: Rung[];
+  seed: number | null;
+}
+
+export interface CleanRun {
+  scenario_id: string;
+  system: string;
+  t_start: string;
+  t_end: string;
+}
+
+export interface AnswerKey {
+  faults: InjectedFault[];
+  clean_runs: CleanRun[];
+}

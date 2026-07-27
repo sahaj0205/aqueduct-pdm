@@ -37,6 +37,8 @@ from api.models import (
     AdvisorySummary,
     AssetDetail,
     AssetSummary,
+    ClockRange,
+    EraSummary,
     GraphNode,
     GraphResult,
     HealthPoint,
@@ -885,4 +887,55 @@ def twin_state(
         points_reporting=len(points),
         points_with_baseline=sum(1 for p in points.values() if p.sigma is not None),
         stale_after_hours=stale_after_hours,
+    )
+
+
+# ---------------------------------------------------------------------------
+# the clock
+# ---------------------------------------------------------------------------
+
+
+@app.get("/clock/eras", response_model=ClockRange, tags=["twin"])
+def clock_eras(conn: Conn) -> ClockRange:
+    """Where the clock may stand, and what it will find there.
+
+    The demonstration's clock needs to know which stretches of time this database
+    actually holds, and it must not learn that from the answer key -- the scenario
+    manifests carry each fault's injection date, which is exactly what the operator
+    view is not allowed to know. So the range is taken from the health history
+    instead, which records only which days this project computed something for.
+
+    One era per calendar year, because the simulator places every run a whole number
+    of years from its 2018 source window. Two runs in the same year are on different
+    equipment and share a clock.
+    """
+    rows = conn.execute(
+        """
+        SELECT extract(year FROM time)::int AS era,
+               min(time), max(time),
+               array_agg(DISTINCT asset_id ORDER BY asset_id)
+          FROM app.health_state GROUP BY 1 ORDER BY 1
+        """
+    ).fetchall()
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail="no health history, so the clock has nowhere to stand. Run `make demo`.",
+        )
+    queue = dict(
+        conn.execute(
+            "SELECT extract(year FROM window_to)::int, count(DISTINCT window_to) "
+            "  FROM app.advisories GROUP BY 1"
+        ).fetchall()
+    )
+    eras = [
+        EraSummary(
+            era=int(era), t_from=t_from, t_to=t_to,
+            days=(t_to.date() - t_from.date()).days + 1,
+            assets=list(assets), queue_days=int(queue.get(int(era), 0)),
+        )
+        for era, t_from, t_to, assets in rows
+    ]
+    return ClockRange(
+        eras=eras, t_from=min(e.t_from for e in eras), t_to=max(e.t_to for e in eras)
     )

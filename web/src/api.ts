@@ -8,7 +8,9 @@
 import type {
   AdvisoryDetail,
   AdvisorySummary,
+  AnswerKey,
   AssetSummary,
+  ClockRange,
   GraphResult,
   HealthSeries,
   RulHistory,
@@ -16,6 +18,12 @@ import type {
 } from "./types.ts";
 
 const BASE = "/api";
+
+// The reveal service, on its own path because it is its own process on its own
+// credential. Kept separate here rather than folded into BASE so that a reader of
+// this file can see which calls reach the answer key -- there are exactly two, both
+// below, and neither is used by anything that decides what the operator sees.
+const REVEAL = "/reveal";
 
 /**
  * One fetch, with the failure path treated as seriously as the success path.
@@ -42,15 +50,27 @@ async function get<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** `?as_of=` when the clock has a position, nothing when it does not. */
+function asOf(at: string | null, first = false): string {
+  if (!at) return "";
+  return `${first ? "?" : "&"}as_of=${encodeURIComponent(at)}`;
+}
+
 export const api = {
-  advisories: (status = "open") =>
-    get<AdvisorySummary[]>(`/advisories?status=${encodeURIComponent(status)}`),
-  summary: () => get<SiteSummary>("/advisories/summary"),
+  advisories: (status = "open", at: string | null = null) =>
+    get<AdvisorySummary[]>(
+      `/advisories?status=${encodeURIComponent(status)}${asOf(at)}`,
+    ),
+  summary: (at: string | null = null) =>
+    get<SiteSummary>(`/advisories/summary${asOf(at, true)}`),
+  eras: () => get<ClockRange>("/clock/eras"),
   assets: () => get<AssetSummary[]>("/assets"),
   advisory: (id: string) =>
     get<AdvisoryDetail>(`/advisories/${encodeURIComponent(id)}`),
-  rulHistory: (assetId: string) =>
-    get<RulHistory>(`/assets/${encodeURIComponent(assetId)}/rul-history`),
+  rulHistory: (assetId: string, at: string | null = null) =>
+    get<RulHistory>(
+      `/assets/${encodeURIComponent(assetId)}/rul-history${asOf(at, true)}`,
+    ),
   downstream: (assetId: string) =>
     get<GraphResult>(`/graph/downstream/${encodeURIComponent(assetId)}`),
   health: (assetId: string, from: string, to: string) =>
@@ -58,4 +78,22 @@ export const api = {
       `/assets/${encodeURIComponent(assetId)}/health` +
         `?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
     ),
+};
+
+/**
+ * The answer key. A SEPARATE SERVICE on a separate credential, reached over its own
+ * proxy path, and deliberately its own object rather than two more methods on `api`.
+ * Nothing that decides what the operator sees may call these; the control bar uses
+ * them for labels and degrades to dates alone when the service is not running.
+ */
+export const reveal = {
+  scenarios: async (): Promise<AnswerKey | null> => {
+    try {
+      const response = await fetch(`${REVEAL}/reveal/scenarios`);
+      if (!response.ok) return null;
+      return (await response.json()) as AnswerKey;
+    } catch {
+      return null;
+    }
+  },
 };

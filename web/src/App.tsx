@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { api } from "./api.ts";
+import { api, reveal } from "./api.ts";
 import { AdvisoryDetail } from "./components/AdvisoryDetail.tsx";
 import { AdvisoryQueue } from "./components/AdvisoryQueue.tsx";
+import { ControlBar } from "./components/ControlBar.tsx";
+import type { ClockState } from "./components/ControlBar.tsx";
 import { PlantSchematic } from "./components/PlantSchematic.tsx";
 import { SummaryStrip } from "./components/SummaryStrip.tsx";
-import type { AdvisorySummary, AssetSummary, SiteSummary } from "./types.ts";
+import { clampToEra, toIso } from "./lib/clock.ts";
+import type {
+  AdvisorySummary,
+  AssetSummary,
+  ClockRange,
+  InjectedFault,
+  SiteSummary,
+} from "./types.ts";
 
 /**
  * The operations screen.
@@ -28,24 +37,52 @@ export function App() {
   const [assets, setAssets] = useState<AssetSummary[] | null>(null);
   const [zones, setZones] = useState<string[]>([]);
 
+  // The clock. One position, shared by every screen, so the queue and the building
+  // drawing can never disagree about what day it is. Null until the range is known --
+  // there is no sensible default moment in a database holding four runs placed years
+  // apart, and guessing one would land the dashboard in an empty stretch of calendar.
+  const [range, setRange] = useState<ClockRange | null>(null);
+  const [clock, setClock] = useState<ClockState | null>(null);
+  const [faults, setFaults] = useState<InjectedFault[] | null>(null);
+
   const load = useCallback(async () => {
     setError(null);
     try {
       // Fetched together rather than in sequence: the strip and the queue are two
       // views of one queue and should never be rendered from different vintages.
-      const [nextSummary, nextAdvisories, nextAssets, downstream] = await Promise.all([
-        api.summary(),
-        api.advisories("open"),
+      const [nextRange, nextAssets, downstream, key] = await Promise.all([
+        api.eras(),
         api.assets(),
         // Zone names come from the graph traversal rather than being written into the
         // frontend, so a building with a sixth zone gets a sixth box with no code
         // change. Tolerated as optional: the schematic renders without zones.
         api.downstream("ahu-1").catch(() => null),
+        // The answer key is optional and its absence is not an error: the reveal
+        // service is a separate process and the dashboard is fully usable without it.
+        reveal.scenarios(),
       ]);
-      setSummary(nextSummary);
-      setAdvisories(nextAdvisories);
+      setRange(nextRange);
       setAssets(nextAssets);
       setZones(downstream?.zones ?? []);
+      setFaults(key?.faults ?? null);
+      // Start at the end of the first run rather than its beginning. A run opens with
+      // three weeks of healthy commissioning data, so a dashboard that started there
+      // would open on an empty queue and look broken; the end of the run is where
+      // there is something to see, and the clock can be dragged backwards.
+      // An empty era list is not possible from a database with health history -- the
+      // endpoint 404s rather than returning one -- but it is checked instead of
+      // asserted, because the alternative is a crash on an index that reads as a
+      // frontend bug rather than as an empty database.
+      const first = nextRange.eras[0];
+      if (first) {
+        setClock((current) =>
+          current ?? {
+            at: clampToEra(nextRange, new Date(first.t_to)),
+            playing: false,
+            speed: 1,
+          },
+        );
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
@@ -54,6 +91,33 @@ export function App() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Everything the clock drives is refetched when it moves. Kept separate from the
+  // load above so that dragging the scrubber does not refetch the topology, the asset
+  // list or the answer key, none of which depend on the moment.
+  useEffect(() => {
+    if (!clock) return;
+    const at = toIso(clock.at);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [nextSummary, nextAdvisories] = await Promise.all([
+          api.summary(at),
+          api.advisories("open", at),
+        ]);
+        if (cancelled) return;
+        setSummary(nextSummary);
+        setAdvisories(nextAdvisories);
+      } catch (cause) {
+        if (!cancelled) {
+          setError(cause instanceof Error ? cause.message : String(cause));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [clock]);
 
   return (
     <div className="page">
@@ -75,6 +139,15 @@ export function App() {
             written by <code>make advisories</code>.
           </div>
         </div>
+      )}
+
+      {!error && range && clock && (
+        <ControlBar
+          range={range}
+          clock={clock}
+          onChange={setClock}
+          faults={faults}
+        />
       )}
 
       {!error && openId !== null && (

@@ -17,6 +17,15 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ""),
       },
+      // The reveal service is a second process on a second credential, so it gets a
+      // second proxy path rather than being merged behind /api. Keeping the split
+      // visible in the URL is the point: a request to /reveal is a request for the
+      // answer key, and that should be obvious in a browser's network tab.
+      "/reveal": {
+        target: "http://127.0.0.1:8002",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/reveal/, ""),
+      },
     },
   },
 });

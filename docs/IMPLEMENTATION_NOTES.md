@@ -9304,3 +9304,147 @@ The separation still holds, checked rather than asserted:
 START HERE: `reveal/cascade.py` — the module docstring records two wrong ways of
 measuring divergence before the one that works, and the reason the second failed is the
 single best piece of evidence that the scenarios were built correctly.
+
+
+## Demo Phase 1, Checkpoint 1.6 — The clock and the control bar
+
+### What we did
+
+The dashboard has a moment now, and it can be moved. Until this checkpoint every screen
+showed whatever was newest in the database and there was no way to ask what any of it
+looked like a week earlier — so the most convincing thing this system can demonstrate,
+a prediction interval closing while somebody watches, could not be shown at all. There
+is now one clock, shared by every screen, which can be dragged, stepped a day or a week
+at a time, or played forward at up to ten simulated days a second. Moving it refetches
+what the operator would have seen that morning and nothing else. It can also be sent
+straight to a chosen fault, or to a chosen rung of that fault's severity ladder,
+without anybody having to know what date that was.
+
+### How it works
+
+    api/main.py :: GET /clock/eras
+      WHY IT EXISTS: The clock has to know which stretches of time this database holds.
+        It must not learn that from the scenario manifests, which carry each fault's
+        injection date -- exactly what the operator view is forbidden to know.
+      WHAT IT DOES: Reads the health history, which records only which days this project
+        computed something for, and returns one entry per calendar year with its span,
+        its machines and how many of its days have an advisory queue.
+      CHOICES: `queue_days` is reported separately from `days` and is smaller. That is
+        not a gap: a day on which nothing was open produces no rows, and an empty queue
+        is what a healthy building looks like. Reported so a scrubber can mark which
+        days have something to show without treating the rest as missing data.
+
+    web/src/lib/clock.ts :: the whole module
+      WHY IT EXISTS: This decides which moment every screen renders, so a mistake here
+        is a mistake on every screen at once -- and an invisible one, because the
+        dashboard would simply be showing a different day than it says.
+      WHAT IT DOES: Pure functions over plain values. Which run a moment falls in,
+        how far through it, the moment at a given position, the twenty-four hourly
+        marks of a day, and where on the clock a given severity rung sits.
+      CHOICES: No React and no fetching anywhere in it, so all of it can be checked in
+        a terminal. That is the same reason the schematic's geometry lives in its own
+        module.
+      ⚠ JUDGEMENT CALL: Stepping does NOT roll from the end of one run into the start
+        of the next. The runs here are separate simulations of the same building placed
+        years apart, and a clock that rolled would show the queue emptying and refilling
+        with different machines for no reason a viewer could see. It stops at the edge
+        and tells the caller, which is what stops the play button sitting there
+        incrementing nothing.
+
+    web/src/lib/clock.ts :: clampToEra()
+      WHY IT EXISTS: The runs are separated by whole years of nothing.
+      WHAT IT DOES: A moment outside every run is pulled to the nearest edge of the
+        nearest run.
+      CHOICES: A clock left in one of those gaps shows a building with no readings, no
+        health and no queue, which reads as a broken dashboard rather than as an empty
+        stretch of calendar. Checked both directions: a date in 2035 lands on
+        2036-02-25 and one in 2045 lands on 2039-09-23.
+
+    web/src/lib/clock.ts :: momentAtSeverity()
+      WHY IT EXISTS: The severity selector.
+      WHAT IT DOES: Each scenario walks its whole ladder once, from healthy to its worst
+        measured rung, so "show me this fault at severity 3" means "put the clock where
+        this trajectory reached rung 3". Returns the MIDPOINT of the rung, not its start
+        -- the start is the instant the trajectory crosses in, where the difference from
+        the rung below is still nothing.
+      ⚠ JUDGEMENT CALL: Severity is a position on the clock rather than a separate
+        dataset. The alternative was holding each rung as its own precomputed run, which
+        would multiply the data by the ladder length AND leave nothing downstream a
+        history to fit a trend to, because a fault held at a fixed severity never
+        degrades. The cost is that a rung cannot be viewed in isolation from the
+        trajectory that reaches it, which for this demonstration is the right way round.
+
+    web/src/components/ControlBar.tsx
+      WHY IT EXISTS: The clock, and everything that moves it, in one place on every
+        screen -- which is what stops the queue and the building drawing disagreeing
+        about what day it is.
+      WHAT IT DOES: Play and pause, four speeds, a day scrubber, week and day nudges, a
+        run selector, and -- when the reveal service is up -- a jump-to-fault list and
+        clickable severity rungs for whatever is running at that moment.
+      CHOICES: The scrubber moves in days because everything it drives is computed once
+        a day; a finer control would slide without changing anything on screen, which
+        teaches a viewer that the control does nothing.
+      CHOICES: Jumping to a fault lands one day BEFORE it was injected. The interesting
+        thing to watch is the system not knowing yet, and landing on the onset skips it.
+      ⚠ JUDGEMENT CALL: The answer key is optional and its absence is not an error. The
+        bar works in dates alone when the reveal service is not running, and says so.
+        Anything sourced from the answer key carries a marker every time it appears, so
+        a viewer never has to wonder whether a number on screen is what the system
+        worked out or what it was trying to find.
+
+    web/src/App.tsx :: the two effects
+      WHY IT EXISTS: Dragging a scrubber must not refetch the whole building.
+      WHAT IT DOES: One load on mount for the things that do not depend on the moment --
+        the era range, the asset list, the graph traversal, the answer key. A second,
+        separate effect refetches only the queue and the site summary when the clock
+        moves, and cancels itself if the clock moves again first.
+      CHOICES: The clock starts at the END of the first run rather than its beginning.
+        A run opens with three weeks of healthy commissioning data, so starting there
+        would open the dashboard on an empty queue and look broken.
+
+    web/scripts/verify-clock.ts
+      WHY IT EXISTS: To check the above against the real database without a browser,
+        the same way the queue, the fan chart and the schematic are already checked.
+      WHAT IT DOES: Fetches the real era range and asserts every property that has to
+        hold, then fetches the real answer key and checks each fault's rungs land in
+        order, inside that fault's own life, on days the clock can stand at.
+
+### Verification
+
+    the clock can stand in 4 runs
+      2036  2036-02-25 .. 2036-09-06  195d  3 machines  173 days with a queue
+      2037  2037-01-27 .. 2037-06-25  150d  3 machines  139 days with a queue
+      2038  2038-05-10 .. 2038-09-23  137d  3 machines  133 days with a queue
+      2039  2039-05-10 .. 2039-09-23  137d  3 machines   92 days with a queue
+
+Twenty-seven properties of the clock itself, all holding: every run reachable from both
+edges, every day count agreeing with its own dates, the scrubber round-tripping, and
+stepping thirty days past either edge of every run stopping exactly at that edge rather
+than leaving it. A date in 2035 clamps to 2036-02-25 and one in 2045 to 2039-09-23.
+
+Severity as a clock position, checked against the real answer key:
+
+    ahu_cooling_valve_leakage      1 rung   04-08
+    chiller_condenser_fouling      2 rungs  06-17 07-22
+    ahu_oa_damper_stuck            3 rungs  02-17 02-17 02-17
+    chiller_bypass_valve_leakage   3 rungs  06-05 06-15 06-25
+    cooling_tower_fouling          3 rungs  06-10 06-30 07-20
+    ahu_sat_sensor_drift           2 rungs  07-09 08-23
+
+Every one lands in order, inside its own fault's life, on a day the clock can stand at.
+The three identical dates on the damper are correct and are the step fault: it jumps
+straight to its worst rung at injection rather than walking there, so all three rungs
+are the same instant.
+
+`npx tsc --noEmit` clean; `uv run ruff check` clean.
+
+### One thing found by running it
+
+The reveal service was written on port 8001 and would not start: something unrelated
+already holds that port on this machine, behind a docker proxy. It now runs on 8002,
+and the Makefile records why. A demonstration that fails to open because an unrelated
+service holds a common port is a bad way to start a meeting, and 8001 is a common port.
+
+START HERE: `web/src/lib/clock.ts` — every screen's notion of "now" comes from this
+file, and the two judgement calls in it (not rolling between runs, severity as a
+position) are the ones that decide how the demonstration reads.

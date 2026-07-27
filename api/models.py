@@ -438,3 +438,28 @@ class TwinState(BaseModel):
         )
     )
     stale_after_hours: float
+
+
+class EraSummary(BaseModel):
+    """One run of the building, and what the clock can reach inside it."""
+
+    era: int = Field(description="Calendar year, which is one run in this database")
+    t_from: datetime
+    t_to: datetime
+    days: int
+    assets: list[str] = Field(description="Machines with a scored history in this run")
+    queue_days: int = Field(
+        description=(
+            "How many days inside the run have an advisory queue computed. Fewer than "
+            "`days` is normal and is not a gap: a day on which nothing was open "
+            "produces no rows, and an empty queue is what a healthy building looks like."
+        )
+    )
+
+
+class ClockRange(BaseModel):
+    """Everywhere the clock is allowed to stand."""
+
+    eras: list[EraSummary]
+    t_from: datetime
+    t_to: datetime

@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-schematic web-build validate
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-schematic web-verify-clock web-build validate
 
 # Resolve and install the Python environment into .venv
 install:
@@ -169,13 +169,16 @@ demo: db-up load scenarios quality residuals baselines health rul advisories-wri
 api:
 	uv run uvicorn api.main:app --reload --port 8000
 
-# Serve the reveal API on :8001 -- the answer key, on the admin credential, in its own
-# process. Deliberately a second application rather than three more routes on `api`:
+# Serve the reveal API on :8002 -- the answer key, on the admin credential, in its own
+# process. 8002 and not 8001: 8001 is a common default and was already taken on the
+# machine this was built on, and a demo that fails to start because something unrelated
+# holds a port is a bad way to open a meeting.
+# Deliberately a second application rather than three more routes on `api`:
 # that process connects as app_rw, which has no grant of any kind on schema groundtruth,
 # and keeping it that way is the whole basis of the claim that no detector here can have
 # seen the label it is scored against. Run alongside `api` for the demo.
 reveal:
-	uv run uvicorn reveal.main:app --reload --port 8001
+	uv run uvicorn reveal.main:app --reload --port 8002
 
 # Serve the frontend dev server on :5173. Needs `make api` running in another
 # terminal -- the dev server proxies /api to :8000, so nothing in the frontend
@@ -202,6 +205,15 @@ web-verify-detail:
 # file is a reproducible screenshot rather than a description.
 web-verify-schematic:
 	cd web && npm run verify:schematic
+
+# Check the clock outside a browser: that every run is reachable and self-consistent,
+# that stepping never leaves a run into the empty years between them, that the scrubber
+# round-trips, and that every severity rung maps to a date inside its own fault's life.
+# The clock decides what moment EVERY screen renders, so an error here is invisible in a
+# screenshot -- the dashboard would just be showing a different day than it says.
+# Needs `make api`; the severity half is skipped unless `make reveal` is also running.
+web-verify-clock:
+	cd web && npm run verify:clock
 
 # Typecheck and production-build the frontend.
 web-build:
