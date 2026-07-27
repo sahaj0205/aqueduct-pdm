@@ -8993,3 +8993,168 @@ START HERE: `api/main.py` — `_vintage()` and the comment above the filter it f
 Both bugs found in this checkpoint were the same bug in different clothes: a lookup
 that walks backwards further than the data means anything, and a filter that turns
 itself off when it finds nothing.
+
+
+## Demo Phase 1, Checkpoint 1.4 — Engine trace funnel
+
+### What we did
+
+The system can now show what it decided NOT to do. Every table in this project until
+now recorded a conclusion — this machine is at 63, that fault will cross its threshold
+in 32 days — and none of them recorded the far larger number of moments where the
+system looked at the building and declined to say anything. That is not an omission
+worth filling for tidiness: it is where a fault detection system actually earns its
+keep. These programmes do not die in the field by missing faults, they die by
+interrupting an operator until nobody opens the screen again. This project raises one
+false finding per 604 healthy machine-days, and the reason turns out not to be a
+cleverer detector — it is ten successive refusals to judge, none of which were visible
+anywhere. They are now a table, one funnel per machine per day.
+
+### How it works
+
+    scripts/schema.sql :: app.engine_trace
+      WHY IT EXISTS: Somewhere to record how a conclusion was reached rather than what
+        it was, at a granularity a screen can show.
+      WHAT IT DOES: One row per machine per day per stage: how many things arrived,
+        how many got through, a reason-to-count map for everything that did not, and
+        stage-specific evidence. Keyed so a rerun of one day corrects that day.
+      CHOICES: `unit` is a stored column, not a comment, because the funnel counts a
+        different KIND of thing at five points down its length -- readings, then rule
+        evaluations, then points, then failure modes, then findings. A picture that
+        ran one bar smoothly into the next would be claiming that 702,000 readings
+        become 2 findings by attrition. They do not: they become 2 findings by being
+        aggregated into a different kind of object, and the drawing has to break the
+        bar where the kind changes.
+      CHOICES: A check that `passed <= entered`. It caught a real error within an hour
+        of being written -- see the class closure entry below.
+
+    analytics/trace/funnel.py :: rule_stages()
+      WHY IT EXISTS: Stages 1 to 6, the detection half, which is the part no table
+        already holds.
+      WHAT IT DOES: Runs the rule engine once over the window and counts its own
+        verdicts. Every sample the building reported; every instant where rules were
+        allowed to run at all; every rule-and-instant pair attempted; how many of
+        those had readings anybody trusts; how many said something was wrong; and how
+        many of those held long enough to count as a fault rather than a gust.
+      CHOICES: The engine is run, not re-implemented. No threshold is re-derived and
+        no category is invented here -- the drop reasons are the rule engine's own
+        status values and the suppression gate's own conditions. A trace that
+        recomputed its subject could disagree with it, and then which one is the
+        system?
+      ⚠ JUDGEMENT CALL: Suppression reasons are attributed to the FIRST condition that
+        bites, in the order the gate applies them, rather than counting an instant
+        under every condition it fails. An instant during an unoccupied night also has
+        zero minutes since the machine started, so counting both would make the
+        reasons sum to more than the number suppressed and the funnel would not
+        balance. The cost is that the reasons are not independently meaningful: "1,224
+        settling since start" means 1,224 that were not already idle.
+
+    analytics/trace/funnel.py :: configured_modes()
+      WHY IT EXISTS: Stage 8 asks how many failure modes are declared for a machine
+        against how many have been confirmed as degrading. Getting the first number
+        needs the machine's equipment class, and the obvious way is wrong.
+      WHAT IT DOES: Expands the machine's class to everything Brick considers
+        equivalent or more general, then finds every failure mode registered against
+        any of them.
+      ⚠ JUDGEMENT CALL: The first version joined the two tables on the class name.
+        `app.assets` calls the air handler `brick:AHU`; `app.failure_modes` registers
+        its three modes against `brick:Air_Handling_Unit`; Brick declares those
+        equivalent and a string comparison finds nothing. The trace reported ZERO
+        modes declared beside TWO confirmed, which is both a false number and
+        impossible -- and the table's own check on it refused the row rather than
+        storing the contradiction. The fix reuses the class closure the rule registry
+        already dispatches on, so the trace and the engine now agree about what
+        applies to a machine by construction rather than by coincidence. The chiller
+        had been matching by luck: both tables happen to spell it `brick:Chiller`.
+
+    analytics/trace/funnel.py :: stored_stages()
+      WHY IT EXISTS: Stages 7 to 10 describe layers that already persist their own
+        conclusions, so tracing them is a query rather than a re-run.
+      WHAT IT DOES: How many of the machine's readings have a fitted expectation to be
+        compared against; how many failure modes are past the changepoint that lets a
+        trend be projected; how many of those the remaining-life model would put a
+        bound on rather than refusing; and how many findings reached the operator.
+      CHOICES: Read rather than recomputed on purpose. Re-running the remaining-life
+        fit to describe it would risk describing something the dashboard is not
+        showing.
+      ⚠ JUDGEMENT CALL: Demotion is recorded in the evidence and is NOT counted as a
+        drop. A consequential advisory is still on the operator's screen, ranked below
+        the fault it was blamed on -- that distinction is the entire design of the
+        cross-asset layer, and a funnel that counted it as suppression would misreport
+        the one thing that layer exists to get right.
+
+    scripts/run_engine_trace.py :: trace_day() and the candidate count
+      WHY IT EXISTS: Joins the two halves for one machine on one day.
+      WHAT IT DOES: Picks the right idle state and rule set for the machine -- an air
+        handler is idle when the building is empty, a chiller when it is not running,
+        and the same settling machinery applies to both -- runs the detection stages,
+        then reads the stored ones.
+      CHANGED FROM BEFORE: The number of candidates handed to the last stage was the
+        count of sustained EPISODES, and that made stage 10 read "18 candidates, 4
+        advisories, 14 raised nothing". Nine separate stretches of the same saturated
+        valve are deliberately one thing an operator disposes of, and the rule layer
+        collapses them before an advisory is built. Counting episodes described that
+        collapse as a rejection. It now counts one candidate per rule, and the stage
+        balances exactly: 2 rules reporting plus 2 modes with a bounded prediction,
+        4 advisories, nothing unexplained.
+
+    scripts/run_engine_trace.py :: the driver
+      WHY IT EXISTS: Populates the table across every era.
+      WHAT IT DOES: Walks each era day by day, four machines a day, using the same
+        reading cache the advisory replay uses -- consecutive windows overlap by about
+        99% and fetching them again is two thirds of the runtime.
+      ⚠ JUDGEMENT CALL: This is a SEPARATE PASS from the advisory replay and it should
+        not be. Both walk the same days over the same windows and both run the same
+        rules, so emitting the trace from inside the replay loop would have cost
+        nothing. The replay was already running against the database when this was
+        written and restarting it would have discarded the days it had finished. The
+        module docstring records the trade and says what to do instead if these are
+        ever rebuilt from empty.
+      CHOICES: It has to run AFTER the advisory replay, because its last stage reports
+        which findings reached the operator and reads the advisory table to do it. Run
+        first, it would record zero advisories on every day and look like a system
+        that detects nothing. The Makefile comment says so.
+
+### Verification
+
+The funnel, on a chiller in the middle of its condenser fouling run:
+
+    chiller-1  2036-07-31
+    #  stage                  unit           in       out   dropped
+    1  readings               readings   211,896   211,896
+    2  evaluable instants     instants    23,544    16,956   idle 2,816; settling since start 3,772
+    3  rule evaluations       evaluations 50,868    41,620   rule does not apply in this mode 9,248
+    4  inputs trusted         evaluations 41,620    41,620
+    5  rule fired             evaluations 41,620     2,718   nothing wrong at this instant 38,902
+    6  sustained              firings      2,718     2,368   held under 60 min, not a fault 350
+    7  baseline coverage      points           9         2   no baseline fitted 7
+    8  degradation confirmed  modes            3         2   no changepoint yet 1
+    9  prediction published   modes            2         2
+    10 advisory raised        findings         4         4
+
+And the same day on the chiller that barely runs, which is the whole argument in one
+row: 24,120 instants, 23,780 of them idle, 169 evaluable, 507 rule evaluations, none
+fired. A system counting idle days as days it correctly found nothing wrong would have
+banked 23,780 free successes.
+
+Stage 10 balances exactly on every machine, with no unexplained candidates:
+
+    ahu-1      2 candidates (0 rules reporting + 2 bounded modes)  -> 2 advisories
+    chiller-1  4 candidates (2 rules reporting + 2 bounded modes)  -> 4 advisories
+    chiller-2  1 candidate  (0 rules reporting + 1 bounded mode)   -> 1 advisory
+    chiller-3  0 candidates                                        -> 0 advisories
+
+Written and read back: 120 rows for three days, four machines, ten stages each, with
+the table's `passed <= entered` check enforcing that nothing passes a stage it never
+entered. `uv run ruff check` passes.
+
+### Not yet done
+
+The table holds four days. Populating all 619 has to wait for the advisory replay to
+finish, because stage 10 reads the queue that replay is still writing -- traced now,
+every day past the replay's frontier would record zero advisories. `make engine-trace`
+is resumable and takes roughly the same time as the replay.
+
+START HERE: `analytics/trace/funnel.py` — the module docstring lists the ten stages and
+says why the unit changes three times, which is the one thing a caller has to
+understand before drawing this.

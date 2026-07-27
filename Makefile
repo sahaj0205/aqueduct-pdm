@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay demo api web web-verify web-verify-detail web-verify-schematic web-build validate
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api web web-verify web-verify-detail web-verify-schematic web-build validate
 
 # Resolve and install the Python environment into .venv
 install:
@@ -207,6 +207,16 @@ web-build:
 # Takes about three hours over 619 days; --resume picks up where a killed run stopped.
 advisory-replay:
 	uv run python scripts/run_advisory_replay.py --resume
+
+# Record what the detection pipeline did on every machine on every day as a ten-stage
+# funnel, into app.engine_trace. This is what the engine screen reads: not what the
+# system concluded, but everything it declined to conclude and why -- a reading nobody
+# trusts, a machine that is not running, an hour after a start, a rule briefly true
+# during a gust. MUST RUN AFTER advisory-replay: the last stage reports which findings
+# reached the operator, and reads app.advisories to do it, so running it first records
+# zero advisories on every day. Resumable.
+engine-trace:
+	uv run python -u scripts/run_engine_trace.py --resume
 
 # Run every scenario end to end, score every detection against the answer key, and
 # regenerate VALIDATION.md. The document is overwritten in place on every run and no

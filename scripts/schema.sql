@@ -1397,6 +1397,69 @@ COMMENT ON COLUMN groundtruth.fault_events.params IS
 
 
 -- =====================================================================
+-- APP — engine trace
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS app.engine_trace (
+    asset_id  TEXT         NOT NULL
+                           REFERENCES app.assets(asset_id) ON DELETE CASCADE,
+    as_of     TIMESTAMPTZ  NOT NULL,
+    ordinal   SMALLINT     NOT NULL,
+    stage     TEXT         NOT NULL,
+    unit      TEXT         NOT NULL,
+    entered   BIGINT       NOT NULL CHECK (entered >= 0),
+    passed    BIGINT       NOT NULL CHECK (passed >= 0),
+    dropped   JSONB        NOT NULL,
+    detail    JSONB        NOT NULL,
+    PRIMARY KEY (asset_id, as_of, stage),
+    CHECK (passed <= entered)
+);
+
+CREATE INDEX IF NOT EXISTS engine_trace_asset_as_of_idx
+    ON app.engine_trace (asset_id, as_of DESC, ordinal);
+
+COMMENT ON TABLE app.engine_trace IS
+    'What the detection pipeline did on one machine on one day, stage by stage, as a '
+    'narrowing funnel. Every other table in this schema records what the system '
+    'CONCLUDED; this one records how it got there and, more importantly, everything it '
+    'declined to conclude. It exists because the most common way an automated fault '
+    'detection system loses its users is crying wolf, and the defence against that is '
+    'not a better detector, it is eight successive refusals to judge -- a reading '
+    'nobody trusts, a machine that is not running, an hour after a start when nothing '
+    'is in balance, a rule that was briefly true during a gust. None of those refusals '
+    'were visible anywhere before this table. Populated by scripts/run_engine_trace.py '
+    'and read by the API; nothing computes from it.';
+
+COMMENT ON COLUMN app.engine_trace.ordinal IS
+    'Position in the pipeline, 1 upward. Stored rather than derived from the stage name '
+    'so a caller can order the funnel without knowing the pipeline.';
+
+COMMENT ON COLUMN app.engine_trace.unit IS
+    'WHAT IS BEING COUNTED, and it changes three times down the funnel: readings, then '
+    'rule evaluations, then points, then failure modes, then findings. A funnel drawn '
+    'as if one number narrowed into the next would be lying -- 34,560 readings do not '
+    'become 4 findings by attrition, they become 4 findings by being aggregated into a '
+    'different kind of thing. Each stage says which kind it counts so the drawing can '
+    'break the bar where the unit changes.';
+
+COMMENT ON COLUMN app.engine_trace.entered IS
+    'How many units arrived at this stage. Not always the previous stage''s passed '
+    'count, precisely because the unit changes.';
+
+COMMENT ON COLUMN app.engine_trace.dropped IS
+    'Reason to count, for everything that did not pass. The reasons are the engine''s '
+    'own words -- the rule status values and the suppression conditions -- rather than '
+    'a summary invented here, so a number in this column can be traced to the line of '
+    'code that produced it.';
+
+COMMENT ON COLUMN app.engine_trace.detail IS
+    'Stage-specific evidence: which rules ran, which points had a baseline, which modes '
+    'were confirmed, what each finding was called. This is what lets the screen show '
+    'the actual data at each step rather than only the counts.';
+
+
+
+-- =====================================================================
 -- GRANTS
 --
 -- app_rw is the role every part of the detection path connects as. The
