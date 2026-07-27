@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write demo api web web-verify web-verify-detail web-verify-schematic web-build validate
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay demo api web web-verify web-verify-detail web-verify-schematic web-build validate
 
 # Resolve and install the Python environment into .venv
 install:
@@ -198,6 +198,15 @@ web-verify-schematic:
 # Typecheck and production-build the frontend.
 web-build:
 	cd web && npm run build
+
+# Rebuild the advisory queue once per DAY across every era and keep every day, so the
+# dashboard can put its clock at any date and show what was on the operator's screen
+# that morning. Additive and resumable: unlike `advisories-write`, which owns the one
+# snapshot it writes and empties the table first, this upserts per day. Run it AFTER
+# `advisories-write`, never before, or the snapshot delete takes the history with it.
+# Takes about three hours over 619 days; --resume picks up where a killed run stopped.
+advisory-replay:
+	uv run python scripts/run_advisory_replay.py --resume
 
 # Run every scenario end to end, score every detection against the answer key, and
 # regenerate VALIDATION.md. The document is overwritten in place on every run and no

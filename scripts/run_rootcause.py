@@ -123,7 +123,10 @@ def rule_titles() -> dict[str, str]:
 
 
 def ahu_rule_faults(
-    conn: psycopg.Connection, graph, window: tuple[datetime, datetime]
+    conn: psycopg.Connection,
+    graph,
+    window: tuple[datetime, datetime],
+    readings=None,
 ) -> list[OpenFault]:
     """Sustained APAR firings on the air handler, collapsed to one row per rule.
 
@@ -131,8 +134,17 @@ def ahu_rule_faults(
     know the cooling valve has been saturating for two months, not to receive the
     finding once per stretch. The episode count and the peak severity are carried in
     the detail so nothing is lost by the collapse.
+
+    `readings` lets a caller that already holds this window's frames pass them in
+    rather than have them fetched again. It exists for the daily advisory replay,
+    which asks for six hundred overlapping windows out of the same few months and
+    would otherwise spend two thirds of its time re-reading the same rows. None
+    means load them here, which is what every other caller does.
     """
-    values, quality, flags = load_asset_readings(conn, "ahu-1", *window)
+    if readings is None:
+        values, quality, flags = load_asset_readings(conn, "ahu-1", *window)
+    else:
+        values, quality, flags = readings.asset("ahu-1", *window)
     if values.empty:
         return []
     signals, signal_quality, signal_flags = signal_frames(values, quality, flags, SIGNALS)
@@ -144,12 +156,21 @@ def ahu_rule_faults(
 
 
 def chiller_rule_faults(
-    conn: psycopg.Connection, graph, window: tuple[datetime, datetime]
+    conn: psycopg.Connection,
+    graph,
+    window: tuple[datetime, datetime],
+    readings=None,
 ) -> list[OpenFault]:
-    """Sustained chiller rule firings, per chiller, collapsed the same way."""
+    """Sustained chiller rule firings, per chiller, collapsed the same way.
+
+    Takes preloaded frames for the same reason the air handler collector does.
+    """
     out: list[OpenFault] = []
     for asset in CHILLERS:
-        loaded = load_window(conn, asset, *window)
+        if readings is None:
+            loaded = load_window(conn, asset, *window)
+        else:
+            loaded = readings.window(asset, *window)
         if loaded is None:
             continue
         values, quality, flags = loaded
@@ -197,12 +218,12 @@ def era_shift(fault: OpenFault, years: int) -> OpenFault:
     )
 
 
-def collect(conn, graph, window: tuple[datetime, datetime]) -> list[OpenFault]:
+def collect(conn, graph, window: tuple[datetime, datetime], readings=None) -> list[OpenFault]:
     """Everything open on every asset in this window, from every detector."""
     return (
         open_failure_modes(conn, window)
-        + ahu_rule_faults(conn, graph, window)
-        + chiller_rule_faults(conn, graph, window)
+        + ahu_rule_faults(conn, graph, window, readings)
+        + chiller_rule_faults(conn, graph, window, readings)
     )
 
 

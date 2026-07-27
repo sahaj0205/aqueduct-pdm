@@ -8496,3 +8496,214 @@ mode a generated validation document exists to prevent and which prose does not 
 START HERE: `AI_LOG.md` — the Outcome of D-00. It is the only place in the project that
 records the scope decision being right for a reason other than the one it was made for, and
 being wrong about something nobody checked.
+
+
+## Demo Phase 1, Checkpoint 1.3 — Daily advisory replay
+
+Numbered against the demo build plan rather than the original task list, which ended at
+7.6. `Checkpoint 1.3` on its own already means the schema, so this heading carries the
+phase.
+
+### What we did
+
+The system can now say what the maintenance queue looked like on any given morning,
+rather than only what it looks like once. Before this it held a single snapshot computed
+over one hand-picked stretch of time — enough to fill a screen, not enough to make one
+move. The demonstration this is being built for has to put a clock at a date and show an
+advisory that was not there the week before appearing, climbing the ranking as the fault
+worsens, and its cost of doing nothing growing with it. That is now six hundred and
+nineteen days of queue instead of one, and it needed no change to the shape of the
+database: the table had been keyed for exactly this since it was written and nothing had
+ever used it.
+
+### How it works
+
+    scripts/run_advisory_replay.py :: eras()
+      WHY IT EXISTS: The replay has to know which days to compute a queue for. The
+        obvious source is the scenario manifests, and they are the wrong source: they
+        record when each fault was injected, which is answer-key material the detection
+        path is forbidden to read. This function gets the same span from a table that
+        holds only which days this project already scored something on.
+      WHAT IT DOES: Groups the stored health history by calendar year and returns the
+        first and last day of each. Four eras come back, spanning 619 days in total.
+        Every scenario is placed a whole number of years from its 2018 source window, so
+        a calendar year is exactly one era, and two scenarios sharing a year are on
+        different equipment and belong in the same queue on the same day.
+      CHOICES: Deriving the span from data rather than configuration is not only about
+        the answer key. If a run is ever shortened or extended, the replay follows it
+        without anybody remembering to edit a constant.
+
+    scripts/run_advisory_replay.py :: EraReadings
+      WHY IT EXISTS: This is the entire reason the batch is three hours and not nine.
+        Six hundred overlapping four-month windows are drawn out of eras only a few
+        months long, so consecutive days share about 99% of their readings, and the
+        original code fetched all of them again every time.
+      WHAT IT DOES: Fetches one era's readings for all five relevant machines once — the
+        air handler, the three chillers, and the plant whose setpoint the capacity rule
+        needs — and holds them as three aligned tables per machine: the values, the
+        trust score for each value, and the breakdown of which trust dimension each
+        score failed. Everything afterwards takes slices of these instead of querying.
+      CHOICES: 172,512 rows for the 2036 era, fetched in 15 seconds, held in memory for
+        the whole era. Five machines rather than eight because the other three have no
+        rule and no failure mode that could put them in a queue.
+      ⚠ JUDGEMENT CALL: I had planned to cache the rule FIRINGS instead, and measuring
+        first is what stopped me. Of the 45 seconds a day cost, 35 was fault collection
+        and two thirds of that was the database read, not the arithmetic — the chiller
+        sweep spent 16 seconds reading and 8 computing, to return zero findings. Caching
+        firings would also have moved where a sustained run of firings is judged to
+        begin, changing results at every window edge, and the advisory output is what
+        the validation document rests on. Caching readings cannot do that, which is why
+        the equality check below is possible at all.
+
+    scripts/run_advisory_replay.py :: EraReadings.asset()
+      WHY IT EXISTS: The slice has to be indistinguishable from a fetch, or every number
+        downstream quietly stops matching the code path everything else uses.
+      WHAT IT DOES: Returns the rows whose timestamp is at or after the window start and
+        strictly before its end, from all three tables at once.
+      CHOICES: Half-open on the right, because the SQL behind the real loader is
+        `>= from` and `< to`. Slicing inclusively would have handed the rules one extra
+        sample per window — a difference small enough to survive review and large enough
+        to make six hundred days of output subtly wrong.
+
+    scripts/run_advisory_replay.py :: EraReadings.window()
+      WHY IT EXISTS: A chiller rule cannot be evaluated from the chiller alone. Whether
+        the machine is failing to reach the temperature it was asked for depends on a
+        setpoint that belongs to the plant, not to any one chiller, so it has to be
+        brought alongside.
+      WHAT IT DOES: Slices the chiller's readings and the plant's, then joins the one
+        setpoint column onto the chiller's tables, and returns nothing at all when
+        either side is empty for that window — which is how a caller learns the machine
+        has no data rather than finding out three steps later.
+      CHANGED FROM BEFORE: Reproduces the existing loader's join rather than calling it,
+        because that function reaches for the database and this class exists to stop
+        doing that. Same column, same left join, same empty-means-None rule.
+
+    scripts/run_rootcause.py :: ahu_rule_faults(), chiller_rule_faults(), collect()
+      WHY IT EXISTS: These are what actually sweep the rules and collapse repeated
+        firings into one finding per rule. The replay needs them to read from memory
+        instead of the database without becoming a second copy of them.
+      CHANGED FROM BEFORE: Each gained one optional argument holding preloaded tables.
+        Left out, they fetch exactly as they always did, so every existing caller is
+        untouched and unaffected. Passed in, they take slices. No other line changed.
+      CHOICES: An optional argument rather than a separate replay-only copy of the
+        sweep. A copy would have drifted from the original the first time either was
+        edited, and then two different sets of advisories would exist with no way to
+        tell which was current.
+
+    scripts/run_advisory_replay.py :: reference_window()
+      WHY IT EXISTS: Every advisory ranks the signals that moved most, in units of how
+        much that signal normally wanders. That needs a stretch of healthy operation to
+        measure "normally" against, and which stretch is not a free choice.
+      WHAT IT DOES: Returns either the era's own first 21 days — the commissioning
+        window, meaning the healthy period before anything was injected, and the same
+        stretch the baseline layer already fits on — or the same calendar days one to
+        three years later in a clean run.
+      ⚠ JUDGEMENT CALL: The existing code uses the same-calendar-days version, which
+        cancels out weather, and I made the commissioning window the default anyway.
+        The reason is availability, not preference: the two clean runs occupy May to
+        September 2039, while the 2036 and 2037 eras begin in February and January, so
+        most days in the replay have no same-season counterpart and would produce no
+        advisory at all. Task 7 had already tested the commissioning window against the
+        seasonal one and found they agree where both exist, so this is a documented
+        finding rather than a guess. The weakness is real and stated: a February
+        reference against an August observation compares two weather regimes, and a
+        point that moves with outdoor temperature reads as having shifted when only the
+        season did. It affects the evidence ranking on the advisory only — the residual
+        and health layers are condition-normalised and do not have this problem.
+        `--reference seasonal` restores the old behaviour and covers fewer days.
+
+    scripts/run_advisory_replay.py :: classify_or_ambiguous()
+      WHY IT EXISTS: Walking every day of every era found a case three hand-picked
+        windows never could. The sensor-versus-equipment test works by asking whether
+        one sensor reading wrongly would explain everything that looks broken, and that
+        question needs at least one physical relation — an energy balance, or a fitted
+        expectation — touching the machine inside the window. A chiller that barely ran
+        that spring has none, and the sweep raises an error rather than returning.
+      WHAT IT DOES: Classifies one machine at a time, and where the sweep cannot run,
+        records the class as ambiguous with a reason saying precisely why: no relation
+        touches this machine over this window, so no single-sensor explanation could be
+        formed OR rejected. The evidence fields say "not attempted" rather than being
+        left blank.
+      ⚠ JUDGEMENT CALL: The alternative was to drop that machine's advisories for the
+        day, which would have left silent holes in the history with nothing on screen
+        explaining them. Ambiguous is a value the schema already permits and it is the
+        honest word: the layer did not fail, it genuinely had nothing to reason from.
+        One machine at a time matters too — classified as a set, one silent chiller
+        would have cost every other machine its diagnosis that day.
+
+    scripts/run_advisory_replay.py :: replay_era()
+      WHY IT EXISTS: The loop that turns one era into one queue per day.
+      WHAT IT DOES: Loads the era once, then walks it a day at a time, oldest first. For
+        each day it takes the trailing four months ending that day, clipped to the start
+        of the era, collects everything open from every detector over that slice, works
+        out which findings are consequences of others, diagnoses each machine, builds an
+        advisory per finding and orders the result. Days with nothing open cost
+        milliseconds and produce no rows.
+      CHOICES: The observation window trails the as-of date rather than being fixed,
+        which is the whole point of a replay: an advisory dated the 3rd genuinely does
+        not know what one dated the 10th knows. 120 days is kept identical to the span
+        the snapshot script uses, so a replayed advisory and a snapshot one are computed
+        the same way and remain comparable.
+      CHOICES: Progress prints on every tenth day whether or not it produced anything.
+        The first version printed only on days that wrote rows, and since most days
+        early in an era are healthy, a three-hour batch would have looked hung for its
+        first twenty minutes.
+
+    scripts/run_advisory_replay.py :: write_snapshot()
+      WHY IT EXISTS: The existing write path empties the whole table before inserting.
+        That is correct when it owns the single snapshot it writes, and destroys the
+        history the moment a second day exists.
+      WHAT IT DOES: Inserts each day's queue and, on a row that is already there,
+        updates it in place. Each advisory's identifier is built from the machine, the
+        fault and the date the window ends, so a queue computed to a different date is
+        a different set of rows rather than a collision.
+      CHOICES: Additive and therefore resumable — a killed run picks up from the days
+        already present, and rerunning one day corrects that day and leaves the rest
+        alone. This is what made a three-hour batch safe to start.
+      ⚠ JUDGEMENT CALL: `make advisories-write` still deletes everything, so running it
+        after the replay destroys the history. I left it that way rather than changing a
+        verified script, and put the ordering in the Makefile comment. It is a footgun
+        in the repository either way and the comment is the weaker of the two fixes.
+
+    Makefile :: advisory-replay
+      WHY IT EXISTS: One command, and a place to record that the ordering against
+        `advisories-write` matters.
+      WHAT IT DOES: Runs the replay with resume switched on, so an interrupted batch
+        continues rather than starting over.
+
+### Verification
+
+Cost was measured before an approach was chosen, and the measurement changed it:
+
+    collect               78.8%    35.40s/day     of which ~2/3 was the database read
+    build                 10.7%     4.83s/day
+    classify               9.6%     4.33s/day
+    attribute              0.8%     0.38s/day
+    chiller sweep @120d:  load 16.1s | rules 7.8s  -> 0 faults found
+
+Measured over ten faulted days, the per-day cost fell from **44.95s to 16.4s**, a factor
+of 2.7, putting 619 days at about 2.8 hours instead of 9.4.
+
+The check that matters is not the speed, it is that nothing changed. Fault collection was
+run both ways over four windows and compared on machine, fault, both timestamps, severity
+to nine decimal places and the detail text:
+
+    2036-06-15  db= 4 cached= 4  IDENTICAL
+    2036-07-20  db= 6 cached= 6  IDENTICAL
+    2036-08-02  db= 7 cached= 7  IDENTICAL
+    2036-09-01  db= 7 cached= 7  IDENTICAL
+
+`uv run ruff check` passes on both changed files.
+
+### Known consequence, not yet resolved
+
+Where a replayed day's window ends on the same date as one of the seven existing snapshot
+rows, the replay overwrites it. The replayed version is the more principled of the two —
+same trailing window as every other day rather than a span chosen to display three
+particular advisories — but it may change which advisories the README walkthrough names,
+and that has not been checked yet.
+
+START HERE: `scripts/run_advisory_replay.py` — the module docstring states the two
+windows every advisory now carries and why the reference one had to change, which is the
+only decision in this checkpoint that alters what an advisory says rather than how fast
+it is produced.
