@@ -286,3 +286,78 @@ class SiteSummary(BaseModel):
     total_effort_usd: float
     horizon_days: float
     generated_at: datetime | None
+
+
+# ---------------------------------------------------------------------------
+# the digital twin
+# ---------------------------------------------------------------------------
+
+
+class TwinPoint(BaseModel):
+    """One reading attached to one node of the twin."""
+
+    graph_name: str = Field(
+        description="Local name in the semantic model, which is the source CSV column"
+    )
+    point_id: str | None = Field(
+        description=(
+            "The database key for this reading, or null where the model declares a "
+            "sensor that never became a stored column. Null is a fact about coverage, "
+            "not missing data."
+        )
+    )
+    brick_class: str
+    name: str | None
+    unit_si: str | None
+
+
+class TwinNode(BaseModel):
+    """One piece of equipment, space or water loop in the drawn building."""
+
+    node_id: str
+    label: str
+    brick_class: str
+    asset_id: str | None = Field(
+        description=(
+            "The database asset this node's readings belong to, or null for nodes "
+            "the database does not model as an asset -- the two water loops and the "
+            "grouping nodes carry no readings and so map to nothing."
+        )
+    )
+    parent: str | None = Field(
+        description="Containing node from brick:hasPart, for nesting the drawing"
+    )
+    points: list[TwinPoint]
+
+
+class TwinEdge(BaseModel):
+    """One relation between two nodes."""
+
+    from_node: str
+    to_node: str
+    relation: str = Field(
+        description=(
+            "feeds = what flows, so the direction a fault travels and the direction "
+            "the picture reads. hasPart = containment. Not interchangeable."
+        )
+    )
+
+
+class TwinTopology(BaseModel):
+    """The shape of the building: every node worth drawing and every edge between them."""
+
+    nodes: list[TwinNode]
+    edges: list[TwinEdge]
+    node_count: int
+    edge_count: int
+    point_count: int = Field(
+        description="Distinct readings. Matches app.points exactly."
+    )
+    point_attachments: int = Field(
+        description=(
+            "How many node-to-reading attachments there are, which is larger than "
+            "point_count when one reading belongs to several nodes. The three cooling "
+            "towers share one supply temperature setpoint, so it is drawn on all "
+            "three and counted once."
+        )
+    )

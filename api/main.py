@@ -23,6 +23,7 @@ serving the answer key to a dashboard.
 from __future__ import annotations
 
 from datetime import datetime
+from functools import cache
 from typing import Annotated
 
 import psycopg
@@ -46,9 +47,14 @@ from api.models import (
     SiteSummary,
     TimeseriesPoint,
     TimeseriesResult,
+    TwinEdge,
+    TwinNode,
+    TwinPoint,
+    TwinTopology,
 )
 from model.graph import downstream_assets, upstream_assets
 from model.loader import MVN, local_name
+from model.twin import build as build_twin
 
 app = FastAPI(
     title="Aqueduct PDM",
@@ -575,3 +581,63 @@ def graph_upstream(asset_id: str, conn: Conn) -> GraphResult:
 def graph_downstream(asset_id: str, conn: Conn) -> GraphResult:
     """Everything this asset delivers to, and the occupants at the end of it."""
     return _traverse(conn, asset_id, "downstream")
+
+
+# ---------------------------------------------------------------------------
+# the digital twin
+# ---------------------------------------------------------------------------
+
+
+@cache
+def _twin() -> TwinTopology:
+    """The drawn building, built once.
+
+    Cached for the process lifetime because it cannot change while the process runs:
+    it is derived entirely from the Turtle files, and nothing in this API asserts a
+    triple. Building it walks every point in the graph and reads both ingestion
+    manifests, which is cheap once and wasteful on every request from a dashboard
+    that redraws whenever its clock moves.
+    """
+    graph, mapping = semantic_graph()
+    twin = build_twin(graph, mapping)
+    return TwinTopology(
+        nodes=[
+            TwinNode(
+                node_id=node.node_id, label=node.label, brick_class=node.brick_class,
+                asset_id=node.asset_id, parent=node.parent,
+                points=[
+                    TwinPoint(
+                        graph_name=point.graph_name, point_id=point.point_id,
+                        brick_class=point.brick_class, name=point.name,
+                        unit_si=point.unit_si,
+                    )
+                    for point in node.points
+                ],
+            )
+            for node in twin.nodes
+        ],
+        edges=[
+            TwinEdge(from_node=e.from_node, to_node=e.to_node, relation=e.relation)
+            for e in twin.edges
+        ],
+        node_count=len(twin.nodes),
+        edge_count=len(twin.edges),
+        point_count=len({p.point_id for n in twin.nodes for p in n.points if p.point_id}),
+        point_attachments=sum(len(n.points) for n in twin.nodes),
+    )
+
+
+@app.get("/twin/topology", response_model=TwinTopology, tags=["twin"])
+def twin_topology() -> TwinTopology:
+    """The building as a drawable graph: what feeds what, and what is measured where.
+
+    Deliberately NOT served from app.asset_edges. That table flattens the graph to
+    reachability between database assets, which drops every relation inside the air
+    handler as a self-edge and leaves eight nodes. This returns the semantic model
+    itself, where the chain from a cooling tower through the condenser water, a
+    chiller, the chilled water, the coil and the fan to five occupied zones is
+    actually present.
+
+    Static for the lifetime of the process. Live values are a separate call.
+    """
+    return _twin()

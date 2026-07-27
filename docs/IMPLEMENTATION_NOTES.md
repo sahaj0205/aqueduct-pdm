@@ -8707,3 +8707,141 @@ START HERE: `scripts/run_advisory_replay.py` — the module docstring states the
 windows every advisory now carries and why the reference one had to change, which is the
 only decision in this checkpoint that alters what an advisory says rather than how fast
 it is produced.
+
+
+## Demo Phase 1, Checkpoint 1.1 — Twin topology endpoint
+
+### What we did
+
+The system can now hand a dashboard the shape of the building: every piece of
+equipment, every water loop, every occupied space, which of them feeds which, and
+which readings are taken on each. Before this it could only describe the building as
+eight machines with no insides, because the one place that shape was written down had
+been flattened for a different purpose — answering "is this upstream of that" quickly
+during fault diagnosis — and flattening discarded everything inside a machine. The
+demonstration needs the opposite: a picture that starts at a cooling tower on the roof
+and ends at five occupied rooms, with every step in between visible and clickable. That
+chain now comes back from one call, thirty-one nodes and fifty-four relations, and it
+is the same semantic model the diagnosis layer reasons over rather than a drawing
+maintained separately.
+
+### How it works
+
+    model/twin.py :: _point_index()
+      WHY IT EXISTS: A sensor in the semantic model and a sensor in the database are
+        two different objects that happen to describe the same instrument, and nothing
+        in either one states the connection. Without this join the drawing could show
+        where every sensor sits and could never fetch a value for one.
+      WHAT IT DOES: Reads both ingestion manifests and builds a lookup from the pair
+        (which source system, which column name) to that column's full record — its
+        database key, its human name and its unit. The semantic model names each
+        reading after the source spreadsheet column, so the column name is the shared
+        fact the two sides can be joined on.
+      CHOICES: The same recovery route the asset mapping already uses, deliberately.
+        There is now one way this project relates a graph point to a stored point, not
+        two that could disagree.
+
+    model/twin.py :: _brick_class()
+      WHY IT EXISTS: The class decides how a node is drawn — a chiller is not a pump is
+        not an occupied room — and a node can carry more than one type.
+      WHAT IT DOES: Returns the node's type from the Brick vocabulary, preferring it
+        explicitly over any other type the node carries, and falls back to whatever
+        type exists if somehow there is no Brick one.
+      CHOICES: Preferring rather than taking the first. Triple stores make no ordering
+        promise, so taking the first would have produced a drawing that changed its
+        icons between restarts.
+
+    model/twin.py :: build()
+      WHY IT EXISTS: The single unit of work in this checkpoint. Turns the merged
+        semantic model into the node-and-edge list a drawing needs.
+      WHAT IT DOES: Walks every reading in the model and files it under the thing it is
+        attached to, joining each to its database identity on the way. Then decides
+        which things are worth drawing, works out what contains what, and emits one
+        node per thing with its class, its database asset, its container and its
+        readings, plus one edge per relation between two things it kept.
+      CHOICES: A node is kept if it carries flow, holds a reading, or contains
+        something that does. The node set is collected before any edge is emitted, so
+        an edge can never point at a node the caller was not given — checked below and
+        it holds.
+      ⚠ JUDGEMENT CALL: That rule is a deliberate SUPERSET of the flow chain, and the
+        outside air damper is why. It feeds nothing in the model, so a flow-only rule
+        would have dropped it — but it has a position sensor and it is the target of
+        one of the injected faults, so a picture of this building without it would be
+        lying by omission. The alternative, drawing only what carries flow, gives a
+        tidier diagram that cannot show one of the six faults this project detects.
+      ⚠ JUDGEMENT CALL: Both kinds of relation are returned and labelled rather than
+        just the flow one. Flow says which way a fault travels and therefore which way
+        the picture should read; containment says which box a thing is drawn inside.
+        Neither can be derived from the other, and returning only flow would have left
+        the front end to invent its own grouping. The cost is that a caller must know
+        the difference, which is why the field carries that sentence in the schema.
+      CHOICES: A reading whose column never reached the database comes back with a null
+        key rather than being dropped, so a sensor the model claims exists and has no
+        stored history is visible rather than quietly absent. As it happens there are
+        none — all 107 join — but the drawing would have shown the gap if there were.
+
+    api/models.py :: TwinPoint, TwinNode, TwinEdge, TwinTopology
+      WHY IT EXISTS: The wire contract, and the place the two counts are distinguished.
+      WHAT IT DOES: Describes a reading, a node, a relation, and the whole topology with
+        its totals. Nullable fields carry a sentence saying what null MEANS — a node
+        with no database asset is one the database does not model, such as a water loop,
+        rather than a lookup that failed.
+      CHOICES: point_count and point_attachments are separate because they are genuinely
+        different numbers: 107 and 109. Three cooling towers share one supply
+        temperature setpoint — the temperature the towers are asked to deliver — so it
+        is drawn on all three and counted once. The first version reported only the
+        larger number and would have contradicted app.points by two for a reason nobody
+        could have found from the response.
+
+    api/main.py :: _twin()
+      WHY IT EXISTS: Building the topology walks every reading in the model and parses
+        both manifests. Cheap once, wasteful on every request from a dashboard that
+        redraws whenever its clock moves.
+      WHAT IT DOES: Builds it on first call and keeps it for the life of the process,
+        converting the internal form to the wire form.
+      CHOICES: Safe to cache only because the shape cannot change while the process
+        runs — it comes entirely from the Turtle files and nothing in this API asserts a
+        triple. That is the same argument the shared graph already rests on.
+
+    api/main.py :: GET /twin/topology
+      WHY IT EXISTS: One call that gives a front end everything it needs to draw the
+        building before it asks for a single value.
+      WHAT IT DOES: Returns the cached topology. 27.6 KB, static for the process.
+      CHOICES: Values are deliberately NOT included. The shape changes never and the
+        values change constantly, so binding them into one response would mean
+        refetching the whole building on every tick of the clock.
+
+Two trivial units are not described: a label helper that turns underscores into spaces,
+and the tuple pairing each relation name with its predicate.
+
+### Verification
+
+    nodes 31 | edges 54 | points 107 | attachments 109
+    feeds edges 30 | hasPart edges 24
+    edges pointing at a node not returned: 0  OK
+    nodes whose parent was not returned   : 0  OK
+
+The chain this project exists to demonstrate, resolved from the returned edges alone:
+
+    Cooling_Tower_1 -> CDW_Loop -> Chiller_1 -> CHW_Loop -> Cooling_Coil
+                    -> Supply_Air_Fan -> Zone_3
+
+Reconciled against the database rather than asserted: 107 distinct readings in the
+topology, 107 rows in `app.points`, **nothing in the topology that is not in the
+database and nothing in the database that is not in the topology**. Two nodes carry no
+readings and no database asset, both water loops, which is correct — they are how the
+model represents flow between machines, not machines.
+
+Served over HTTP from a running server:
+
+    status 200  bytes 27633
+    nodes 31 edges 54 points 107 attachments 109
+    Chiller_1: Chiller  asset chiller-1  parent Chilled_Water_System  points 9
+      sample point: CHL_CD_FLOW_1 -> chiller-1.cdw_flow,
+                    Supply_Condenser_Water_Flow_Sensor, meter**3/second
+    Outdoor_Air_Damper: Outside_Damper  points 2
+
+`uv run ruff check` passes on both changed packages.
+
+START HERE: `model/twin.py` — the module docstring states why this cannot be served
+from `app.asset_edges`, which is the decision the whole checkpoint rests on.
