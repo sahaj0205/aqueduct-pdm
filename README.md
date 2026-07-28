@@ -99,16 +99,28 @@ Then the cost of inaction broken into its energy and consequential-repair terms,
 computation printed, and the recommended intervention with its duration, skills, parts and
 cost.
 
-**5:00 — The pair that matters: same symptom, different diagnosis.** Two advisories in the
-same queue both amount to "supply air is not where it should be". `apar-20` on the air handler
-is classified **SENSOR** — the reconciliation found that assuming one thermometer reads about
-2.7 K high makes every violated relation hold again, against a true injected bias of 2.22 K.
-`coil-valve-leak-by` is classified **EQUIPMENT** — no single sensor bias can explain it,
-because the three relations it participates in disagree in *sign*, and no one number can
-produce that. From the symptom alone these are indistinguishable. Now look at what the
-distinction is worth: the same rule id dispatched as a sensor fault costs **$262.50** — 1.5
-technician-hours and a $120 part — and as an equipment fault **$830.00**, six hours and $260.
-**3.2× the cost, and the only thing choosing between them is that reconciliation.**
+**5:00 — The pair that matters: same symptom, different diagnosis.** Open the **Diagnosis**
+tab. Two faults on the same air handler both amount to "supply air is not where it should
+be". `apar-20` is classified **SENSOR** — assuming one thermometer reads **+2.434 K** high
+explains **94% of the violation across the three relations it appears in without making any
+of them worse**, against a true injected bias of 2.22 K. `coil-valve-leak-by` is classified
+**EQUIPMENT** — its single-sensor test is *not reached at all*: an unresponsive actuator
+invalidates it, so there is no sensor hypothesis to accept or reject, and the confirmed
+degradation trend on a physical quantity is what remains. From the symptom alone these are
+indistinguishable.
+
+Then look at what the distinction is worth: the **same rule id on the same machine**
+dispatched as a sensor fault costs **$262.50** — 1.5 technician-hours and a $120 part — and
+as an equipment fault **$830.00**, six hours. **3.2× on one symptom, and the only thing
+choosing between them is that reconciliation.** Both figures are real advisories this system
+produced on different days, because the classifier called that fault both things.
+
+The screen says two more things out loud. These two faults are **two runs two years apart**,
+so no position of the clock holds both and the comparison is composed — stated in a banner
+rather than implied. And the timeline underneath shows `apar-20` read **EQUIPMENT for ten
+days and SENSOR for the last three**: the reconciliation declining to name a suspect until
+one biased reading actually explained the violations. A classifier that had committed on day
+one would have been confidently wrong for ten days.
 
 **6:30 — Cross-asset root cause.** Scroll to the bottom of the queue. `apar-20` sits at
 position 7 of 7, visually demoted, marked **CONSEQUENTIAL**, with a link to its cause: the

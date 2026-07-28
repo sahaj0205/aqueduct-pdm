@@ -37,12 +37,16 @@ from api.models import (
     AdvisorySummary,
     AssetDetail,
     AssetSummary,
+    ClassChange,
     ClockRange,
+    DiagnosisCase,
+    DiagnosisPair,
     EraSummary,
     GraphNode,
     GraphResult,
     HealthPoint,
     HealthSeries,
+    Intervention,
     MachineTrace,
     PointSummary,
     RulHistory,
@@ -1017,3 +1021,119 @@ def engine_trace(
         asset_id=asset_id, as_of=as_of, stages=stages,
         clean=clean, clean_as_of=clean_as_of,
     )
+
+
+# ---------------------------------------------------------------------------
+# sensor versus equipment
+# ---------------------------------------------------------------------------
+
+# The pair the discrimination exists for. Both amount to "supply air is not where it
+# should be" and from the symptom alone they are identical; one is a thermometer reading
+# high and the other is a valve leaking past its seat. Defaults rather than constants so
+# any two faults can be compared, but these two are the demonstration.
+_PAIR = ("apar-20", "coil-valve-leak-by")
+
+
+def _case(conn: psycopg.Connection, fault_id: str) -> DiagnosisCase | None:
+    """One fault at its most-developed moment, with how it got there.
+
+    The latest day is taken rather than a chosen one because that is where the
+    classifier has the most evidence. The history alongside it is every day the fault
+    was in a queue, so a class that changed is visible as a change rather than as a
+    single confident answer.
+    """
+    rows = conn.execute(
+        """
+        SELECT window_to, asset_id, fault_class, detail, effort_usd
+          FROM app.advisories WHERE fault_id = %s ORDER BY window_to
+        """,
+        (fault_id,),
+    ).fetchall()
+    if not rows:
+        return None
+
+    day, asset_id, fault_class, detail, effort = rows[-1]
+    fault = detail.get("fault") or {}
+    raw = detail.get("intervention") or {}
+
+    def build(source: dict, cost: float) -> Intervention | None:
+        if not source:
+            return None
+        return Intervention(
+            intervention_id=source.get("id", ""),
+            description=source.get("description", ""),
+            duration_hours=float(source.get("duration_hours") or 0.0),
+            parts=list(source.get("parts") or []),
+            skills=list(source.get("skills") or []),
+            parts_cost_usd=float(source.get("parts_cost_usd") or 0.0),
+            basis=source.get("basis", ""),
+            effort_usd=float(cost),
+        )
+
+    # The same fault on a day the classifier called it something else. This is the
+    # counterfactual, and it is a real row rather than a lookup -- apar-20 reads
+    # EQUIPMENT for ten days and SENSOR for three, so both dispatches were actually
+    # costed by the advisory layer and can be set beside each other.
+    other = next(
+        (r for r in reversed(rows) if r[2] != fault_class), None
+    )
+    alternative = build((other[3].get("intervention") or {}), other[4]) if other else None
+
+    intervention = build(raw, float(effort))
+    return DiagnosisCase(
+        asset_id=asset_id,
+        fault_id=fault_id,
+        title=fault.get("title", fault_id),
+        as_of=day,
+        fault_class=fault_class,
+        class_reason=fault.get("class_reason", ""),
+        evidence=list(detail.get("diagnosis_evidence") or []),
+        intervention=intervention,
+        alternative=alternative,
+        history=[
+            ClassChange(
+                day=r[0],
+                fault_class=r[2],
+                class_reason=(r[3].get("fault") or {}).get("class_reason", ""),
+            )
+            for r in rows
+        ],
+    )
+
+
+@app.get("/diagnosis/pair", response_model=DiagnosisPair, tags=["diagnosis"])
+def diagnosis_pair(
+    conn: Conn,
+    left: Annotated[str, Query(description="Fault id")] = _PAIR[0],
+    right: Annotated[str, Query(description="Fault id")] = _PAIR[1],
+) -> DiagnosisPair:
+    """Two faults that look the same and are not, and what telling them apart is worth.
+
+    A supply air temperature above its setpoint is produced by a coil that cannot cool
+    AND by a thermometer reading high. From the symptom alone the two are identical.
+    Getting them the wrong way round sends a technician with a wrench to something that
+    needs a calibration kit, or the reverse.
+
+    THE TWO ARE FROM DIFFERENT RUNS, two years apart, and no position of the clock holds
+    both. That is stated in the response rather than hidden: the alternative would be a
+    screen implying these were ever seen side by side, which they were not. Each is shown
+    at the last day it appeared in a queue, which is where its classifier had the most to
+    work with.
+    """
+    one = _case(conn, left)
+    two = _case(conn, right)
+    # The ratio is within ONE fault, not between the two. A calibration and a valve
+    # replacement are different jobs on different machines and dividing one by the
+    # other answers no question anybody asked; the same symptom dispatched two ways
+    # does, and that is the number the intervention library was built to produce.
+    ratio = None
+    for case in (one, two):
+        if case and case.intervention and case.alternative:
+            costs = sorted([case.intervention.effort_usd, case.alternative.effort_usd])
+            if costs[0] > 0:
+                ratio = round(costs[1] / costs[0], 2)
+                break
+    composed = bool(
+        one and two and one.as_of.year != two.as_of.year
+    )
+    return DiagnosisPair(left=one, right=two, composed=composed, cost_ratio=ratio)

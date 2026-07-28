@@ -11,6 +11,7 @@ import type {
   AnswerKey,
   AssetSummary,
   ClockRange,
+  DiagnosisPair,
   GraphResult,
   HealthSeries,
   MachineTrace,
@@ -73,6 +74,8 @@ export const api = {
   // request per tick rather than one per node.
   twinState: (at: string) =>
     get<TwinState>(`/twin/state?as_of=${encodeURIComponent(at)}`),
+  // The two faults that present identically and must come out differently.
+  diagnosisPair: () => get<DiagnosisPair>("/diagnosis/pair"),
   // What the pipeline did on one machine on one day, with its fault-free counterpart.
   engineTrace: (assetId: string, at: string) =>
     get<MachineTrace>(

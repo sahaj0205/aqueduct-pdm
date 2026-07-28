@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-twin web-verify-clock web-verify-funnel web-build validate
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-twin web-verify-clock web-verify-funnel web-verify-diagnosis web-build validate
 
 # Resolve and install the Python environment into .venv
 install:
@@ -225,6 +225,13 @@ web-verify-clock:
 # another -- which happened once already, in this project's own notes. Needs `make api`.
 web-verify-funnel:
 	cd web && npm run verify:funnel
+
+# Check the sensor-versus-equipment pair outside a browser. The screen makes a claim
+# about money -- that telling one fault from another is worth a specific multiple -- and
+# that claim is only sound if the two dispatches compared are the SAME fault seen two
+# ways. Comparing two different faults would give a bigger number and answer nothing.
+web-verify-diagnosis:
+	cd web && npm run verify:diagnosis
 
 # Typecheck and production-build the frontend.
 web-build:

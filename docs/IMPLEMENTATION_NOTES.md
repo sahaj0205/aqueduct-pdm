@@ -9818,3 +9818,123 @@ prose, which is the correct direction for that argument to be settled in.
 START HERE: `web/src/components/Funnel.tsx` — the docstring says why the bars are
 logarithmic and why the bar has to break where the unit changes, which are the two
 decisions that make this readable rather than merely accurate.
+
+
+## Demo Phase 1, Checkpoint 1.10 — Sensor versus equipment
+
+### What we did
+
+The dashboard can now show the one discrimination in this project that is worth money
+rather than tidiness. A supply air temperature above its setpoint is produced by a coil
+that cannot cool AND by a thermometer reading high; from the symptom alone the two are
+identical, and getting them the wrong way round sends a technician with a wrench to
+something that needs a calibration kit. The screen puts both faults side by side with the
+classifier's own working under each, and then the number: the same rule on the same
+machine costs $262.50 dispatched one way and $830.00 the other. It also shows something
+the advisory queue hides — that the classifier changed its mind, reading EQUIPMENT for
+ten days before it read SENSOR, because the reconciliation refused to name a suspect
+until one biased reading actually explained the violations.
+
+### How it works
+
+    api/main.py :: _case()
+      WHY IT EXISTS: One fault at the moment its classifier had the most to work with,
+        plus everything it said on the way there.
+      WHAT IT DOES: Takes every day the fault appeared in a queue, returns the last one
+        in full -- class, reason, the three evidence lines, the dispatch -- and the whole
+        sequence of classes as a history.
+      CHOICES: The LAST day rather than a chosen one. That is where the trailing window
+        holds the most evidence, and on this data it is also where the classification is
+        right: the same fault reads EQUIPMENT earlier.
+
+    api/main.py :: the counterfactual
+      WHY IT EXISTS: "What is the discrimination worth" is a question about ONE symptom
+        sent out two ways, and getting that wrong was the first thing this checkpoint
+        got wrong.
+      WHAT IT DOES: Finds the most recent day the same fault was classified the other
+        way and returns that day's dispatch alongside the current one.
+      ⚠ JUDGEMENT CALL: The published ratio is within one fault, not between the two
+        faults on the screen. Dividing the valve replacement by the sensor calibration
+        gives 10.59x, which is a bigger and more impressive number and answers no
+        question anybody asked -- they are different jobs on different equipment. The
+        same rule id dispatched two ways gives 3.16x, and that is the number the
+        intervention library was built to produce. Both dispatches are real stored
+        advisories rather than a lookup, because the classifier called that fault both
+        things on different days and the advisory layer costed each.
+
+    api/main.py :: GET /diagnosis/pair
+      WHY IT EXISTS: The screen's single fetch.
+      CHOICES: `composed` is in the response and is true here. The two faults are two
+        runs two years apart and no position of the clock holds both. The alternative
+        was a screen implying they had been seen side by side, which they never were.
+
+    web/src/components/Reconciliation.tsx
+      WHAT IT DOES: One fault's card -- the class, the sentence explaining it, the three
+        evidence lines split into label and value, and what the dispatch costs.
+      CHOICES: The evidence is the layer's own output, not a summary written here. It
+        says which relations were violated and by how much, what a single biased sensor
+        would explain, and whether the trouble stays inside the relations that sensor
+        reaches. Those three together ARE the discrimination.
+
+    web/src/components/ClassTimeline.tsx
+      WHY IT EXISTS: Because the queue shows one class per fault and reads as a system
+        that was always right, and it was not.
+      WHAT IT DOES: One block per day, coloured by class, grouped into runs, with the
+        reason recorded that day shown underneath as you move across it.
+      ⚠ JUDGEMENT CALL: Showing this at all. The flip is easy to read as instability and
+        a screen without it would be simpler and more flattering. It is in because a
+        classifier that declines to commit until the evidence supports it is a better
+        system than one that guesses early and happens to be right, and because a
+        reviewer who found the flip themselves would reasonably wonder what else was
+        being smoothed over.
+
+### Verification
+
+    apar-20              SENSOR     2038-09-24  13 days in a queue
+    coil-valve-leak-by   EQUIPMENT  2036-09-05  170 days in a queue
+
+    ok  the two halves are classified differently        sensor vs equipment
+    ok  both are on the same machine                     ahu-1
+    ok  apar-20 recorded a reason / its evidence / the single-sensor test
+    ok  coil-valve-leak-by recorded a reason / its evidence / the single-sensor test
+    ok  composed is true exactly when the two come from different runs   2038 and 2036
+    ok  one half was classified both ways, so a counterfactual exists
+    ok  the counterfactual is a different dispatch of the SAME fault
+        calibrate-supply-air-sensor vs inspect-coil-capacity
+    ok  the published ratio is those two costs and nothing else          3.16 vs 3.16
+        $262.50 as sensor vs $830.00 the other way = 3.16x on the same symptom
+    ok  both histories end on the class shown
+        apar-20: equipment and sensor across 13 days
+        coil-valve-leak-by: equipment across 170 days
+
+`npx tsc --noEmit` clean, `npm run build` clean, `uv run ruff check .` clean.
+
+### What the replay says that the walkthrough did not
+
+Building this checkpoint measured four things the README's 5:00 step had stated from the
+old hand-picked windows. Three of them changed and one was exactly right.
+
+The bias estimate is **+2.434 K explaining 94% across three relations**, not the 2.7 K
+the walkthrough quoted. Against a true injected bias of 2.22 K that is a BETTER estimate,
+not a worse one -- the trailing window at the end of the run has more evidence than the
+window the snapshot script chose.
+
+The equipment half does not fail the single-sensor test the way the walkthrough said. It
+does not reach it: `single-sensor test : not reached -- an unresponsive actuator
+invalidates it`. The documented version -- three relations disagreeing in sign so no one
+number can produce them -- is a true statement about a different window. What the replay
+shows is the classifier declining to run a test whose precondition is not met, which is a
+different and arguably better answer.
+
+The classification is not stable. `apar-20` reads EQUIPMENT for ten days and SENSOR for
+three. The walkthrough implied one settled answer.
+
+The money was right: **$262.50 and $830.00, 3.16x**, exactly as documented, on the same
+rule id and the same machine.
+
+README.md's 5:00 step is rewritten to the replayed numbers, because the dashboard is the
+source of truth now and a demonstration script that disagrees with the running screen is
+worse than no script.
+
+START HERE: `web/src/components/ClassTimeline.tsx` — the docstring says why a screen
+that shows the classifier changing its mind is stronger than one that hides it.

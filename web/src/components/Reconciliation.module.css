@@ -1,0 +1,98 @@
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 13px 15px 15px;
+  flex: 1 1 380px;
+  min-width: 340px;
+}
+
+.head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.head h3 {
+  font-size: 13.5px;
+  margin: 0 0 2px;
+  line-height: 1.3;
+}
+
+.badge {
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0d141c;
+  padding: 3px 7px;
+  border-radius: 2px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.muted {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.reason {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--panel-2);
+  border-radius: 3px;
+  padding: 9px 11px;
+  margin: 0 0 4px;
+}
+
+.card h4 {
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--faint);
+  font-weight: 500;
+  margin: 14px 0 6px;
+}
+
+.evidence {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.evidence li {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dispatch {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.money {
+  font-family: var(--mono);
+  font-size: 18px;
+  color: var(--text);
+  white-space: nowrap;
+}

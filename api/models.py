@@ -503,3 +503,83 @@ class MachineTrace(BaseModel):
         ),
     )
     clean_as_of: datetime | None = None
+
+
+class ClassChange(BaseModel):
+    """What the classifier said about one fault on one day, and why."""
+
+    day: datetime
+    fault_class: str
+    class_reason: str
+
+
+class Intervention(BaseModel):
+    """What dispatching this fault actually costs."""
+
+    intervention_id: str
+    description: str
+    duration_hours: float
+    parts: list[str]
+    skills: list[str]
+    parts_cost_usd: float
+    basis: str
+    effort_usd: float
+
+
+class DiagnosisCase(BaseModel):
+    """One fault, at the moment its classifier had the most to go on."""
+
+    asset_id: str
+    fault_id: str
+    title: str
+    as_of: datetime
+    fault_class: str
+    class_reason: str
+    evidence: list[str] = Field(
+        description=(
+            "The classifier's own working, in its own words: which physical relations "
+            "were violated and by how much, what a single biased sensor would explain, "
+            "and whether the trouble is localised to the relations that sensor reaches."
+        )
+    )
+    intervention: Intervention | None
+    alternative: Intervention | None = Field(
+        default=None,
+        description=(
+            "What the SAME fault costs when the classifier calls it the other way. This "
+            "is the counterfactual the discrimination is worth, and it is a real stored "
+            "advisory rather than a lookup: this fault was classified both ways on "
+            "different days, so both dispatches exist and can be compared directly."
+        ),
+    )
+    history: list[ClassChange] = Field(
+        description=(
+            "How the class changed as evidence accumulated. Not a formality: on this "
+            "data one of the two faults reads EQUIPMENT for ten days and SENSOR for the "
+            "last three, which is the classifier declining to commit until the "
+            "reconciliation supports it."
+        )
+    )
+
+
+class DiagnosisPair(BaseModel):
+    """Two faults that present identically and must come out differently."""
+
+    left: DiagnosisCase | None
+    right: DiagnosisCase | None
+    composed: bool = Field(
+        description=(
+            "True when the two faults come from different runs and no single moment on "
+            "the clock holds both. That is the case here — they sit two years apart — "
+            "and the screen says so rather than implying they were ever seen together."
+        )
+    )
+    cost_ratio: float | None = Field(
+        description=(
+            "What the discrimination is worth, as the dearer dispatch of ONE fault over "
+            "its cheaper one. Deliberately not the ratio between the two faults' costs: "
+            "a sensor calibration and a valve replacement are different jobs on "
+            "different machines, and dividing one by the other answers no question "
+            "anybody asked. The same symptom sent out two ways does."
+        )
+    )

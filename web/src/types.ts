@@ -389,3 +389,46 @@ export interface MachineTrace {
   clean: TraceStage[] | null;
   clean_as_of: string | null;
 }
+
+/* --------------------------------------------------------------------------
+ * sensor versus equipment
+ * ------------------------------------------------------------------------ */
+
+export interface ClassChange {
+  day: string;
+  fault_class: string;
+  class_reason: string;
+}
+
+export interface Intervention {
+  intervention_id: string;
+  description: string;
+  duration_hours: number;
+  parts: string[];
+  skills: string[];
+  parts_cost_usd: number;
+  basis: string;
+  effort_usd: number;
+}
+
+export interface DiagnosisCase {
+  asset_id: string;
+  fault_id: string;
+  title: string;
+  as_of: string;
+  fault_class: string;
+  class_reason: string;
+  evidence: string[];
+  intervention: Intervention | null;
+  /** The same fault dispatched the other way. A real advisory, not a lookup. */
+  alternative: Intervention | null;
+  history: ClassChange[];
+}
+
+export interface DiagnosisPair {
+  left: DiagnosisCase | null;
+  right: DiagnosisCase | null;
+  /** True when the two faults are from different runs and no clock position holds both. */
+  composed: boolean;
+  cost_ratio: number | null;
+}

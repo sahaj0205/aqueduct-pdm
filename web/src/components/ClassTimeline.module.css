@@ -1,0 +1,90 @@
+.wrap {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 12px 15px 14px;
+  margin-top: 14px;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.title {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.muted {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* One block per day. Narrow on purpose: the shape of the run matters more than any
+   individual day, and a long stretch of one colour ending in another is the point. */
+.track {
+  display: flex;
+  gap: 1px;
+  margin-bottom: 8px;
+}
+
+.block,
+.blockOn {
+  flex: 1 1 auto;
+  min-width: 3px;
+  height: 22px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.72;
+}
+
+.block:hover,
+.blockOn {
+  opacity: 1;
+  outline: 1px solid var(--text);
+  outline-offset: -1px;
+}
+
+.runs {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 9px;
+}
+
+.run {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.reason {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+  background: var(--panel-2);
+  border-radius: 3px;
+  padding: 8px 11px;
+  margin: 0;
+}
+
+.stamp {
+  font-family: var(--mono);
+  color: var(--text);
+  margin-right: 9px;
+}

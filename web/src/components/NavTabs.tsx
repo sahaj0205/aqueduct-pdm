@@ -25,6 +25,7 @@ const TABS: Tab[] = [
   { to: "/", label: "Operations", ready: true },
   { to: "/twin", label: "Twin", ready: true },
   { to: "/engine", label: "Engine", ready: true },
+  { to: "/diagnosis", label: "Diagnosis", ready: true },
   { to: "/prediction", label: "Prediction", ready: false },
   { to: "/reveal", label: "Reveal", ready: false },
   { to: "/config", label: "Configuration", ready: false },

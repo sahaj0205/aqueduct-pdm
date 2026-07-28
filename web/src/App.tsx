@@ -7,6 +7,7 @@ import { ControlBar } from "./components/ControlBar.tsx";
 import type { ClockState } from "./components/ControlBar.tsx";
 import { NavTabs } from "./components/NavTabs.tsx";
 import { clampToEra, toIso } from "./lib/clock.ts";
+import { Diagnosis } from "./screens/Diagnosis.tsx";
 import { Engine } from "./screens/Engine.tsx";
 import { Operations } from "./screens/Operations.tsx";
 import { Twin } from "./screens/Twin.tsx";
@@ -199,6 +200,7 @@ export function App() {
             path="/prediction"
             element={<NotBuilt name="Prediction versus truth" />}
           />
+          <Route path="/diagnosis" element={<Diagnosis />} />
           <Route path="/reveal" element={<NotBuilt name="The reveal" />} />
           <Route path="/config" element={<NotBuilt name="Configuration" />} />
           {/* An unknown path goes to the queue rather than to a blank screen. */}
