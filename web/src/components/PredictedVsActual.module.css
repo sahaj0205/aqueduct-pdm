@@ -1,7 +1,7 @@
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r1);
   padding: 13px 15px 15px;
   margin-top: 14px;
 }
@@ -16,13 +16,13 @@
 }
 
 .head h3 {
-  font-size: 14px;
+  font-size: var(--t-title);
   margin: 0;
 }
 
 .muted {
-  font-size: 11px;
-  color: var(--faint);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
   font-family: var(--mono);
 }
 
@@ -31,12 +31,18 @@
    took it all as the first would be drawing a harsher conclusion than the data supports
    -- while one who took it all as the second would be excusing a real late bias. */
 .caveat {
-  font-size: 11.5px;
+  font-size: var(--t-micro);
   line-height: 1.6;
-  color: var(--muted);
-  background: var(--panel-2);
-  border-left: 3px solid var(--accent);
+  color: var(--ink-muted);
+  background: var(--sunken);
+  border-left: 3px solid var(--info);
   padding: 10px 12px;
   margin: 12px 0 0;
   max-width: 92ch;
+}
+
+/* The plot needs an explicit height: recharts' responsive container measures its parent,
+   and a parent sized by its contents measures zero. Was an inline style. */
+.plot {
+  height: 280px;
 }

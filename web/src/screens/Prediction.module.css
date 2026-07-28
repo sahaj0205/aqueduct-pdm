@@ -1,0 +1,18 @@
+.controls {
+  display: flex;
+  gap: var(--s5);
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+/* What the model does well, given the weight of a finding. The chart underneath is the
+   unflattering half, and the order is the argument: a screen that led with the failure
+   would be as one-sided as one that left it out. */
+.hero {
+  padding: var(--s5);
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  box-shadow: var(--lift-1);
+  margin-bottom: var(--s3);
+}

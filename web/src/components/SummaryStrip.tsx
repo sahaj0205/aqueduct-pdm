@@ -1,4 +1,5 @@
 import { healthBand, usd } from "../lib/format.ts";
+import { Bridge } from "../design/Bridge.tsx";
 import { Stat, Unit } from "../design/Stat.tsx";
 import { Term } from "../design/Term.tsx";
 import type { FaultClass, SiteSummary } from "../types.ts";
@@ -87,79 +88,68 @@ export function SummaryStrip({ summary, assetNames }: Props) {
 
   return (
     <>
-      <section className={styles.bridge}>
-        <Stat
-          size="hero"
-          // Tone follows the arithmetic, not the label. Two hundred dollars of expected
-          // waste printed in alarm red would be the strip shouting about nothing.
-          tone={gap?.alarming ? "alarm" : "neutral"}
-          label="If nothing is done"
-          value={usd(inaction)}
-          caption={
+      <Bridge
+        ratio={
+          gap && { label: gap.label, note: gap.note, alarming: gap.alarming }
+        }
+        footnote={
+          /* Only when the arithmetic runs the other way. The claim is checked against
+             analytics/advisories/generate.py: the failure term is computed from the
+             published prediction interval and `probability_by` returns nothing at all
+             when that interval is unbounded, so an unbounded prediction leaves the
+             energy term as the only priced consequence. Energy is held flat at today's
+             severity rather than projected along the trend, which understates an
+             accelerating fault — stated here because it is the reason a small number is
+             not a safe number. */
+          gap && !gap.alarming ? (
             <>
-              over the next {Math.round(summary.horizon_days)} days — wasted energy plus
-              the priced chance of the failure itself. See{" "}
-              <Term id="cost-of-inaction">cost of inaction</Term>.
+              On expected cost alone this queue does not yet pay for itself, and that is a
+              finding rather than missing data. The failure itself is priced only where
+              the model will bound a date for it; where it will not, the one priced
+              consequence is wasted energy, held flat at today&rsquo;s severity rather
+              than projected along the trend. A small number here is not a safe number —
+              the rows below say which is which.
             </>
-          }
-        />
-
-        {gap && (
-          <div className={styles.gap}>
-            <span className={styles.rule} aria-hidden="true" />
-            <span className={gap.alarming ? styles.ratioBad : styles.ratio}>
-              {gap.label}
-              <Unit>×</Unit>
-            </span>
-            <span className={styles.ratioNote}>
-              {gap.note.split("\n").map((line, i) => (
-                <span key={line}>
-                  {i > 0 && <br />}
-                  {line}
-                </span>
-              ))}
-            </span>
-            <span className={styles.rule} aria-hidden="true" />
-          </div>
-        )}
-
-        <Stat
-          size="hero"
-          label="To fix all of it"
-          value={usd(effort)}
-          caption={
-            <>
-              labour and parts across every job that could be priced
-              {summary.unpriced > 0 && (
-                <>
-                  {" "}
-                  — <strong>{summary.unpriced}</strong> could not be, and{" "}
-                  {summary.unpriced === 1 ? "is" : "are"} excluded from both totals
-                </>
-              )}
-            </>
-          }
-        />
-
-        {/* Only when the arithmetic runs the other way. The claim is checked against
-            analytics/advisories/generate.py: the failure term is computed from the
-            published prediction interval and `probability_by` returns nothing at all
-            when that interval is unbounded, so an unbounded prediction leaves the energy
-            term as the only priced consequence. Energy is held flat at today's severity
-            rather than projected along the trend, which understates an accelerating
-            fault — stated here because it is the reason a small number is not a safe
-            number. */}
-        {gap && !gap.alarming && (
-          <p className={styles.notWorth}>
-            On expected cost alone this queue does not yet pay for itself, and that is a
-            finding rather than missing data. The failure itself is priced only where the
-            model will bound a date for it; where it will not, the one priced consequence
-            is wasted energy, held flat at today&rsquo;s severity rather than projected
-            along the trend. A small number here is not a safe number — the rows below say
-            which is which.
-          </p>
-        )}
-      </section>
+          ) : undefined
+        }
+        left={
+          <Stat
+            size="hero"
+            // Tone follows the arithmetic, not the label. Two hundred dollars of
+            // expected waste printed in alarm red would be the strip shouting about
+            // nothing.
+            tone={gap?.alarming ? "alarm" : "neutral"}
+            label="If nothing is done"
+            value={usd(inaction)}
+            caption={
+              <>
+                over the next {Math.round(summary.horizon_days)} days — wasted energy plus
+                the priced chance of the failure itself. See{" "}
+                <Term id="cost-of-inaction">cost of inaction</Term>.
+              </>
+            }
+          />
+        }
+        right={
+          <Stat
+            size="hero"
+            label="To fix all of it"
+            value={usd(effort)}
+            caption={
+              <>
+                labour and parts across every job that could be priced
+                {summary.unpriced > 0 && (
+                  <>
+                    {" "}
+                    — <strong>{summary.unpriced}</strong> could not be, and{" "}
+                    {summary.unpriced === 1 ? "is" : "are"} excluded from both totals
+                  </>
+                )}
+              </>
+            }
+          />
+        }
+      />
 
       {/* Everything else. Deliberately quieter than the two figures above: these are
           context for the money, not competitors with it. */}

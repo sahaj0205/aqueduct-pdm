@@ -1,0 +1,17 @@
+/* The two pieces of working, side by side so the contrast is a comparison rather than a
+   scroll. Below 780px they stack, because two 340px cards in a 700px window are two
+   columns of wrapped fragments. */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: var(--s4);
+  align-items: start;
+  margin-bottom: var(--s5);
+}
+
+/* The banner saying the two faults were never seen together. Spaced away from the
+   cards below it rather than by an inline margin. */
+.composed {
+  margin-bottom: var(--s4);
+}

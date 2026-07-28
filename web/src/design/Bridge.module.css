@@ -1,0 +1,89 @@
+.bridge {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s5);
+  flex-wrap: wrap;
+
+  padding: var(--s5);
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  box-shadow: var(--lift-1);
+  margin-bottom: var(--s3);
+}
+
+.side {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+/* The middle is the relationship between the two either side, not a third figure, so it
+   is centred against them rather than sharing their baseline. */
+.gap {
+  flex: 0 1 190px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s2);
+  padding-top: var(--s4);
+  text-align: center;
+}
+
+.rule {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--hairline-strong) 22%,
+    var(--hairline-strong) 78%,
+    transparent
+  );
+}
+
+/* Neutral by default. The alarm variant is only for a gap that is bad news — colouring
+   every ratio red would make the figure shout on screens where it is merely large. */
+.ratio,
+.ratioBad {
+  font-size: var(--t-display);
+  font-weight: var(--w-semi);
+  line-height: 1;
+  letter-spacing: var(--track-display);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.ratioBad {
+  color: var(--alarm);
+}
+
+.note {
+  font-size: var(--t-micro);
+  line-height: 1.35;
+  color: var(--ink-muted);
+}
+
+.footnote {
+  flex: 1 1 100%;
+  margin: var(--s2) 0 0;
+  padding-top: var(--s4);
+  border-top: 1px solid var(--hairline);
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+  max-width: 96ch;
+}
+
+@media (max-width: 860px) {
+  /* Stacked, so the connector stops pretending to be a horizontal relationship. */
+  .gap {
+    flex-basis: 100%;
+    flex-direction: row;
+    padding-top: 0;
+  }
+
+  .note br {
+    display: none;
+  }
+}

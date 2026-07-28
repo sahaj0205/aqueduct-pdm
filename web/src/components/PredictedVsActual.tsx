@@ -72,7 +72,7 @@ export function PredictedVsActual({ points, actualFailure, modeId }: Props) {
         </p>
       ) : (
         <>
-          <div style={{ height: 260 }}>
+          <div className={styles.plot}>
             <ResponsiveContainer>
               <LineChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 8 }}>
                 <CartesianGrid stroke="#e4e0d9" strokeDasharray="2 4" />

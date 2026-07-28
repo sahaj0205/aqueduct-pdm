@@ -3,8 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import { api, reveal } from "../api.ts";
 import { PredictedVsActual } from "../components/PredictedVsActual.tsx";
 import { RulExplainer } from "../components/RulExplainer.tsx";
+import { Picker } from "../design/Picker.tsx";
 import { ScreenHead } from "../design/ScreenHead.tsx";
+import { Stat, StatRow, Unit } from "../design/Stat.tsx";
 import { Term } from "../design/Term.tsx";
+import styles from "./Prediction.module.css";
 import { narrowing, toEpoch } from "../lib/chart.ts";
 import type { AnswerKey, RulExplanation, RulHistory } from "../types.ts";
 
@@ -42,6 +45,26 @@ export function Prediction({ at }: Props) {
   const [explanation, setExplanation] = useState<RulExplanation | null>(null);
   const [key, setKey] = useState<AnswerKey | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Identifier to human name for the picker, same as the engine screen. A missing list
+  // is not an error: the picker falls back to identifiers, which is what it used to show.
+  const [names, setNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const assets = await api.assets();
+        if (!cancelled) {
+          setNames(Object.fromEntries(assets.map((a) => [a.asset_id, a.name])));
+        }
+      } catch {
+        /* identifiers only, which is what this showed before the names existed */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,88 +172,81 @@ export function Prediction({ at }: Props) {
         How long it has left, and how sure we are
       </ScreenHead>
 
-      <div style={{ display: "flex", gap: 8, margin: "0 0 14px", flexWrap: "wrap" }}>
-        {["ahu-1", "chiller-1", "chiller-2"].map((id) => (
-          <button
-            key={id}
-            onClick={() => setAssetId(id)}
-            style={{
-              fontSize: 12,
-              padding: "5px 11px",
-              borderRadius: 3,
-              cursor: "pointer",
-              border: "1px solid var(--line)",
-              background: id === assetId ? "var(--accent)" : "var(--panel-2)",
-              color: id === assetId ? "#ffffff" : "var(--muted)",
-            }}
-          >
-            {id}
-          </button>
-        ))}
-        {modes.length > 0 && (
-          <select
+      <div className={styles.controls}>
+        <Picker
+          label="machine"
+          value={assetId}
+          onChange={setAssetId}
+          options={["ahu-1", "chiller-1", "chiller-2"].map((id) => ({
+            id,
+            label: names[id] ?? id,
+            sub: id,
+          }))}
+        />
+        {modes.length > 1 && (
+          <Picker
+            label="failure mode"
             value={modeId}
-            onChange={(e) => setModeId(e.target.value)}
-            style={{
-              fontSize: 12,
-              padding: "5px 8px",
-              borderRadius: 3,
-              background: "var(--panel-2)",
-              color: "var(--text)",
-              border: "1px solid var(--line)",
-            }}
-          >
-            {modes.map((m) => (
-              <option key={m} value={m}>
-                {m} ({history?.modes[m]?.length ?? 0} estimates)
-              </option>
-            ))}
-          </select>
+            onChange={setModeId}
+            options={modes.map((m) => ({
+              id: m,
+              label: m.replace(/-/g, " "),
+              sub: `${history?.modes[m]?.length ?? 0} estimates`,
+            }))}
+          />
         )}
       </div>
 
       {error && (
         <div className="notice">
-          <strong>No remaining-life history for {assetId}.</strong>
-          <div className="muted" style={{ marginTop: 6 }}>
-            {error}
-          </div>
+          <strong>No remaining-life history for {names[assetId] ?? assetId}.</strong>
+          <p className="muted">{error}</p>
         </div>
       )}
 
       {!error && history && points.length > 0 && (
         <>
-          <section
-            style={{
-              background: "var(--panel)",
-              border: "1px solid var(--line)",
-              borderRadius: 4,
-              padding: "12px 15px 13px",
-            }}
-          >
-            <h3 style={{ fontSize: 14, margin: "0 0 8px" }}>
-              What the model does well: the interval closes
-            </h3>
-            <div style={{ display: "flex", gap: 26, flexWrap: "wrap", fontSize: 12 }}>
-              <span>
-                <strong style={{ fontFamily: "var(--mono)", fontSize: 17 }}>
-                  {close.percentClosed === null
-                    ? "—"
-                    : `${close.percentClosed.toFixed(0)}%`}
-                </strong>
-                <span className="muted"> closed over the run</span>
-              </span>
-              <span className="muted">
-                {close.bounded} bounded estimate{close.bounded === 1 ? "" : "s"},{" "}
-                {close.unbounded} where an end was left unbounded
-              </span>
-              <span className="muted">
-                {close.monotone
-                  ? "narrowed at every step"
-                  : "widened locally on the way — each estimate is refitted from that day's evidence, and a run of flatter days genuinely is weaker evidence about a rate"}
-              </span>
-            </div>
-          </section>
+          {/* What the model does WELL, stated first and given the size of a finding.
+              The chart below it is the unflattering half, and a screen that led with
+              the unflattering half would be as one-sided as one that omitted it. */}
+          <div className={styles.hero}>
+            <StatRow>
+              <Stat
+                size="hero"
+                tone="good"
+                label="The range closes"
+                value={
+                  close.percentClosed === null ? (
+                    "—"
+                  ) : (
+                    <>
+                      {close.percentClosed.toFixed(0)}
+                      <Unit>%</Unit>
+                    </>
+                  )
+                }
+                caption="narrower at the end of the run than at the start, as evidence accumulates"
+              />
+              <Stat
+                label="Estimates with both ends"
+                value={close.bounded}
+                caption={
+                  close.unbounded === 0
+                    ? "every estimate on this series was bounded at both ends"
+                    : `${close.unbounded} more left one end open — the model refusing to bound a crossing is an answer, not a gap`
+                }
+              />
+              <Stat
+                label="Shape of the closing"
+                value={close.monotone ? "steady" : "uneven"}
+                caption={
+                  close.monotone
+                    ? "narrowed at every single step"
+                    : "widened locally on the way. Each estimate is refitted from that day's evidence, and a run of flatter days genuinely is weaker evidence about a rate"
+                }
+              />
+            </StatRow>
+          </div>
           <PredictedVsActual
             points={points}
             actualFailure={actualFailure}

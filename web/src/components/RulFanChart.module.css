@@ -91,7 +91,7 @@
 }
 
 .tooltip {
-  background: #0d1218;
+  background: var(--sunken);
   border: 1px solid var(--line);
   border-radius: 3px;
   padding: 7px 9px;

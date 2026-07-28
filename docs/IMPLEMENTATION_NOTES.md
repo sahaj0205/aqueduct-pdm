@@ -11021,3 +11021,90 @@ sentence asserting something the data did not support.
 
 START HERE: `web/src/components/Funnel.tsx` — the PLAIN map at the top is the checkpoint;
 everything below it is the same table it always was, saying what it means.
+
+## Demo Phase R, Checkpoint R7 — Sensor or machine, and Time left
+
+### What we did
+
+Two screens were rebuilt around the number each of them exists to make, and a shape that
+had appeared twice was extracted so there is one of it rather than two.
+
+On the sensor-or-machine screen, the point is that the same reported symptom costs three
+times as much to deal with when the blame lands on the wrong side — and that figure was in
+a grey box UNDERNEATH two cards of dense classifier working. A reader met the evidence
+before being told what it was evidence for. The two dispatch costs and the gap between them
+now lead the screen, and the working sits below where evidence belongs.
+
+On the remaining-life screen, what the model does well was three short phrases in a strip
+of twelve-pixel grey. It is now three figures at the size of findings: how far the range
+closes over the run, how many estimates had both ends bounded, and whether the closing was
+steady or uneven. The unflattering chart still follows immediately, which is the order the
+screen has always argued in — leading with the failure would be as one-sided as leaving it
+out.
+
+Both screens also lost their hand-built control rows in favour of the shared picker, and
+both now name machines rather than coding them.
+
+One thing was found that belongs to an earlier checkpoint. The scripted colour sweep in R1
+searched TypeScript files and never touched stylesheets, and the verification afterwards
+checked only the files it had swept. Three dark-theme colours had survived in CSS the whole
+time: two badges setting near-black text on a saturated fill, which on the light palette is
+unreadable, and a chart plot area still painted near-black, which on a white page is a
+black rectangle. All three are fixed and the sweep now covers stylesheets too.
+
+### How it works
+
+`web/src/design/Bridge.tsx` :: Bridge
+  WHY IT EXISTS: Two screens make the same shape of argument — two figures where the
+    number that matters is the gap between them. The landing screen compares leaving work
+    alone against doing it; this screen compares the same fault dispatched two different
+    ways. In both cases a reader was previously expected to divide two numbers in their
+    head, and after R4 there were two separate implementations of the same layout.
+  WHAT IT DOES: Places a figure either side of a centred ratio with a rule running through
+    it, and takes an optional footnote spanning the full width underneath for a caveat
+    that qualifies all three.
+  CHOICES: It does NO arithmetic. The ratio arrives already decided, including its
+    direction and whether it is alarming, because the two callers compute theirs from
+    different quantities under different rules — the landing screen inverts its fraction
+    when the work costs more than the consequence, which would be meaningless for a
+    comparison of two repair bills for the same fault.
+  CHANGED FROM BEFORE: The landing screen's own copy of this layout was deleted and it now
+    uses this, so the two cannot drift apart.
+
+`web/src/screens/Diagnosis.tsx` :: the cost bridge
+  CHANGED FROM BEFORE: The cost comparison was a grey notice below both cards, with the
+    two dollar figures inline in a paragraph. They are now the two large figures on the
+    screen with the ratio between them, and the paragraph explaining that both are real
+    advisories rather than a price list became the footnote under them.
+  CHOICES: The dispatch that actually went out is the alarming side; the alternative is
+    neutral. Colouring both would say the choice itself is bad news, when the point is
+    that one of the two is right and picking the wrong one is expensive.
+
+`web/src/screens/Prediction.tsx` :: the hero row
+  CHANGED FROM BEFORE: "82% closed over the run" was set at seventeen pixels inside a
+    sentence, beside two more phrases at twelve. Three figures now, each with a label and
+    a plain-English caption, at the size of findings.
+  CHOICES: The caption on the bounded count says what an unbounded estimate MEANS — the
+    model refusing to bound a crossing is an answer rather than a gap — because a count
+    of things that did not happen invites the reader to assume something is broken.
+
+`web/src/screens/Prediction.tsx` and `Engine.tsx` :: machine names
+  CHANGED FROM BEFORE: Both labelled their controls with raw identifiers. Both now fetch
+    the asset list once and show the real name with the identifier beneath it, falling
+    back to the identifier alone when that list cannot be reached — which is exactly what
+    they displayed before.
+
+Four stylesheets — Reconciliation, ClassTimeline, RulExplainer, PredictedVsActual —
+converted from hand-picked pixel values to the token scale by a scripted pass, removing ten
+sizes below the readable floor and re-pointing every legacy colour alias at the name it now
+resolves to. The chart plot area's height moved out of an inline style into a class, with
+the reason it must be explicit written next to it: the responsive container measures its
+parent, and a parent sized by its contents measures zero.
+
+⚠ JUDGEMENT CALL on the three surviving dark colours: they belong to files scheduled for
+R8, and fixing them here crosses a checkpoint boundary. Left alone they would have shipped
+two unreadable badges and a black rectangle on a white page for the length of a checkpoint,
+which is not a boundary worth respecting for a three-line change.
+
+START HERE: `web/src/design/Bridge.tsx` — both screens rebuilt in this checkpoint are
+arranged around it, and the landing screen was rewritten to use it too.
