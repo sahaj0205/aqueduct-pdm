@@ -44,5 +44,7 @@
 /* The plot needs an explicit height: recharts' responsive container measures its parent,
    and a parent sized by its contents measures zero. Was an inline style. */
 .plot {
+  /* Opaque by declaration, not inheritance — chart container. */
+  background: var(--paper);
   height: 280px;
 }

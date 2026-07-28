@@ -20,38 +20,55 @@
  * property it mirrors.
  */
 
-/** Surfaces. Mirrors --paper / --raised / --sunken / --hairline / --hairline-strong. */
-export const paper = "#faf9f7";
+/** Surfaces. Mirrors --paper / --canvas-soft / --sunken / --hairline / --hairline-strong. */
+export const paper = "#ffffff";
 export const raised = "#ffffff";
-export const sunken = "#f2f0ec";
-export const hairline = "#e4e0d9";
-export const hairlineStrong = "#d6d1c7";
+export const sunken = "#f6f9fc";
+export const hairline = "#e3e8ee";
+export const hairlineStrong = "#a8c3de";
 
 /** Ink. Mirrors --ink / --ink-muted / --ink-faint. */
-export const ink = "#1c1917";
-export const inkMuted = "#57534e";
-export const inkFaint = "#78716c";
+export const ink = "#0d253d";
+export const inkMuted = "#273951";
+export const inkFaint = "#64748d";
 
-/** Meaning. Mirrors --good / --caution / --alarm / --info. */
-export const good = "#15803d";
-export const caution = "#b45309";
-export const alarm = "#b91c1c";
-export const info = "#1d4ed8";
-
-/** Tints, for a fill sitting behind text of the matching colour. */
-export const goodWash = "#ecfdf3";
-export const cautionWash = "#fef6ec";
-export const alarmWash = "#fef2f2";
-export const infoWash = "#eef2ff";
+/** The single chromatic accent. Mirrors --primary. */
+export const info = "#533afd";
 
 /**
- * Text set ON a tint. Darker than the saturated colour itself, because a label inside a
- * pale green box has to clear contrast against that box and not against the page.
+ * SEVERITY, from DESIGN_SEMANTIC.md. Red, orange, gold, slate — four tiers, and
+ * deliberately NOT red-amber-green: around eight per cent of men have red-green colour
+ * deficiency, and a scale whose two ends collapse into each other for one reader in
+ * twelve is not a scale. Each tier carries its own text colour because a gold fill needs
+ * dark ink and a red fill needs white.
  */
-export const goodInk = "#14532d";
-export const cautionInk = "#7c2d12";
-export const alarmInk = "#7f1d1d";
-export const infoInk = "#1e3a8a";
+export const critical = "#da1e28";
+export const high = "#ff832b";
+export const medium = "#f1c21b";
+export const low = "#64748d";
+
+export const criticalWash = "#fdecec";
+export const highWash = "#fff2e8";
+export const mediumWash = "#fcf5da";
+export const lowWash = "#f6f9fc";
+
+export const criticalInk = "#a2191f";
+export const highInk = "#8a3800";
+export const mediumInk = "#684e00";
+export const lowInk = "#445068";
+
+/* Names the components written against the previous palette still resolve through. */
+export const good = low;
+export const caution = high;
+export const alarm = critical;
+export const goodWash = lowWash;
+export const cautionWash = highWash;
+export const alarmWash = criticalWash;
+export const infoWash = "#eeecff";
+export const goodInk = lowInk;
+export const cautionInk = highInk;
+export const alarmInk = criticalInk;
+export const infoInk = "#4434d4";
 
 /** Text set on a saturated fill. Always white — see the note in tokens.css. */
 export const onFill = "#ffffff";
@@ -63,15 +80,23 @@ export const onFill = "#ffffff";
  * thing that needed it. Two pictures of the same building that disagreed about what
  * amber means would be worse than one picture, and now three components read this.
  *
- * A tinted fill with a saturated border, rather than a saturated fill. On paper a solid
- * red box is a shout, and every node in a plant diagram shouting at once is the state
- * the old dark theme was in.
+ * THE FILL IS CONSTANT UNTIL SOMETHING IS ACTUALLY WRONG. Every node used to take a
+ * tinted fill from its band, which meant thirty-one boxes in five colours — the drawing
+ * read as confetti and the two machines that genuinely needed attention were no louder
+ * than the twenty-nine that did not. A machine in condition, a machine nobody has scored
+ * and a machine merely worth watching now all sit on the plain canvas; only degraded and
+ * critical take a tint, and `watch` gets a coloured border alone.
+ *
+ * That is still the health band scale the semantic specification asks for — the tiers are
+ * unchanged and a node's band still decides how it is drawn. What changed is how much ink
+ * the quiet end of the scale is allowed to spend.
  */
 export const NODE = {
-  unknown: { fill: sunken, stroke: hairlineStrong, text: inkMuted },
-  healthy: { fill: goodWash, stroke: good, text: goodInk },
-  degrading: { fill: cautionWash, stroke: caution, text: cautionInk },
-  critical: { fill: alarmWash, stroke: alarm, text: alarmInk },
+  unknown: { fill: paper, stroke: hairline, text: inkFaint },
+  healthy: { fill: paper, stroke: hairlineStrong, text: ink },
+  watch: { fill: paper, stroke: medium, text: ink },
+  degraded: { fill: highWash, stroke: high, text: highInk },
+  critical: { fill: criticalWash, stroke: critical, text: criticalInk },
 } as const;
 
 /**
@@ -79,11 +104,17 @@ export const NODE = {
  * decides which van goes out — an instrument needs a calibration kit and a machine needs
  * a wrench, and sending the wrong one costs the difference between the two.
  */
+/**
+ * FAULT CLASS. Deliberately desaturated and identical in hue across all four — the
+ * semantic specification is explicit that these classify rather than alarm, and that the
+ * icon carries the distinction. Giving each one a colour would put them in competition
+ * with the severity scale, which is the thing that IS allowed to shout.
+ */
 export const CLASS = {
-  sensor: info,
-  equipment: "#c2410c",
-  control: "#6d28d9",
-  ambiguous: inkMuted,
+  sensor: inkMuted,
+  equipment: inkMuted,
+  control: inkMuted,
+  ambiguous: inkFaint,
 } as const;
 
 /**
@@ -95,16 +126,16 @@ export const CLASS = {
  * correct for a badge and far too loud for a box the size of a machine.
  */
 export const CLASS_PAINT = {
-  sensor: { fill: infoWash, stroke: info, text: infoInk },
-  equipment: { fill: "#ffedd5", stroke: "#c2410c", text: "#7c2d12" },
-  control: { fill: "#ede9fe", stroke: "#6d28d9", text: "#4c1d95" },
-  ambiguous: { fill: sunken, stroke: hairlineStrong, text: inkMuted },
+  sensor: { fill: paper, stroke: hairlineStrong, text: inkMuted },
+  equipment: { fill: paper, stroke: hairlineStrong, text: inkMuted },
+  control: { fill: paper, stroke: hairlineStrong, text: inkMuted },
+  ambiguous: { fill: paper, stroke: "#c9d6e4", text: inkFaint },
 } as const;
 
 /** Chart furniture: the parts of a plot that are not data and must not read as data. */
 export const CHART = {
   /** The plot area itself. */
-  surface: raised,
+  surface: paper,
   /** Gridlines and axis rules — present, never noticed. */
   grid: hairline,
   /** An axis line or a tick that has to be followed. */

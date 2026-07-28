@@ -1,12 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import {
+  Link,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 
 import { api, reveal } from "./api.ts";
 import { AdvisoryDetail } from "./components/AdvisoryDetail.tsx";
 import { ControlBar } from "./components/ControlBar.tsx";
+import { Mark } from "./design/Mark.tsx";
+import { BRAND, storageKey } from "./lib/brand.ts";
 import { Term } from "./design/Term.tsx";
 import type { ClockState } from "./components/ControlBar.tsx";
 import { NavTabs } from "./components/NavTabs.tsx";
+import { Splash } from "./components/Splash.tsx";
 import { Walkthrough } from "./components/Walkthrough.tsx";
 import { clampToEra, toIso } from "./lib/clock.ts";
 import { buildTour } from "./lib/tour.ts";
@@ -99,12 +110,44 @@ export function App() {
    * it. Session rather than permanent storage, so a fresh window is a fresh audience.
    */
   const [guided, setGuided] = useState(
-    () => sessionStorage.getItem("aqueduct.explore") !== "1",
+    () => sessionStorage.getItem(storageKey("explore")) !== "1",
   );
   const [step, setStep] = useState(0);
 
+  /**
+   * The front door, and whether it has been through.
+   *
+   * Shown INSTEAD OF the dashboard rather than over it, because the point is that a
+   * first-time visitor should not see an unexplained clock and an unexplained queue at
+   * all until they have been told what the thing is. Data loading carries on behind it,
+   * and the front page is handed the results — the figures on it are counted from the
+   * running system rather than written down.
+   */
+  const [entered, setEntered] = useState(
+    () => sessionStorage.getItem(storageKey("entered")) === "1",
+  );
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  /**
+   * Leaving the front door. Sets the flag, picks a mode, and navigates — the front door
+   * is a route now, so getting out of it is a navigation like any other.
+   */
+  const enter = useCallback(
+    (withTour: boolean) => {
+      sessionStorage.setItem(storageKey("entered"), "1");
+      if (!withTour) sessionStorage.setItem(storageKey("explore"), "1");
+      setEntered(true);
+      setGuided(withTour);
+      setStep(0);
+      navigate("/");
+    },
+    [navigate],
+  );
+
   const leaveTour = useCallback(() => {
-    sessionStorage.setItem("aqueduct.explore", "1");
+    sessionStorage.setItem(storageKey("explore"), "1");
     setGuided(false);
   }, []);
 
@@ -188,18 +231,57 @@ export function App() {
     };
   }, [clock]);
 
+  /**
+   * The front door has its own address.
+   *
+   * IT USED TO BE A STATE FLAG WITH NO URL, and that was a trap: once somebody pressed
+   * "open the console" the flag was set for the session and there was no route, no link
+   * and no control anywhere that could bring the page back. Reloading did not help,
+   * because the flag survives a reload. It is a route now, so the browser's own back
+   * button works, the address can be pasted to somebody, and the wordmark in the header
+   * links to it.
+   *
+   * The dashboard is deliberately not rendered underneath it — an unexplained clock
+   * glimpsed behind a panel is the confusion this screen exists to prevent. Data loading
+   * carries on regardless, so reading it warms every fetch the first screen needs.
+   */
+  const atFrontDoor = location.pathname === "/welcome";
+
+  // First visit lands on the front door rather than in the middle of the product.
+  if (!entered && !atFrontDoor) {
+    return <Navigate to="/welcome" replace />;
+  }
+
+  if (atFrontDoor) {
+    // The two responses the shell is already fetching are handed straight to it, so the
+    // figures on the front page are counted from the running system rather than typed in.
+    return (
+      <Splash
+        onStart={() => enter(true)}
+        onSkip={() => enter(false)}
+        range={range}
+        topology={topology}
+      />
+    );
+  }
+
   return (
+    <div className="app-shell">
     <div className="page">
       {/* The vocabulary layer, working. Three domain words in the one line that
           describes the building, each carrying its own definition — where before this
           checkpoint a reader who did not know what a cooling tower was had nowhere to
           find out without leaving the page. */}
       <header className="masthead">
-        <h1>Aqueduct PDM</h1>
+        <Link className="brand" to="/welcome" title="What is this?">
+          <Mark size={22} />
+          <h1>{BRAND.name}</h1>
+        </Link>
         <span className="sub">
-          one <Term id="air-handler">air handler</Term>, three{" "}
-          <Term id="chiller">chillers</Term>, three{" "}
-          <Term id="cooling-tower">cooling towers</Term>
+          Predicting which machine fails next in one{" "}
+          <Term id="air-handler">air handler</Term> and three{" "}
+          <Term id="chiller">chillers</Term> — a <Term id="replay">replay</Term>, marked
+          against what really happened.
         </span>
       </header>
 
@@ -293,6 +375,7 @@ export function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       )}
+    </div>
     </div>
   );
 }

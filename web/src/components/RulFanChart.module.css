@@ -26,8 +26,12 @@
   margin-top: 3px;
 }
 
+/* Explicitly opaque. This is the chart the semantic specification protects: its
+   uncertainty band is a translucent fill, so anything visible behind it changes the
+   colour the band appears to be across its own width. It had no background at all. */
 .panel {
-  padding: 12px 8px 4px 0;
+  padding: var(--s3) var(--s2) var(--s1) 0;
+  background: var(--paper);
 }
 
 .panelLabel {

@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { CLASS_COLOUR } from "../lib/format.ts";
 import type { ClassChange } from "../types.ts";
+import * as C from "../design/palette.ts";
 import styles from "./ClassTimeline.module.css";
 
 /**
@@ -55,7 +56,7 @@ export function ClassTimeline({ history, faultId }: Props) {
             className={entry === shown ? styles.blockOn : styles.block}
             style={{
               background:
-                CLASS_COLOUR[entry.fault_class as keyof typeof CLASS_COLOUR] ?? "#57534e",
+                CLASS_COLOUR[entry.fault_class as keyof typeof CLASS_COLOUR] ?? C.inkMuted,
             }}
             title={`${entry.day.slice(0, 10)} — ${entry.fault_class}`}
             onMouseEnter={() => setOpen(entry)}
@@ -72,7 +73,7 @@ export function ClassTimeline({ history, faultId }: Props) {
               className={styles.dot}
               style={{
                 background:
-                  CLASS_COLOUR[run.fault_class as keyof typeof CLASS_COLOUR] ?? "#57534e",
+                  CLASS_COLOUR[run.fault_class as keyof typeof CLASS_COLOUR] ?? C.inkMuted,
               }}
             />
             {run.fault_class} · {run.days.length} day

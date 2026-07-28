@@ -68,6 +68,12 @@ export function buildTour(
     {
       to: "/",
       at: endOfFirst,
+      title: "First, the two things every screen shares.",
+      say: "The bar at the top is the clock — you are inside a recording, and it is your position in it. Underneath is whichever screen you are on. Move the clock and every screen moves with you, always showing only what the system knew by that date.",
+    },
+    {
+      to: "/",
+      at: endOfFirst,
       title: "Something in this building is going wrong.",
       say: "Two numbers, and the gap between them: what leaving the work alone is expected to cost, against what doing it costs. Everything else on this screen explains that gap.",
     },

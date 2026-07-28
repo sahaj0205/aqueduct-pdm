@@ -1,6 +1,7 @@
 import { buildTwin, ENCODINGS } from "../lib/twin-layout.ts";
 import type { Encoding } from "../lib/twin-layout.ts";
 import type { AdvisorySummary, TwinState, TwinTopology } from "../types.ts";
+import * as C from "../design/palette.ts";
 import styles from "./DigitalTwin.module.css";
 
 /**
@@ -150,7 +151,7 @@ export function DigitalTwin({
                 key={edge.id}
                 points={edge.points}
                 fill="none"
-                stroke={edge.lit ? "#b45309" : "#e4e0d9"}
+                stroke={edge.lit ? C.high : C.hairline}
                 strokeWidth={edge.lit ? 2.2 : 1.2}
                 strokeDasharray={edge.lit ? "5 3" : undefined}
               />
@@ -186,7 +187,7 @@ export function DigitalTwin({
                     height={box.h + 6}
                     rx={6}
                     fill="none"
-                    stroke="#1d4ed8"
+                    stroke={C.info}
                     strokeWidth={1.6}
                   />
                 )}
@@ -204,7 +205,7 @@ export function DigitalTwin({
                     x={box.x + 9}
                     y={box.y + 35}
                     fill={box.paint.text}
-                    fontSize={11.5}
+                    fontSize={12}
                     opacity={0.78}
                   >
                     {clip(box.metric, METRIC_MAX)}

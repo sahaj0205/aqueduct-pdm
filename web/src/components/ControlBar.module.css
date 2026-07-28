@@ -1,7 +1,8 @@
 /* The clock. Pinned to the top of every screen, because every screen shows one
    moment and they all have to show the same one. */
 
-.bar {
+.bar,
+.barCompact {
   position: sticky;
   top: 0;
   z-index: 20;
@@ -11,6 +12,48 @@
   box-shadow: var(--lift-1);
   padding: var(--s3) var(--s4);
   margin-bottom: var(--s3);
+  transition: padding 160ms ease, box-shadow 160ms ease;
+}
+
+/* Reading down a long table, the whole bar is obstruction. Scrolling down shrinks it to
+   the date and the play button; scrolling up restores it, because heading back up the
+   page is exactly the gesture somebody makes when they want the clock again. */
+.barCompact {
+  padding-block: var(--s2);
+  box-shadow: var(--lift-2);
+}
+
+/* Everything that folds away: the timeline, the recordings, the answer-key drawer. */
+.fold {
+  overflow: hidden;
+  max-height: 320px;
+  opacity: 1;
+  transition: max-height 180ms ease, opacity 120ms ease, margin 180ms ease;
+}
+
+.barCompact .fold {
+  max-height: 0;
+  opacity: 0;
+  /* Pulled up by its own bottom spacing as it goes, so the collapse does not leave a
+     band of empty bar behind it mid-transition. */
+  margin-top: calc(var(--s2) * -1);
+}
+
+.barCompact .date {
+  font-size: var(--t-body);
+}
+
+/* A collapsed bar has no timeline to explain, and the line would only wrap. */
+.barCompact .hint {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar,
+  .barCompact,
+  .fold {
+    transition: none;
+  }
 }
 
 /* Sticky on paper needs to survive content scrolling under it. The dark theme got away
@@ -38,7 +81,7 @@
   height: 34px;
   display: grid;
   place-items: center;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--hairline-strong);
   background: var(--raised);
   color: var(--ink);
@@ -200,7 +243,7 @@
   padding: 2px var(--s2);
   font-size: var(--t-micro);
   font-variant-numeric: tabular-nums;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 1px solid transparent;
   background: none;
   color: var(--ink-muted);
@@ -243,7 +286,7 @@
 .warn {
   font-size: var(--t-micro);
   line-height: var(--lh-body);
-  color: #7c2d12; /* cautionInk — dark enough to read on the amber wash behind it */
+  color: var(--sev-high-text); /* cautionInk — dark enough to read on the amber wash behind it */
   max-width: 84ch;
 }
 
@@ -280,7 +323,7 @@
   align-items: center;
   gap: var(--s1);
   padding: 2px var(--s2);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--raised);
   border: 1px solid color-mix(in srgb, var(--caution) 40%, transparent);
   font-size: var(--t-micro);
@@ -298,7 +341,7 @@
   height: 17px;
   display: grid;
   place-items: center;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--hairline-strong);
   background: var(--raised);
   color: var(--ink-muted);
@@ -328,7 +371,7 @@
   color: var(--caution);
   background: var(--sunken);
   padding: 1px var(--s1);
-  border-radius: 3px;
+  border-radius: var(--r-xs);
 }
 
 @media (max-width: 760px) {

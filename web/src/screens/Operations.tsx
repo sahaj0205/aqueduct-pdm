@@ -56,9 +56,10 @@ export function Operations({ summary, advisories, topology, twinState }: Props) 
       <ScreenHead
         sub={
           <>
-            Ranked by what each job saves against what it costs. Nothing computed after
-            the date on the clock appears anywhere on this page — see{" "}
-            <Term id="as-of">as-of</Term>.
+            Each row is one repair somebody could be sent to do, ranked by what it saves
+            against what it costs. You are looking at a <Term id="replay">replay</Term>:
+            nothing the system worked out after the date on the clock appears anywhere on
+            this page.
           </>
         }
         why={
@@ -76,8 +77,8 @@ export function Operations({ summary, advisories, topology, twinState }: Props) 
         {open === null
           ? "What needs doing"
           : open === 0
-            ? "Nothing needs attention right now."
-            : `${open} thing${open === 1 ? "" : "s"} need${open === 1 ? "s" : ""} attention.`}
+            ? "No machine needs work at this date."
+            : `${open} maintenance job${open === 1 ? "" : "s"} ${open === 1 ? "is" : "are"} outstanding.`}
       </ScreenHead>
 
       {summary && <SummaryStrip summary={summary} assetNames={assetNames} />}

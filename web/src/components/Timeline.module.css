@@ -24,7 +24,7 @@
   right: 0;
   height: 4px;
   transform: translateY(-50%);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--hairline);
 }
 
@@ -36,7 +36,7 @@
   left: 0;
   height: 4px;
   transform: translateY(-50%);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--hairline-strong);
   pointer-events: none;
 }
@@ -47,7 +47,7 @@
   top: 50%;
   height: 10px;
   transform: translateY(-50%);
-  border-radius: 2px;
+  border-radius: var(--r-xs);
   background: color-mix(in srgb, var(--caution) 22%, transparent);
   border: 1px solid color-mix(in srgb, var(--caution) 45%, transparent);
   pointer-events: none;

@@ -34,7 +34,7 @@
   place-items: center;
   width: 22px;
   height: 22px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: var(--info);
   color: var(--on-fill);
   font-family: var(--mono);
@@ -86,6 +86,8 @@
 /* The recorded evidence can be long — lists of rule ids, maps of counts by rule. It
    scrolls inside the panel rather than widening the page. */
 .scroll {
+  /* Opaque by declaration, not inheritance — evidence table wrapper. */
+  background: var(--paper);
   overflow-x: auto;
 }
 

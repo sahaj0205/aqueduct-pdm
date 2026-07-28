@@ -96,7 +96,7 @@
   white-space: nowrap;
   cursor: pointer;
   border: 1px solid color-mix(in srgb, var(--info) 35%, transparent);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--info-wash);
   color: var(--info);
   transition: background 110ms ease;

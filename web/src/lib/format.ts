@@ -80,15 +80,26 @@ export function healthLabel(health: number | null): string {
 /**
  * Which severity band a health score falls in, for colouring only.
  *
- * Thresholds at 70 and 40 are presentational and carry no analytical weight: nothing
- * downstream branches on them and no number in the system changes if they move. They
- * exist so an operator can find the bad rows without reading every digit.
+ * FOUR TIERS, AND THE BOUNDARIES COME FROM DESIGN_SEMANTIC.md: 85 and above is healthy,
+ * 70 to 84 is watch, 50 to 69 is degraded, below 50 is critical. They are the same four
+ * tiers a severity badge uses, deliberately — a health number and a severity badge in the
+ * same row must never disagree about how bad something is.
+ *
+ * CHANGED FROM BEFORE: thresholds at 70 and 40 producing three bands called ok, warn and
+ * bad. Those were invented here; these come from the specification, and the NAMES changed
+ * with them because "ok" and "bad" describe a feeling while "healthy" and "critical" name
+ * a tier that exists elsewhere in the system.
+ *
+ * Presentational only: nothing downstream branches on the result.
  */
-export function healthBand(health: number | null): "none" | "ok" | "warn" | "bad" {
+export type HealthBand = "none" | "healthy" | "watch" | "degraded" | "critical";
+
+export function healthBand(health: number | null): HealthBand {
   if (health === null) return "none";
-  if (health >= 70) return "ok";
-  if (health >= 40) return "warn";
-  return "bad";
+  if (health >= 85) return "healthy";
+  if (health >= 70) return "watch";
+  if (health >= 50) return "degraded";
+  return "critical";
 }
 
 /** One queue row, fully resolved. */
@@ -152,7 +163,13 @@ export function buildRows(advisories: AdvisorySummary[]): QueueRow[] {
  */
 export { NODE as COLOURS, CLASS as CLASS_COLOUR } from "../design/palette.ts";
 
-export type NodeState = "unknown" | "healthy" | "degrading" | "critical";
+/**
+ * How a drawn machine is filled. The same four tiers as health and severity, plus
+ * "unknown" for a node nothing is being claimed about — DESIGN_SEMANTIC.md requires
+ * assets on the plant drawing to take the health band scale, so this is that scale
+ * rather than a parallel one.
+ */
+export type NodeState = "unknown" | "healthy" | "watch" | "degraded" | "critical";
 
 /**
  * How a node is filled: by remaining life if there is one, otherwise by health.
@@ -170,14 +187,11 @@ export function conditionBand(
 ): NodeState {
   if (rulDays !== null) {
     if (rulDays < RUL_CRITICAL_DAYS) return "critical";
-    if (rulDays < RUL_DEGRADING_DAYS) return "degrading";
+    if (rulDays < RUL_DEGRADING_DAYS) return "degraded";
     return "healthy";
   }
   const band = healthBand(health);
-  if (band === "none") return "unknown";
-  if (band === "ok") return "healthy";
-  if (band === "warn") return "degrading";
-  return "critical";
+  return band === "none" ? "unknown" : band;
 }
 
 /* Thresholds in days. Presentational only — nothing branches on them outside this
@@ -199,6 +213,6 @@ export function driftBand(sigma: number | null): NodeState | null {
   if (sigma === null) return null;
   const magnitude = Math.abs(sigma);
   if (magnitude >= 3) return "critical";
-  if (magnitude >= 2) return "degrading";
+  if (magnitude >= 2) return "degraded";
   return "healthy";
 }

@@ -42,7 +42,17 @@ interface Props {
   faults: InjectedFault[] | null;
 }
 
-/** The first of each month inside the run, for the axis beneath the track. */
+/**
+ * How close to either end a month label may sit before it collides with the run's own
+ * start and end dates, which are pinned there.
+ *
+ * Without this the axis rendered "2036Mar02-25" at the left and "2036Sep-06" at the
+ * right — the month name printed straight through the date, because the first and last
+ * months of a run are almost always within a few days of its edges.
+ */
+const EDGE_GUARD = 0.1;
+
+/** The first of each month inside the run, minus the ones that would hit an edge date. */
 function monthMarks(from: Date, to: Date): Date[] {
   const marks: Date[] = [];
   const cursor = new Date(
@@ -52,7 +62,12 @@ function monthMarks(from: Date, to: Date): Date[] {
     marks.push(new Date(cursor));
     cursor.setUTCMonth(cursor.getUTCMonth() + 1);
   }
-  return marks;
+  const span = to.getTime() - from.getTime();
+  if (span <= 0) return marks;
+  return marks.filter((m) => {
+    const at = (m.getTime() - from.getTime()) / span;
+    return at > EDGE_GUARD && at < 1 - EDGE_GUARD;
+  });
 }
 
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

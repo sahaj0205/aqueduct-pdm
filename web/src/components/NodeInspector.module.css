@@ -68,6 +68,8 @@
 /* Nine columns of numbers in a 400px panel: it scrolls inside itself rather than
    stretching the column it lives in. */
 .scroll {
+  /* Opaque by declaration, not inheritance — table wrapper. */
+  background: var(--paper);
   overflow-x: auto;
   margin: 0 calc(var(--s4) * -1);
   padding: 0 var(--s4);

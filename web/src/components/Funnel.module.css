@@ -86,7 +86,7 @@
   flex-shrink: 0;
   width: 19px;
   height: 19px;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: var(--sunken);
   border: 1px solid var(--hairline-strong);
   color: var(--ink-faint);
@@ -136,7 +136,7 @@
   position: absolute;
   left: 0;
   height: 6px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
 }
 
 /* What arrived. */
@@ -209,7 +209,7 @@
   border-bottom: 1px solid color-mix(in srgb, var(--caution) 25%, transparent);
   font-size: var(--t-micro);
   font-family: var(--mono);
-  color: #7c2d12;
+  color: var(--sev-high-text);
 }
 
 @media (max-width: 900px) {

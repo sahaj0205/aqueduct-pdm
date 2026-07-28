@@ -11278,3 +11278,176 @@ with none.
 
 START HERE: `web/src/lib/tour.ts` — nine steps, and the argument the whole redesign has
 been arranging itself into.
+
+## Demo Phase R, Checkpoint R10 — The front door
+
+### What we did
+
+The platform now introduces itself before showing anything, and the clock gets out of the
+way when you are reading rather than steering.
+
+Everything built up to here made each screen readable on its own and none of it told a
+first-time visitor what they were looking at. They arrived at a product name, a line
+listing the equipment it contains, an unexplained date and timeline, and a headline
+reading "three things need attention" — three what, needing attention from whom. Three
+questions were answered nowhere: what is this thing, why is there a clock, and what am I
+supposed to do.
+
+The root cause was narrower than it looked. The vocabulary layer defined the heating and
+cooling industry's words — approach temperature, part-load ratio, economizer — on the
+assumption that those were the hard ones. They were not. "Answer key", "ground truth",
+"run", "replay", "detection" are this project's OWN inventions, used from the first screen
+onwards with no introduction anywhere. A reader could hover "chiller" and learn what it
+was, and could not hover "answer key", because it had never occurred to anybody that it
+needed explaining.
+
+There is now a full-page front door before the dashboard exists, answering five questions
+in order: what is this, why does the problem exist, what am I actually looking at, why is
+there a clock, and what is this answer key everything keeps mentioning. From there a
+visitor either takes the guided walk — now ten stops, opening on how to read the screen
+itself — or goes in alone.
+
+Everything that assumed prior knowledge was rewritten. "Runs" became "recordings". "Demo
+tools" became "show me the answers". The warning on those controls explained a
+distinction to people who knew neither side of it, and now explains both sides first.
+
+### How it works
+
+`web/src/components/Splash.tsx` :: Splash
+  WHY IT EXISTS: The one screen that cannot assume anything, because it runs before
+    everything else.
+  WHAT IT DOES: Five questions with their answers, then a choice: take the walk, or look
+    around alone. Each answer is written for somebody who has never thought about building
+    equipment — the machines are "the big machines in the basement and on the roof that
+    make cold air", and the problem is "service too early and you paid for work it did not
+    need; too late and you get a breakdown and a building full of people complaining".
+  CHOICES: The five are in a fixed order and the order is the design. What is it, why does
+    the problem exist, what am I looking at, why is there a clock, what is the answer key.
+    A reader holding those five cannot be lost by anything downstream; a reader missing any
+    one of them will be.
+  ⚠ JUDGEMENT CALL: Rendered INSTEAD OF the dashboard, not over it. An overlay would leave
+    an unexplained clock and an unexplained queue visible behind the panel, which is
+    exactly the confusion the screen exists to prevent. The cost is that the dashboard does
+    not paint until the visitor enters — but the data fetches start immediately regardless,
+    so reading the questions warms every request the first screen needs.
+  CHOICES: Held in session storage, so a reload does not re-present it but a fresh window
+    does. A fresh window is a fresh audience.
+
+`web/src/components/ControlBar.tsx` :: the collapsing bar
+  WHY IT EXISTS: The clock is a hundred and thirty pixels of controls pinned to the top of
+    every screen. That is right when somebody is moving it and pure obstruction when they
+    are reading a table underneath it.
+  WHAT IT DOES: Scrolling down past the fold shrinks the bar to the date and the play
+    button; scrolling up restores it whole. The timeline, the recording list and the
+    answer-key drawer fold away together behind one rule.
+  CHOICES: Restoring on scroll UP rather than on reaching the top, because heading back up
+    the page is precisely the gesture somebody makes when they want the clock again — the
+    bar is back before they arrive.
+  CHOICES: Never collapsed within the first hundred and fifty pixels, which also means the
+    page can never open in the shrunken state.
+  CHOICES: Movements under six pixels are ignored. A trackpad reports a continuous dribble
+    of tiny deltas and without a floor the bar would flicker open and shut while sitting
+    still.
+
+`web/src/lib/glossary.ts` :: the product's own vocabulary
+  CHANGED FROM BEFORE: Held forty-two terms, every one of them from the heating and
+    cooling industry. Six were added for the words this project invented — answer key,
+    ground truth, detection, replay, scenario, operator — which is the omission that
+    caused the whole problem this checkpoint fixes.
+
+`web/src/lib/tour.ts` :: the tenth step
+  CHANGED FROM BEFORE: Opened on "something in this building is going wrong", which
+    assumes the viewer already knows what they are looking at and why there is a bar of
+    controls above it. A step now goes first explaining the two things every screen shares:
+    the clock is your position in a recording, and everything below it moves when you move.
+
+Copy rewritten across the control bar and the answer-key screen, all of it the same
+failure — text that distinguished two things for a reader who had been told about neither.
+"These controls read the answer key, the ground truth every detection screen is denied"
+became a plain statement that the faults were introduced deliberately, that we therefore
+know what broke and when, and that the detecting half of the system signs in as a user
+with no permission to read any of it.
+
+START HERE: `web/src/components/Splash.tsx` — five questions, and the answer to why the
+rest of the build needed them.
+
+## Demo Phase R, Checkpoint A — Ambient shell gradient
+
+### What we did
+
+The application background is no longer a single flat white plane. A very faint blue wash
+now sits behind and between the cards, strongest toward the top of the window and gone
+entirely by the middle of it.
+
+The reason the interface read as pale was never a shortage of colour. Colour in this
+application is spoken for: four severity tiers, four health bands, one blue accent, and
+nothing else is allowed to be coloured at all. What was missing was any variation in the
+surface those things sit on — every panel was white on white, so nothing looked like it
+was resting on anything.
+
+The important half of this work is not the wash. It is making certain the wash cannot
+appear anywhere it would change a reading. Several of the colours in this product are
+translucent — the uncertainty band on the remaining-life chart is a fill at roughly
+fifteen per cent, and the "not enough evidence" state is a grey hatch — and a translucent
+colour takes on whatever is behind it. Over a background that varies, the uncertainty band
+would appear to change colour across its own width, which would be the picture lying about
+the thing it exists to show. Coloured badges have a related problem: a gold badge on a
+faintly blue surface drifts visually toward green and stops being distinguishable from its
+neighbours.
+
+So every card, table, chart and the plant drawing now declares itself opaque rather than
+assuming it will be. Three were found that would genuinely have leaked, and one of those
+was the fault-class badge, which was explicitly transparent.
+
+### How it works
+
+`web/src/design/tokens.css` :: --gradient-ambient-a / -b / -c
+  WHY IT EXISTS: Three overlapping radial washes, offset across the top of the window, so
+    the result reads as light in a room rather than as a shape someone drew.
+  WHAT IT DOES: Alphas of 0.070, 0.042 and 0.030 over the white canvas, all fading to
+    nothing between 58 and 68 per cent of their own radius — so the lower half of any
+    window is flat canvas regardless of viewport size.
+  CHOICES: IBM Blue and one lighter tint of it, and no other hue. Every other colour in
+    this application means something; a second hue in the background would be the only
+    colour on screen that means nothing, sitting next to four that do.
+  CHOICES: The values live here and nowhere else. No component may name a gradient.
+
+`web/src/styles.css` :: .app-shell
+  WHAT IT DOES: One element, layering the three washes over the canvas colour, fixed to
+    the viewport rather than scrolling with the content.
+  CHOICES: Fixed, because a wash that travels with the page reads as an object on the page
+    rather than as the room the page is in.
+  CHOICES: NOT ANIMATED. A drifting background during a walkthrough competes with the
+    thing being demonstrated, and this interface is reviewed for whether a number can be
+    read at a glance, not for motion.
+
+`web/src/components/FaultClassBadge.module.css` :: .badge
+  CHANGED FROM BEFORE: `background: transparent` — the one value that guarantees the wash
+    composites behind it. This is an outline badge carrying meaning, sitting in a table
+    beside three others it has to stay comparable with, and it was the worst of the three
+    findings because the transparency was explicit rather than merely absent.
+
+`web/src/components/RulFanChart.module.css` :: .panel
+  CHANGED FROM BEFORE: No background property at all. This is the chart the semantic
+    specification protects most carefully — its uncertainty band is translucent by design
+    — and it was the one panel in the build with nothing declared behind it.
+
+`web/src/components/DigitalTwin.module.css` :: .scroll
+  CHANGED FROM BEFORE: Inherited from its parent, which happens to be opaque. The plant
+    drawing fills its nodes from the health band scale, so the ground behind it has to be
+    flat white and not merely probably white.
+
+`web/src/design/Bridge.module.css` :: .rule
+  CHANGED FROM BEFORE: A linear-gradient fade between the two figures. A component naming
+    a gradient is exactly what the rule above forbids, and this visual language would not
+    have used a faded rule in the first place. It is a flat hairline now.
+
+Five further table and chart wrappers — the advisory queue, the configuration tables, the
+instrument list, the stage evidence table and the predicted-against-actual plot — now
+state an opaque background rather than inheriting one. None of them would have leaked
+today, because each sits inside a panel that is already opaque; they are stated because
+"white because my parent is" stops being true the first time one is reused elsewhere.
+
+START HERE: `web/src/design/tokens.css` — the comment above the three gradient tokens is
+the rule about where they may appear, and it is a correctness rule rather than a taste
+one.

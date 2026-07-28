@@ -1,131 +1,246 @@
-/* The design system. One file, one source of every size, colour and space in the UI.
+/* The design system. One source for every colour, size and space in the build.
  *
- * WHY THIS EXISTS. Before it, the build had sixteen distinct font sizes, a hundred and
- * twenty-three of the hundred and eighty size declarations at 12px or below, and
- * eighty-one inline style blocks. Each screen was styled by hand on the day it was
- * written, so nothing agreed with anything, and the reader had no way to tell what was
- * important because everything was the same size.
+ * TWO DOCUMENTS GOVERN THIS FILE. DESIGN.md sets the visual language: a white canvas
+ * with a cool off-white beneath it, deep navy rather than black for every piece of type,
+ * one indigo used sparingly for calls to action, pill buttons, thin display type at
+ * weight 300 with heavy negative tracking, and a gradient mesh across the top third of
+ * marketing pages. DESIGN_SEMANTIC.md sets what colour is allowed to MEAN, and where the
+ * two disagree the semantic document wins.
  *
- * THE PALETTE IS WARM PAPER, NOT NAVY. Colour is reserved for meaning here: a green, an
- * amber, a red and a blue, each with exactly one job. Anything that is not making a
- * claim about condition is ink, muted ink or faint ink. That is what stops the reader
- * looking for significance in a colour that has none.
+ * WHERE THEY DISAGREE. The language says not to introduce accent colours outside its
+ * gradient stops. The semantic document requires four severity tiers — red, orange, gold,
+ * slate — and forbids red-amber-green outright, because around eight per cent of men have
+ * red-green colour deficiency and a scale whose ends collapse into each other has no ends
+ * for one reader in twelve. Those four survive, scoped strictly to data.
  *
- * TWO GROUPS OF TOKEN BELOW. The first is the new scale, which every screen migrates
- * onto over checkpoints R2 to R9. The second is the legacy names — --panel, --line,
- * --muted and so on — which twenty CSS modules already reference sixty-three times
- * over. Those names are kept alive and re-pointed at the light values, so the flip to
- * paper is one file rather than a rewrite of every module at once.
+ * SO COLOUR HERE HAS THREE JOBS AND THEY NEVER MIX:
+ *   indigo         one filled call to action per band, and inline link emphasis
+ *   gradient stops atmosphere on marketing surfaces only — never behind data
+ *   severity       measurement, and nothing else is permitted to be coloured
+ *
+ * Ruby sits at #ea2261 and critical sits at #da1e28. They are close, which is exactly
+ * why ruby may never appear on a surface that also carries a severity badge.
+ *
+ * NOTHING IN A COMPONENT MAY HARDCODE A COLOUR. The single exception is
+ * design/palette.ts, which mirrors this file for SVG attributes that cannot resolve a
+ * custom property; the reason is documented there.
  */
 
 :root {
-  /* ---------------------------------------------------------------- type
-   * Five sizes. Not six, and never again sixteen.
-   *
-   * The floor is 11.5px. Every 9px, 9.5px, 10px and 10.5px declaration in the build is
-   * below the size at which this text is readable at arm's length, let alone projected
-   * in a room, and each one is removed as its screen is rebuilt.
+  /* ---------------------------------------------------------------- typeface
+   * The licensed display face is proprietary. Inter at weight 300 with the documented
+   * negative tracking is the specified substitute, and `ss01` is applied globally in
+   * styles.css so the stylistic set is on for every role.
    */
-  --t-display: 32px; /* the claim a screen opens with — one per screen */
-  --t-title: 18px; /* panel headings */
-  --t-body: 15px; /* prose, table cells, everything read in sentences */
-  --t-label: 12px; /* uppercase, tracked — stat labels and column headers */
-  --t-micro: 11.5px; /* captions and units. The floor. Nothing smaller. */
+  --sans: Inter, "SF Pro Display", system-ui, -apple-system, sans-serif;
+  --display: var(--sans);
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 
-  --lh-display: 1.15;
-  --lh-title: 1.3;
-  --lh-body: 1.55;
-  --lh-tight: 1.25;
-
-  --track-display: -0.021em; /* large type needs negative tracking to look set */
-  --track-label: 0.062em; /* small caps need positive tracking to stay legible */
-
-  --w-normal: 400;
-  --w-medium: 500;
-  --w-semi: 600;
-
-  /* ------------------------------------------------------------ surfaces
-   * Warm rather than blue-grey. A neutral this warm reads as paper; the same value
-   * with a blue cast reads as an unlit screen, which is what the old palette was.
+  /* -------------------------------------------------------------------- type
+   * Thin is the brand. Display never goes above 300 — at 400 the editorial air
+   * collapses and this becomes an ordinary product page.
    */
-  --paper: #faf9f7; /* the page */
-  --raised: #ffffff; /* a panel sitting on the page */
-  --sunken: #f2f0ec; /* a well inside a panel — table stripes, code, inactive tabs */
-  --hairline: #e4e0d9; /* every border in the build */
-  --hairline-strong: #d6d1c7; /* a border that needs to be seen, not just felt */
+  --t-display-xxl: 56px;
+  --t-display-xl: 48px;
+  --t-display-lg: 32px;
+  --t-display-md: 26px;
+  --t-heading-lg: 22px;
+  --t-heading-md: 20px;
+  --t-heading-sm: 18px;
+  --t-body-lg: 16px;
+  --t-body: 15px;
+  --t-tabular: 14px;
+  --t-caption: 13px;
+  --t-micro: 11px;
+  --t-micro-cap: 10px;
+  --t-button: 16px;
+  --t-button-sm: 14px;
 
-  /* ----------------------------------------------------------------- ink
-   * Three weights, all of them tested against --paper:
-   *   ink        16.1:1    muted        7.4:1    faint        4.8:1
-   * --faint clears 4.5:1, which matters because it is the colour most of the small
-   * text in this build is set in.
+  /* Names the components written against earlier scales still resolve through. */
+  --t-display-mega: var(--t-display-xxl);
+  --t-display-sm: var(--t-display-md);
+  --t-title-lg: var(--t-heading-lg);
+  --t-title-md: var(--t-heading-md);
+  --t-title-sm: var(--t-heading-sm);
+  --t-title: var(--t-heading-md);
+  --t-headline: var(--t-display-lg);
+  --t-card-title: var(--t-display-md);
+  --t-subhead: var(--t-heading-md);
+  --t-body-sm: var(--t-tabular);
+  --t-label: var(--t-micro-cap);
+
+  --w-light: 300; /* display and body both */
+  --w-normal: 300;
+  --w-medium: 400; /* buttons and captions only */
+  --w-semi: 400;
+
+  --lh-display: 1.03;
+  --lh-title: 1.15;
+  --lh-body: 1.4;
+  --lh-tight: 1.1;
+
+  /* Negative tracking scaled to size. This is the typographic signature; removing it
+     removes the brand. */
+  --track-xxl: -1.4px;
+  --track-xl: -0.96px;
+  --track-lg: -0.64px;
+  --track-md: -0.26px;
+  --track-display: -0.22px;
+  --track-body: 0px;
+  --track-tabular: -0.42px;
+  --track-caption: -0.39px;
+  --track-label: 0.1px;
+  --track-mega: var(--track-xxl);
+
+  /* ---------------------------------------------------------------- surfaces */
+  --paper: #ffffff;
+  --canvas-soft: #f6f9fc;
+  --canvas-cream: #f5e9d4;
+  --raised: #ffffff;
+  --sunken: #f6f9fc;
+  --surface-dark: #1c1e54;
+  --surface-dark-raised: #273951;
+
+  --hairline: #e3e8ee;
+  --hairline-soft: #f6f9fc;
+  --hairline-strong: #a8c3de;
+
+  /* --------------------------------------------------------------------- ink
+   * Deep navy, never pure black.
    */
-  --ink: #1c1917;
-  --ink-muted: #57534e;
-  --ink-faint: #78716c;
-
-  /* ------------------------------------------------------------- meaning
-   * Four colours, one job each, and the job is named. These are the 700-weight of
-   * each hue rather than the mid-tone: on paper a mid-tone amber is invisible and a
-   * mid-tone green reads as decoration.
-   */
-  --good: #15803d; /* within tolerance, nothing claimed against it */
-  --caution: #b45309; /* drifting, or predicted to fail beyond the near horizon */
-  --alarm: #b91c1c; /* failed, or predicted to fail inside the near horizon */
-  --info: #1d4ed8; /* selection, links, the thing you are pointing at */
-
-  /* Tints of the same four, for fills behind text of that colour. */
-  --good-wash: #ecfdf3;
-  --caution-wash: #fef6ec;
-  --alarm-wash: #fef2f2;
-  --info-wash: #eef2ff;
-
-  /* Text placed ON a saturated fill. Always white here — every one of the four above
-     is dark enough that white clears 4.5:1 and near-black does not. The old dark
-     theme used #0d141c for this, which on these values would be unreadable. */
+  --ink: #0d253d;
+  --ink-strong: #0d253d;
+  --ink-muted: #273951;
+  --ink-faint: #64748d;
+  --ink-disabled: #8fa0b8;
+  --on-dark: #ffffff;
+  --on-dark-soft: #a8c3de;
   --on-fill: #ffffff;
 
-  /* ------------------------------------------------- what a fault is blamed on
-   * Read before anything else on an advisory row, because it decides which van goes
-   * out: an instrument needs a calibration kit, a machine needs a wrench.
+  /* ------------------------------------------------------------------ action
+   * One indigo, used sparingly — one filled pill per band, plus link emphasis. It is
+   * not a body-text colour and never a card fill.
    */
-  --cls-sensor: #1d4ed8; /* the instrument is wrong, the machine is fine */
-  --cls-equipment: #c2410c; /* the machine is wrong */
-  --cls-control: #6d28d9; /* both are fine and the logic driving them is not */
-  --cls-ambiguous: #57534e; /* the evidence does not separate the three */
+  --primary: #533afd;
+  --primary-deep: #4434d4;
+  --primary-hover: #4434d4;
+  --primary-active: #2e2b8c;
+  --primary-soft: #665efd;
+  --primary-subdued: #b9b9f9;
+  --on-primary: #ffffff;
+  --info: var(--primary);
+  --info-wash: #eeecff;
 
-  /* -------------------------------------------------------------- spacing
-   * A scale of four. Every margin and padding in the build resolves to one of these,
-   * which is what stops the eight-versus-nine-pixel drift that makes a layout feel
-   * hand-placed rather than composed.
+  /* ============================================== GRADIENT MESH — ATMOSPHERE ONLY
+   * Cream, sherbet, lavender, indigo, ruby. These wash across the top third of a
+   * marketing surface and appear nowhere else. Ruby is close enough to the critical
+   * severity red that the two must never share a screen region.
+   */
+  --mesh-cream: #f5e9d4;
+  --mesh-sherbet: #f7c59f;
+  --mesh-lavender: #c9b8f5;
+  --mesh-indigo: #533afd;
+  --mesh-ruby: #ea2261;
+  --mesh-magenta: #f96bee;
+
+  /* Layered radials approximating the organic mesh the language documents as an SVG.
+     Kept here so no component ever names a gradient. */
+  --mesh: radial-gradient(
+      780px 420px at 6% 6%,
+      color-mix(in srgb, var(--mesh-cream) 88%, transparent),
+      transparent 66%
+    ),
+    radial-gradient(
+      680px 380px at 28% -6%,
+      color-mix(in srgb, var(--mesh-sherbet) 62%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      820px 460px at 54% 0%,
+      color-mix(in srgb, var(--mesh-lavender) 60%, transparent),
+      transparent 64%
+    ),
+    radial-gradient(
+      760px 420px at 78% -4%,
+      color-mix(in srgb, var(--mesh-indigo) 28%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      620px 380px at 97% 10%,
+      color-mix(in srgb, var(--mesh-ruby) 34%, transparent),
+      transparent 62%
+    );
+
+  /* =================================================================== SEVERITY
+   * Four tiers, filled, from DESIGN_SEMANTIC.md. Red, orange, gold, slate — never
+   * red-amber-green. Every badge also carries a text label and a distinct silhouette,
+   * so hue is never the only thing saying how bad something is.
+   */
+  --sev-critical: #da1e28;
+  --sev-critical-on: #ffffff;
+  --sev-high: #ff832b;
+  --sev-high-on: #0d253d;
+  --sev-medium: #f1c21b;
+  --sev-medium-on: #0d253d;
+  --sev-low: #64748d;
+  --sev-low-on: #ffffff;
+
+  --sev-critical-wash: #fdecec;
+  --sev-high-wash: #fff2e8;
+  --sev-medium-wash: #fcf5da;
+  --sev-low-wash: #f6f9fc;
+
+  --sev-critical-text: #a2191f;
+  --sev-high-text: #8a3800;
+  --sev-medium-text: #684e00;
+  --sev-low-text: #445068;
+
+  /* Health quantises onto the same four: 85+ healthy · 70-84 watch · 50-69 degraded ·
+     under 50 critical. Healthy is slate, not green — that is the point. */
+  --health-healthy: var(--sev-low);
+  --health-watch: var(--sev-medium);
+  --health-degraded: var(--sev-high);
+  --health-critical: var(--sev-critical);
+
+  /* ============================================================== FAULT CLASS
+   * Outline, never filled, deliberately desaturated. These classify; they do not alarm.
+   */
+  --cls-ink: #273951;
+  --cls-line: #a8c3de;
+  --cls-ambiguous-line: #c9d6e4;
+
+  /* ---------------------------------------------------------------- spacing
+   * Eight, with two and four for fine work.
    */
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
   --s4: 16px;
+  --s-md: 16px;
   --s5: 24px;
   --s6: 32px;
   --s7: 48px;
   --s8: 64px;
 
-  --r1: 4px;
-  --r2: 8px;
-  --r3: 12px;
+  /* ------------------------------------------------------------------ shape */
+  --r-none: 0px;
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-pill: 9999px;
 
-  /* On paper a panel is lifted by a shadow, not by being a lighter grey — the trick
-     the dark theme used is unavailable when the page is already near-white. */
-  --lift-1: 0 1px 2px rgba(28, 25, 23, 0.04), 0 1px 1px rgba(28, 25, 23, 0.03);
-  --lift-2: 0 2px 4px rgba(28, 25, 23, 0.05), 0 4px 12px rgba(28, 25, 23, 0.05);
-  --lift-3: 0 8px 24px rgba(28, 25, 23, 0.1);
+  --r1: var(--r-md);
+  --r2: var(--r-lg);
+  --r3: var(--r-lg);
+  --r-xxl: var(--r-lg);
 
-  --ring: 0 0 0 3px rgba(29, 78, 216, 0.16); /* keyboard focus, one definition */
+  /* Two levels, both cool-tinted. The mesh is the real depth medium; literal shadow is
+     reserved for product panels and stays subtle. */
+  --lift-1: rgba(0, 55, 112, 0.08) 0 1px 3px;
+  --lift-2: rgba(0, 55, 112, 0.08) 0 8px 24px, rgba(0, 55, 112, 0.04) 0 2px 6px;
+  --lift-3: var(--lift-2);
 
-  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
-
-  /* The legacy aliases R1 introduced -- --panel, --line, --muted and the rest -- are
-     GONE. They existed so the flip from dark navy to paper could be one file rather than
-     a rewrite of twenty stylesheets in the same commit, and every screen has since been
-     rebuilt onto the names above. Verified before removal: zero references remained in
-     any .css, .ts or .tsx file in the build. */
+  --ring: 0 0 0 3px color-mix(in srgb, var(--primary) 32%, transparent);
 }

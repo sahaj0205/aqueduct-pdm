@@ -1,0 +1,410 @@
+/* The front door. The only page in the build that is a PRODUCT page rather than an
+   instrument, so it is the only one allowed a hero, a dark band, atmosphere and this
+   much air. 96px between bands throughout. */
+
+/* The one marketing surface in the build, and therefore the only place the gradient
+   mesh may appear. The language calls a bare-canvas hero off-brand; the semantic
+   document forbids atmosphere behind anything that carries meaning. Both hold here,
+   because nothing on this page is a severity badge, a health bar or a chart. */
+.page {
+  min-height: 100vh;
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ------------------------------------------------------------------------- brand */
+
+.mesh {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 62vh;
+  min-height: 460px;
+  background-image: var(--mesh);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  height: 64px;
+  padding: 0 var(--s6);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.mark {
+  display: inline-flex;
+  color: var(--ink);
+}
+
+.wordmark {
+  font-weight: var(--w-light);
+  font-size: var(--t-heading-lg);
+  letter-spacing: var(--track-display);
+  line-height: 1;
+  color: var(--ink);
+}
+
+.tag {
+  font-size: var(--t-body-sm);
+  font-weight: var(--w-medium);
+  color: var(--ink-faint);
+}
+
+.main {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 var(--s6);
+}
+
+/* -------------------------------------------------------------------------- hero
+   CENTRED, and that is the fix for the page having felt half-empty. It was set left at
+   thirty characters inside a container twice that wide, so a third of the screen was
+   doing nothing. Display copy this large wants to sit in the middle of its own air with
+   an atmospheric bloom behind it, not hug one edge. */
+
+/* Left-aligned on a 16-column grid rather than centred. The previous language wanted a
+   centred hero with a bloom behind it; this one is engineered, and engineered layouts
+   start at the left margin. The right half carries the statistics instead of air. */
+/* Seven-five: the claim on the left, a product panel on the right.
+
+   THIS RULE HAD SILENTLY REVERTED. Three successive design languages each rewrote it by
+   pattern match, and the last two patterns did not match what the previous one had left,
+   so the grid was gone. The two children stacked, the panel ran the full width of the
+   container, and its numbers sat hard against its own top edge. Written out in full now
+   rather than patched again. */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: var(--s8);
+  align-items: center;
+  padding: var(--s8) 0;
+}
+
+/* Light-weight display is the signature. Weight 300 at seventy-six pixels reads as
+   quietly authoritative; the same size at 700 reads as every other enterprise site. */
+/* Weight 500 with heavy negative tracking. Never bolder: the tracking is what gives
+   this its character, and weight would flatten it. */
+/* Weight 300 with -1.4px tracking. Never heavier. */
+.headline {
+  margin: 0;
+  max-width: 15ch;
+  font-weight: var(--w-light);
+  font-size: clamp(36px, 5.2vw, var(--t-display-xxl));
+  line-height: var(--lh-display);
+  letter-spacing: var(--track-xxl);
+  color: var(--ink);
+}
+
+.lede {
+  margin: var(--s5) 0 0;
+  max-width: 52ch;
+  font-size: var(--t-body-lg);
+  font-weight: var(--w-light);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  margin-top: var(--s6);
+}
+
+/* The single primary action in the product. Ink, pill, and the only filled button
+   anywhere — there is deliberately no brand action colour. */
+/* The only filled button on this surface. Indigo is used sparingly by rule — one per
+   band — and it is a call to action, never a card fill and never body type. */
+.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 44px;
+  padding: var(--s2) var(--s4);
+  font-family: var(--sans);
+  font-size: var(--t-button);
+  font-weight: var(--w-medium);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.primary:hover {
+  background: var(--primary-deep);
+  border-color: var(--primary-deep);
+}
+
+
+
+.arrow {
+  transition: transform 140ms ease;
+}
+
+.primary:hover .arrow {
+  transform: translateX(3px);
+}
+
+/* Cream with a hairline. Not a second filled button — one decision per screen. */
+/* Outline, same pill geometry. Not a second filled button. */
+.secondary {
+  min-height: 44px;
+  padding: var(--s2) var(--s4);
+  font-family: var(--sans);
+  font-size: var(--t-button);
+  font-weight: var(--w-medium);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--primary);
+  background: var(--paper);
+  color: var(--primary);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.secondary:hover {
+  background: var(--info-wash);
+}
+
+.duration {
+  margin: var(--s4) 0 0;
+  font-size: var(--t-caption);
+  letter-spacing: var(--track-caption);
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------------------- stats
+   Read from the running system. A front page proving itself with its own live figures
+   is doing something a marketing page structurally cannot. */
+
+/* A product panel rather than an illustration. This language pairs every claim with a
+   composite of the actual product; ours shows the figures the running system is
+   reporting, which is the same argument made with numbers that are true. */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s5) var(--s4);
+  min-width: 0;
+  padding: var(--s5);
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lift-2);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+}
+
+.statValue {
+  font-weight: var(--w-light);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  font-size: var(--t-display-md);
+  line-height: 1.12;
+  letter-spacing: var(--track-md);
+  color: var(--ink);
+}
+
+/* Sentence case at 14px. This language resists the all-caps tracked eyebrow. */
+.statLabel {
+  font-size: var(--t-caption);
+  font-weight: var(--w-medium);
+  letter-spacing: var(--track-caption);
+  color: var(--ink);
+}
+
+.statNote {
+  font-size: var(--t-caption);
+  line-height: 1.4;
+  letter-spacing: var(--track-caption);
+  color: var(--ink-faint);
+}
+
+/* ----------------------------------------------------------------------- process */
+
+.process {
+  padding: var(--s8) 0;
+}
+
+.sectionHead {
+  margin: 0 0 var(--s6);
+  font-size: var(--t-label);
+  font-weight: var(--w-semi);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: var(--s5);
+}
+
+/* White with a hairline, twelve-pixel radius. The saturated-card language is gone; this
+   one carries hierarchy on surface change and a single soft shadow. */
+.step {
+  padding: var(--s6);
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lift-1);
+}
+
+
+
+.stepNo {
+  font-size: var(--t-micro-cap);
+  font-weight: var(--w-medium);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.stepName {
+  margin: var(--s3) 0 var(--s2);
+  font-weight: var(--w-light);
+  font-size: var(--t-display-md);
+  letter-spacing: var(--track-md);
+  line-height: 1.12;
+  color: var(--ink);
+}
+
+.stepWhat {
+  margin: 0;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+}
+
+/* -------------------------------------------------------------------- the dark band
+   One dark element on the page, carrying the two things a visitor is most likely to get
+   wrong. Contrast rather than a footnote, because both are load-bearing. */
+
+/* Deep navy, which is this language's distinctive inverted surface — it uses it for the
+   featured pricing tier and for dashboard chrome rather than for a footer. */
+.honest {
+  background: var(--surface-dark);
+  color: var(--on-dark);
+  border-radius: var(--r-lg);
+  padding: clamp(var(--s6), 5vw, var(--s8));
+  margin-bottom: var(--s8);
+}
+
+.honestHead {
+  margin: 0 0 var(--s6);
+  font-size: var(--t-micro-cap);
+  font-weight: var(--w-medium);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--on-dark-soft);
+}
+
+.honestGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--s6) var(--s8);
+}
+
+.honestGrid h3 {
+  margin: 0 0 var(--s4);
+  font-weight: var(--w-light);
+  font-size: var(--t-display-md);
+  line-height: 1.12;
+  letter-spacing: var(--track-md);
+  color: var(--on-dark);
+  text-wrap: balance;
+}
+
+.honestGrid p {
+  margin: 0;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--on-dark-soft);
+}
+
+/* -------------------------------------------------------------------------- foot */
+
+.foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s4);
+  flex-wrap: wrap;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 80px var(--s6);
+  border-top: 1px solid var(--hairline);
+  font-size: var(--t-caption);
+  color: var(--ink-faint);
+}
+
+.footMeta {
+  font-family: var(--mono);
+}
+
+@media (max-width: 720px) {
+  .bar,
+  .main,
+  .foot {
+    padding-inline: var(--s4);
+  }
+
+  .tag {
+    display: none;
+  }
+
+  .hero {
+    padding: var(--s7) 0;
+  }
+
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+}
+
+/* The warm interlude the language permits — one cream band to break the white rhythm.
+   The other three cards stay on canvas. */
+.ochre {
+  background: var(--canvas-cream);
+  border-color: color-mix(in srgb, var(--canvas-cream) 60%, var(--hairline));
+}
+
+@media (max-width: 1000px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s6);
+    padding: var(--s7) 0;
+  }
+}
+
+/* The left-hand column of the hero. Without this the section's four children were being
+   laid into the two-column grid directly — headline and body side by side, buttons and
+   caption on a second row — which is what took the front page apart. */
+.heroCopy {
+  min-width: 0;
+}

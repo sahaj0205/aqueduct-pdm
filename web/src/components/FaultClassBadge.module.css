@@ -1,35 +1,39 @@
+/* Outline, never filled. See the note in the component: these classify rather than
+   alarm, so they stay out of the way of the severity scale. */
+
 .badge {
-  display: inline-block;
-  padding: 1px 7px;
-  border-radius: 3px;
-  font-size: var(--t-micro);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  border: 1px solid;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 1px var(--s2);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--cls-line);
+  /* OPAQUE, not transparent. This badge carries meaning, and the ambient wash on the
+     shell must never composite behind it — an outline badge on a blue-tinted ground
+     shifts against its neighbours and stops being comparable with them. It was
+     `transparent`, which is the one value that guarantees the leak. */
+  background: var(--paper);
+  color: var(--cls-ink);
+  font-family: var(--sans);
+  font-size: var(--t-caption);
+  font-weight: var(--w-normal);
+  letter-spacing: var(--track-body);
+  line-height: 1.4;
   white-space: nowrap;
 }
 
-.sensor {
-  color: var(--cls-sensor);
-  border-color: color-mix(in srgb, var(--cls-sensor) 45%, transparent);
-  background: color-mix(in srgb, var(--cls-sensor) 12%, transparent);
-}
-
-.equipment {
-  color: var(--cls-equipment);
-  border-color: color-mix(in srgb, var(--cls-equipment) 45%, transparent);
-  background: color-mix(in srgb, var(--cls-equipment) 12%, transparent);
-}
-
+/* All four share a hue on purpose. The icon is the distinction. */
+.sensor,
+.equipment,
 .control {
-  color: var(--cls-control);
-  border-color: color-mix(in srgb, var(--cls-control) 45%, transparent);
-  background: color-mix(in srgb, var(--cls-control) 12%, transparent);
+  border-color: var(--cls-line);
+  color: var(--cls-ink);
 }
 
+/* Dashed, and one step quieter. Nothing has been decided here, and the badge should not
+   pretend otherwise. */
 .ambiguous {
-  color: var(--cls-ambiguous);
-  border-color: color-mix(in srgb, var(--cls-ambiguous) 45%, transparent);
-  background: color-mix(in srgb, var(--cls-ambiguous) 12%, transparent);
+  border-style: dashed;
+  border-color: var(--cls-ambiguous-line);
+  color: var(--ink-faint);
 }

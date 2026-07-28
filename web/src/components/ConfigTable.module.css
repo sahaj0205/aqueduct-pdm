@@ -129,5 +129,7 @@
    They scroll inside the panel — the page itself clips rather than scrolls sideways, so
    a table that overflowed without this would lose its right-hand columns silently. */
 .scroll {
+  /* Opaque by declaration, not inheritance — table wrapper. */
+  background: var(--paper);
   overflow-x: auto;
 }

@@ -10,6 +10,7 @@ import {
 } from "recharts";
 
 import type { RulPoint } from "../types.ts";
+import * as C from "../design/palette.ts";
 import styles from "./PredictedVsActual.module.css";
 
 /**
@@ -75,28 +76,28 @@ export function PredictedVsActual({ points, actualFailure, modeId }: Props) {
           <div className={styles.plot}>
             <ResponsiveContainer>
               <LineChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 8 }}>
-                <CartesianGrid stroke="#e4e0d9" strokeDasharray="2 4" />
+                <CartesianGrid stroke={C.hairline} strokeDasharray="2 4" />
                 <XAxis
                   dataKey="made"
                   type="number"
                   domain={["dataMin", "dataMax"]}
                   tickFormatter={fmt}
-                  stroke="#78716c"
-                  fontSize={11.5}
+                  stroke={C.inkFaint}
+                  fontSize={12}
                 />
                 <YAxis
                   type="number"
                   domain={["dataMin", "dataMax"]}
                   tickFormatter={fmt}
-                  stroke="#78716c"
-                  fontSize={11.5}
+                  stroke={C.inkFaint}
+                  fontSize={12}
                   width={78}
                 />
                 <Tooltip
                   contentStyle={{
-                    background: "#ffffff",
-                    border: "1px solid #e4e0d9",
-                    fontSize: 11.5,
+                    background: C.paper,
+                    border: `1px solid ${C.hairline}`,
+                    fontSize: 12,
                   }}
                   labelFormatter={(v) => `predicted on ${fmt(Number(v))}`}
                   formatter={(value, name) => [
@@ -110,7 +111,7 @@ export function PredictedVsActual({ points, actualFailure, modeId }: Props) {
                   type="monotone"
                   dataKey="high"
                   name="optimistic end"
-                  stroke="#d6d1c7"
+                  stroke={C.hairlineStrong}
                   dot={false}
                   strokeWidth={1}
                 />
@@ -118,7 +119,7 @@ export function PredictedVsActual({ points, actualFailure, modeId }: Props) {
                   type="monotone"
                   dataKey="low"
                   name="pessimistic end"
-                  stroke="#d6d1c7"
+                  stroke={C.hairlineStrong}
                   dot={false}
                   strokeWidth={1}
                 />
@@ -126,20 +127,20 @@ export function PredictedVsActual({ points, actualFailure, modeId }: Props) {
                   type="monotone"
                   dataKey="predicted"
                   name="predicted failure date"
-                  stroke="#1d4ed8"
+                  stroke={C.info}
                   dot={false}
                   strokeWidth={2}
                 />
                 {truth !== null && (
                   <ReferenceLine
                     y={truth}
-                    stroke="#15803d"
+                    stroke={C.ink}
                     strokeWidth={1.6}
                     strokeDasharray="6 4"
                     label={{
                       value: `actually failed ${fmt(truth)}`,
-                      fill: "#14532d",
-                      fontSize: 11.5,
+                      fill: C.ink,
+                      fontSize: 12,
                       position: "insideBottomRight",
                     }}
                   />

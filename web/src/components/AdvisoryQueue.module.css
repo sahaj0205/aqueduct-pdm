@@ -32,6 +32,8 @@
 /* Nine columns will not fit a narrow window. They scroll inside the panel rather than
    pushing the page sideways. */
 .scroll {
+  /* Opaque by declaration, not inheritance — table wrapper. */
+  background: var(--paper);
   overflow-x: auto;
 }
 
@@ -162,16 +164,23 @@
   font-family: var(--sans);
 }
 
-.ok {
-  color: var(--good);
+/* The four health tiers, named for the bands in DESIGN_SEMANTIC.md rather than for how
+   they feel. Set as text on white, so each takes the readable variant of its tier — the
+   gold and orange badge fills are far too light to read as type. */
+.healthy {
+  color: var(--sev-low-text);
   font-weight: var(--w-semi);
 }
-.warn {
-  color: var(--caution);
+.watch {
+  color: var(--sev-medium-text);
   font-weight: var(--w-semi);
 }
-.bad {
-  color: var(--alarm);
+.degraded {
+  color: var(--sev-high-text);
+  font-weight: var(--w-semi);
+}
+.critical {
+  color: var(--sev-critical-text);
   font-weight: var(--w-semi);
 }
 .none {
@@ -195,7 +204,7 @@
    have crossed into a group ordered on a different quantity. */
 .tierRule td {
   background: var(--caution-wash);
-  color: #7c2d12;
+  color: var(--sev-high-text);
   font-size: var(--t-micro);
   line-height: var(--lh-body);
   padding: var(--s2) var(--s3);

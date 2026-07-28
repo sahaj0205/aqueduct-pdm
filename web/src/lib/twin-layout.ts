@@ -303,7 +303,7 @@ function keyFor(
     return {
       legend: [
         { paint: COLOURS.healthy, label: "within 2σ of normal" },
-        { paint: COLOURS.degrading, label: "2σ to 3σ out" },
+        { paint: COLOURS.degraded, label: "2σ to 3σ out" },
         { paint: COLOURS.critical, label: "beyond 3σ" },
         { paint: COLOURS.unknown, label: "no fitted baseline" },
       ],
@@ -333,7 +333,8 @@ function keyFor(
   return {
     legend: [
       { paint: COLOURS.healthy, label: "in condition" },
-      { paint: COLOURS.degrading, label: "degrading" },
+      { paint: COLOURS.watch, label: "watch" },
+      { paint: COLOURS.degraded, label: "degrading" },
       { paint: COLOURS.critical, label: "critical" },
       { paint: COLOURS.unknown, label: "not scored" },
     ],

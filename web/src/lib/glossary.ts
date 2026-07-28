@@ -223,6 +223,47 @@ export const GLOSSARY = {
       "The order the instruments moved in after a fault started, which shows the path the fault took through the plant.",
   },
 
+  /* --------------------------------------------------- what this product itself is
+   *
+   * ADDED LATE, AND THE OMISSION WAS THE WORST ONE IN THE BUILD. The glossary began as a
+   * dictionary of heating and cooling jargon, on the assumption that the hard words were
+   * the industry's. They were not. "Answer key", "ground truth", "run", "replay",
+   * "detection" are this project's OWN inventions, used from the first screen onwards
+   * with no introduction anywhere — a reader could hover "chiller" and learn what it was,
+   * and could not hover "answer key", because it had never been treated as a word anybody
+   * would need explained.
+   */
+  "answer-key": {
+    term: "the answer key",
+    short:
+      "The record of what was actually broken, when it started and how bad it got. It exists because the faults here were introduced deliberately, so the system's guesses can be marked against the truth.",
+  },
+  "ground-truth": {
+    term: "ground truth",
+    short:
+      "What really happened, as opposed to what the system worked out. Having it is what makes an accuracy figure mean anything at all.",
+  },
+  detection: {
+    term: "the detection side",
+    short:
+      "The half of the system that looks at sensor readings and works out what is wrong. It connects to the database as a user with no permission to read the answer key, so it cannot have seen the answers it is marked against.",
+  },
+  replay: {
+    term: "replay",
+    short:
+      "You are moving through a recording, not watching a live building. The clock at the top is your position in it, and every screen shows only what the system had worked out by that date.",
+  },
+  scenario: {
+    term: "scenario",
+    short:
+      "One simulated run of the building with a specific fault introduced at a specific moment and allowed to worsen on a chosen path.",
+  },
+  operator: {
+    term: "operator",
+    short:
+      "The person who looks after the building's equipment and decides what gets fixed and when. Most of this dashboard is written for them.",
+  },
+
   /* ------------------------------------------------------------------- the replay */
   era: {
     term: "run",

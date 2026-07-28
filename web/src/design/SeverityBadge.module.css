@@ -1,0 +1,38 @@
+/* Filled, square, four tiers. Square because the visual language commits to zero-radius
+   geometry everywhere; a pill here would be the one rounded thing on the screen. */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 2px var(--s2);
+  border-radius: var(--r-pill);
+  font-family: var(--sans);
+  font-size: var(--t-caption);
+  font-weight: var(--w-semi);
+  letter-spacing: var(--track-label);
+  line-height: 1.33;
+  white-space: nowrap;
+}
+
+/* Each tier carries its own text colour: a gold fill needs dark ink and a red fill needs
+   white, and one shared choice would fail contrast on two of the four. */
+.critical {
+  background: var(--sev-critical);
+  color: var(--sev-critical-on);
+}
+
+.high {
+  background: var(--sev-high);
+  color: var(--sev-high-on);
+}
+
+.medium {
+  background: var(--sev-medium);
+  color: var(--sev-medium-on);
+}
+
+.low {
+  background: var(--sev-low);
+  color: var(--sev-low-on);
+}

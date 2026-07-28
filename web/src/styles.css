@@ -16,12 +16,14 @@ body {
   color: var(--ink);
   font-family: var(--sans);
   font-size: var(--t-body);
+  font-weight: var(--w-light);
   line-height: var(--lh-body);
+  letter-spacing: var(--track-body);
+  /* The stylistic set is applied globally so the substitution is on for every text role,
+     which is what the language asks for. */
+  font-feature-settings: "ss01";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  /* Paper wants slightly open letterforms; the old dark theme did not, which is part of
-     why the same 11px text was harder to read there. */
   text-rendering: optimizeLegibility;
 }
 
@@ -29,9 +31,9 @@ h1,
 h2,
 h3 {
   margin: 0;
-  font-weight: var(--w-semi);
+  font-weight: var(--w-light);
   line-height: var(--lh-title);
-  letter-spacing: -0.011em;
+  letter-spacing: var(--track-display);
   text-wrap: balance;
 }
 
@@ -40,7 +42,7 @@ p {
 }
 
 a {
-  color: var(--info);
+  color: var(--primary);
   text-underline-offset: 2px;
 }
 
@@ -49,12 +51,11 @@ code {
   font-size: 0.9em;
 }
 
-/* One focus ring for the whole build, and only for keyboard users. Every component that
-   sets its own must match this, and several already reference --ring directly. */
+/* One focus treatment for the whole build: a 2px blue ring, square. Keyboard only. */
 :where(a, button, input, select, summary, [tabindex]):focus-visible {
   outline: none;
   box-shadow: var(--ring);
-  border-radius: var(--r1);
+  border-radius: var(--r-sm);
 }
 
 /* Native controls do not inherit the page font, and on paper the difference between
@@ -65,6 +66,15 @@ select,
 textarea {
   font-family: inherit;
   font-size: inherit;
+}
+
+/* The shell. No ambient wash in this language: depth here comes from the contrast
+   between a warm cream canvas and saturated brand cards, not from a tinted background.
+   The opacity discipline that arrived with the wash is kept and still matters — a
+   translucent badge over cream is a cream-tinted badge, which is the same failure. */
+.app-shell {
+  min-height: 100vh;
+  background-color: var(--paper);
 }
 
 .page {
@@ -84,8 +94,10 @@ textarea {
 }
 
 .masthead h1 {
-  font-size: var(--t-title);
-  letter-spacing: -0.014em;
+  font-weight: var(--w-light);
+  font-size: var(--t-heading-lg);
+  letter-spacing: var(--track-display);
+  line-height: 1.1;
 }
 
 .masthead .sub {
@@ -95,13 +107,14 @@ textarea {
 
 /* ------------------------------------------------------------------------ notice
    Something the reader has to act on. Rule six: it names the next action. */
+/* Square, hairlined, with a solid rule on the leading edge. No shadow anywhere in this
+   system — depth is surface change and 1px lines. */
 .notice {
   border: 1px solid var(--hairline);
-  border-left: 3px solid var(--alarm);
-  background: var(--raised);
-  box-shadow: var(--lift-1);
+  border-left: 3px solid var(--sev-critical);
+  background: var(--canvas-soft);
   padding: var(--s4) var(--s5);
-  border-radius: var(--r2);
+  border-radius: var(--r-lg);
   color: var(--ink);
   max-width: 78ch;
 }
@@ -118,16 +131,21 @@ textarea {
   color: var(--caution);
   background: var(--sunken);
   padding: 1px var(--s1);
-  border-radius: 3px;
+  border-radius: var(--r-xs);
 }
 
 .muted {
   color: var(--ink-muted);
 }
 
+/* Any cell holding money, a count or a measurement. Tabular figures so columns align,
+   with the tightening the language specifies — this is its quiet signal that the numbers
+   on the page are the point. */
 .mono {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  letter-spacing: var(--track-tabular);
 }
 
 /* --------------------------------------------------------------- projector pass
@@ -168,4 +186,23 @@ code,
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* The mark sits with the product name, not floating beside it. */
+.masthead .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--ink);
+}
+
+/* The wordmark is the way back to the front door — the convention every product uses,
+   and the thing whose absence made the front door unreachable once you had left it. */
+.masthead .brand {
+  text-decoration: none;
+}
+
+.masthead .brand:hover h1 {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }

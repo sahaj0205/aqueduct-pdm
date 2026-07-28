@@ -91,7 +91,7 @@
 .swatch {
   width: 13px;
   height: 13px;
-  border-radius: 3px;
+  border-radius: var(--r-xs);
   border: 1.25px solid;
   flex-shrink: 0;
 }
@@ -105,9 +105,12 @@
   max-width: 92ch;
 }
 
+/* Stated rather than inherited. The plant drawing fills its nodes from the health band
+   scale, so the ground behind it has to be flat white and not merely probably white. */
 .scroll {
   overflow-x: auto;
   padding-bottom: var(--s1);
+  background: var(--paper);
 }
 
 .node {

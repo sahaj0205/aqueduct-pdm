@@ -33,13 +33,10 @@
   flex: 1 1 auto;
   width: 100%;
   min-height: 1px;
-  background: linear-gradient(
-    to right,
-    transparent,
-    var(--hairline-strong) 22%,
-    var(--hairline-strong) 78%,
-    transparent
-  );
+  /* A flat hairline. The faded rule this replaced was a gradient in a
+     component, which the ambient-wash rule forbids and which this visual
+     language would not have used anyway. */
+  background: var(--hairline);
 }
 
 /* Neutral by default. The alarm variant is only for a gap that is bad news — colouring

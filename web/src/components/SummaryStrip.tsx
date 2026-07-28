@@ -156,7 +156,7 @@ export function SummaryStrip({ summary, assetNames }: Props) {
       <section className={styles.facts}>
         <Stat
           label="Worst machine"
-          tone={band === "bad" ? "alarm" : band === "warn" ? "caution" : "neutral"}
+          tone={band === "critical" ? "alarm" : band === "degraded" ? "caution" : "neutral"}
           value={
             summary.worst_health === null ? (
               "none scored"

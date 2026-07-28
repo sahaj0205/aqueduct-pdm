@@ -75,18 +75,22 @@ export function Reveal({ at }: Props) {
   if (!shown) {
     return (
       <section>
-        <ScreenHead sub="Everything on every other screen was worked out from readings alone. This is the marking scheme.">
+        <ScreenHead sub="Every other screen shows what the system worked out from sensor readings. This one shows what was actually true.">
           What was actually broken
         </ScreenHead>
         <div className={`notice ${styles.gate}`}>
           <strong>Worth forming a view on the other screens first.</strong>
           <div className={styles.gateBody}>
-            This page says what was really injected, when, and how bad it got. It is
-            served by a <strong>different process on a different credential</strong>,
-            because the detection path connects as a role with no access to this data at
-            all — an endpoint over there that asked for a label fails with{" "}
-            <code>permission denied</code>. That separation is what makes every accuracy
-            figure in this project mean anything.
+            The faults in these recordings were introduced deliberately, so we know
+            exactly which machine broke, on what day, and how bad it got. This page is
+            that record.
+            <br />
+            <br />
+            The half of the system that does the detecting has never seen it. It signs in
+            to the database as a user with <strong>no permission to read these
+            records at all</strong> — an attempt from that side comes back{" "}
+            <code>permission denied</code>. That is why, when the system gets something
+            right, it cannot have been reading the answers.
           </div>
           <button className={styles.show} onClick={() => setShown(true)}>
             Show me what was injected

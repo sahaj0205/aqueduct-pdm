@@ -58,10 +58,92 @@ interface Props {
   faults: InjectedFault[] | null;
 }
 
+/** Past this far down the page the bar is in the way rather than in use. */
+const COLLAPSE_AFTER = 150;
+/**
+ * How far you must travel in one direction before the bar changes its mind.
+ *
+ * WHY THIS IS SO MUCH LARGER THAN IT LOOKS LIKE IT NEEDS TO BE. Collapsing the bar
+ * removes about ninety pixels from the document, everything below it slides up, and the
+ * browser fires a scroll event for a movement the reader did not make. Read as intent
+ * that looks like scrolling the other way, so the bar expands, the ninety pixels come
+ * back, and it reads as scrolling down again — a loop that makes the page shudder in
+ * place and feel stuck, which is exactly what it did.
+ *
+ * The threshold has to exceed the height the collapse itself removes, or the bar's own
+ * animation keeps re-triggering it.
+ */
+const INTENT = 120;
+/** After a flip the layout is still settling; events in this window are not intent. */
+const SETTLE_MS = 300;
+
 export function ControlBar({ range, clock, onChange, faults }: Props) {
   const era = eraAt(range, clock.at);
   const [showKey, setShowKey] = useState(false);
   const active = faults && showKey ? faultsActiveAt(faults, clock.at) : [];
+
+  /**
+   * Collapsed while reading down a screen, whole again the moment you head back up.
+   *
+   * The bar is a hundred and thirty pixels of controls pinned to the top of every screen.
+   * That is right when somebody is moving the clock and pure obstruction when they are
+   * reading a table underneath it. Scrolling down past the fold shrinks it to the date
+   * and the play button; scrolling up — which is what somebody reaches for when they want
+   * the clock back — restores it before they arrive.
+   */
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    // Where the current run of travel started, and when the bar last changed.
+    let anchor = window.scrollY;
+    let flippedAt = 0;
+    let queued = false;
+
+    const evaluate = () => {
+      queued = false;
+      const y = window.scrollY;
+
+      // Near the top the bar is never in anybody's way, so it is never collapsed there —
+      // which also means the page can never open in the shrunken state.
+      if (y < COLLAPSE_AFTER) {
+        setCompact(false);
+        anchor = y;
+        return;
+      }
+
+      // Inside the settle window the page is still moving because the bar moved it.
+      if (performance.now() - flippedAt < SETTLE_MS) {
+        anchor = y;
+        return;
+      }
+
+      const travelled = y - anchor;
+      // Travel in the other direction restarts the run, so a reversal is measured from
+      // where it reversed rather than from wherever the last flip happened to leave it.
+      if (Math.sign(travelled) !== 0) {
+        setCompact((was) => {
+          const want = travelled > 0;
+          if (Math.abs(travelled) < INTENT || want === was) {
+            if (Math.abs(travelled) >= INTENT) anchor = y;
+            return was;
+          }
+          anchor = y;
+          flippedAt = performance.now();
+          return want;
+        });
+      }
+    };
+
+    // One evaluation per frame at most. A scroll handler that runs on every event does
+    // layout reads at the rate the wheel fires them.
+    const onScroll = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(evaluate);
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   // The interval reads the newest state through a ref rather than closing over it, so a
   // running clock keeps one steady timer instead of tearing it down and starting a fresh
@@ -85,7 +167,7 @@ export function ControlBar({ range, clock, onChange, faults }: Props) {
   const set = (at: Date) => onChange({ ...clock, at });
 
   return (
-    <div className={styles.bar}>
+    <div className={compact ? styles.barCompact : styles.bar}>
       <div className={styles.top}>
         <button
           className={styles.play}
@@ -100,8 +182,8 @@ export function ControlBar({ range, clock, onChange, faults }: Props) {
           <span className={styles.date}>{clock.at.toISOString().slice(0, 10)}</span>
           <span className={styles.where}>
             {era
-              ? `day ${daysBetween(new Date(era.t_from), clock.at) + 1} of ${era.days} in the run of ${era.era}`
-              : "between runs"}
+              ? `day ${daysBetween(new Date(era.t_from), clock.at) + 1} of ${era.days} in the ${era.era} recording`
+              : "between recordings"}
           </span>
         </div>
 
@@ -133,14 +215,15 @@ export function ControlBar({ range, clock, onChange, faults }: Props) {
               className={showKey ? styles.keyOn : styles.key}
               onClick={() => setShowKey((v) => !v)}
               aria-expanded={showKey}
-              title="Reveals the ground truth on the timeline. Off by default."
+              title="Shows what was actually broken and lets you jump straight to it. Off by default, because no other screen is allowed to see it."
             >
-              demo tools
+              {showKey ? "hide the answers" : "show me the answers"}
             </button>
           )}
         </div>
       </div>
 
+      <div className={styles.fold}>
       {era && (
         <Timeline
           era={era}
@@ -151,27 +234,30 @@ export function ControlBar({ range, clock, onChange, faults }: Props) {
       )}
 
       <div className={styles.runs}>
-        <span className={styles.runsLabel}>runs</span>
+        <span className={styles.runsLabel}>recordings</span>
         {range.eras.map((e) => (
           <button
             key={e.era}
             className={era?.era === e.era ? styles.runOn : styles.run}
             onClick={() => set(new Date(e.t_from))}
-            title={`${e.days} days · ${e.assets.length} machines · ${e.queue_days} days with a queue`}
+            title={`A separate recording of the same building: ${e.days} days, ${e.assets.length} machines, ${e.queue_days} days with work outstanding.`}
           >
             {e.era}
           </button>
         ))}
         <span className={styles.hint}>
-          click or drag the track · ← → a day · shift ← → a week
+          drag the bar above to move through the recording · ← → a day
         </span>
       </div>
 
       {showKey && faults && (
         <div className={styles.drawer}>
           <div className={styles.warn}>
-            These controls read the <strong>answer key</strong> — the ground truth every
-            detection screen is denied. Nothing else on this dashboard can see it.
+            <strong>You are now looking at the answers.</strong> The faults in these
+            recordings were introduced deliberately, so we know exactly what broke and
+            when. The part of the system that does the detecting is not allowed to know —
+            it signs in to the database as a user with no permission to read these records
+            at all. Jump to any fault below to watch it being found.
           </div>
 
           <div className={styles.drawerRow}>
@@ -186,7 +272,7 @@ export function ControlBar({ range, clock, onChange, faults }: Props) {
                 if (f) set(addDays(new Date(f.t_onset), -1));
               }}
             >
-              <option value="">jump to a fault…</option>
+              <option value="">jump to the day before a fault was introduced…</option>
               {faults.map((f) => (
                 <option key={f.scenario_id} value={f.scenario_id}>
                   {f.fault_mode.replace(/_/g, " ")} · {f.asset_id} ·{" "}
@@ -228,10 +314,11 @@ export function ControlBar({ range, clock, onChange, faults }: Props) {
 
       {!faults && (
         <div className={styles.offline}>
-          The reveal service is not running, so the timeline has dates but no fault
+          The answer-key service is not running, so the timeline has dates but no fault
           spans. Start it with <code>make reveal</code>. Nothing else needs it.
         </div>
       )}
+      </div>
     </div>
   );
 }

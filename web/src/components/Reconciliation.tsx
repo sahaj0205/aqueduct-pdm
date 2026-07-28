@@ -1,5 +1,6 @@
 import type { DiagnosisCase } from "../types.ts";
 import { CLASS_COLOUR } from "../lib/format.ts";
+import * as C from "../design/palette.ts";
 import styles from "./Reconciliation.module.css";
 
 /**
@@ -18,7 +19,7 @@ interface Props {
 }
 
 export function Reconciliation({ side }: Props) {
-  const colour = CLASS_COLOUR[side.fault_class as keyof typeof CLASS_COLOUR] ?? "#57534e";
+  const colour = CLASS_COLOUR[side.fault_class as keyof typeof CLASS_COLOUR] ?? C.inkMuted;
   return (
     <section className={styles.card}>
       <div className={styles.head}>
