@@ -1,0 +1,113 @@
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 13px 15px 15px;
+  margin-top: 14px;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.head h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.muted {
+  font-size: 11px;
+  color: var(--faint);
+  font-family: var(--mono);
+}
+
+.refused {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--panel-2);
+  border-left: 3px solid var(--warn);
+  padding: 9px 11px;
+  margin: 0 0 12px;
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.steps li {
+  padding: 10px 0 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.steps li:last-child {
+  border-bottom: none;
+}
+
+.name {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+
+.ord {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--bg);
+  background: var(--accent);
+  width: 17px;
+  height: 17px;
+  border-radius: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.what {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0 0 5px 26px;
+  max-width: 82ch;
+}
+
+/* The number itself, in the monospace face, because it is the thing being checked. */
+.value {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel-2);
+  border-radius: 3px;
+  padding: 6px 9px;
+  margin-left: 26px;
+}
+
+.source {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+  margin: 4px 0 0 26px;
+}
+
+.rationale {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 12px 0 0;
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
+  max-width: 88ch;
+}

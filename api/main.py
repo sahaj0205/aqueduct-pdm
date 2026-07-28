@@ -22,6 +22,7 @@ serving the answer key to a dashboard.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 from functools import cache
 from typing import Annotated
@@ -49,8 +50,10 @@ from api.models import (
     Intervention,
     MachineTrace,
     PointSummary,
+    RulExplanation,
     RulHistory,
     RulPoint,
+    RulStep,
     SiteSummary,
     TimeseriesPoint,
     TimeseriesResult,
@@ -1137,3 +1140,211 @@ def diagnosis_pair(
         one and two and one.as_of.year != two.as_of.year
     )
     return DiagnosisPair(left=one, right=two, composed=composed, cost_ratio=ratio)
+
+
+# ---------------------------------------------------------------------------
+# how a remaining life is arrived at
+# ---------------------------------------------------------------------------
+
+# The indicator expression names its own source, e.g.
+# "-{residual:@asset.sa_temp.shut-valve-supply-air}". Pulling the point and the baseline
+# out of it is how the explainer finds the raw number the whole chain starts from,
+# rather than having that mapping written down a second time here.
+_RESIDUAL_REF = re.compile(r"\{residual:@asset\.([A-Za-z0-9_]+)\.([A-Za-z0-9_\-]+)\}")
+
+
+def _fmt(value: float | None, digits: int = 3, unit: str = "") -> str:
+    if value is None:
+        return "not available"
+    return f"{value:.{digits}f}{unit}"
+
+
+@app.get("/prediction/explain", response_model=RulExplanation, tags=["prediction"])
+def prediction_explain(
+    conn: Conn,
+    asset_id: Annotated[str, Query()],
+    mode_id: Annotated[str, Query()],
+    as_of: Annotated[datetime, Query(description="Which day's estimate to explain")],
+) -> RulExplanation:
+    """Walk the eight steps from a raw reading to a remaining-life interval.
+
+    Every figure returned here is read from where the pipeline stored it, not
+    recomputed. That is the point: a screen that recomputed the chain to describe it
+    could disagree with the chain, and then a viewer has two answers and no way to tell
+    which one the system actually used.
+    """
+    mode = conn.execute(
+        "SELECT indicator_expression, indicator_unit, failure_threshold, "
+        "       threshold_rationale, degradation_process "
+        "  FROM app.failure_modes WHERE mode_id = %s",
+        (mode_id,),
+    ).fetchone()
+    if mode is None:
+        raise HTTPException(status_code=404, detail=f"no failure mode {mode_id!r}")
+    expression, unit, threshold, rationale, process = mode
+
+    estimate = conn.execute(
+        "SELECT as_of, p10, p50, p90, mu_hat, sigma_hat, n_samples "
+        "  FROM app.rul_estimates "
+        " WHERE asset_id = %(a)s AND mode_id = %(m)s AND as_of <= %(t)s "
+        " ORDER BY as_of DESC LIMIT 1",
+        {"a": asset_id, "m": mode_id, "t": as_of},
+    ).fetchone()
+    health = conn.execute(
+        "SELECT time, indicator_raw, indicator_monotonic, health, t_onset "
+        "  FROM app.health_state "
+        " WHERE asset_id = %(a)s AND mode_id = %(m)s AND time <= %(t)s "
+        " ORDER BY time DESC LIMIT 1",
+        {"a": asset_id, "m": mode_id, "t": as_of},
+    ).fetchone()
+    if estimate is None and health is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"nothing scored for {asset_id!r}/{mode_id!r} at or before {as_of.date()}",
+        )
+
+    # Step 1's raw number, found by reading the expression rather than by a second
+    # hardcoded mapping of mode to point.
+    residual = None
+    point_id = baseline_id = None
+    match = _RESIDUAL_REF.search(expression or "")
+    if match:
+        point_id = f"{asset_id}.{match.group(1)}"
+        baseline_id = f"{point_id}.{match.group(2)}"
+        residual = conn.execute(
+            "SELECT time, observed, expected, residual FROM app.residuals "
+            " WHERE point_id = %(p)s AND baseline_id = %(b)s AND time <= %(t)s "
+            " ORDER BY time DESC LIMIT 1",
+            {"p": point_id, "b": baseline_id, "t": as_of},
+        ).fetchone()
+
+    p10, p50, p90 = (estimate[1], estimate[2], estimate[3]) if estimate else (None, None, None)
+    mu, sigma, n = (estimate[4], estimate[5], estimate[6]) if estimate else (None, None, 0)
+    raw = health[1] if health else None
+    monotonic = health[2] if health else None
+    onset = health[4] if health else None
+
+    steps = [
+        RulStep(
+            ordinal=1, name="the reading, against what was expected",
+            what_it_does=(
+                "One instrument is compared with what a fitted baseline says it should "
+                "read under the conditions of that moment. The gap between them is the "
+                "residual, and it is what the whole chain is built on."
+            ),
+            value=(
+                f"{point_id}: measured {_fmt(residual[1])}, expected {_fmt(residual[2])}, "
+                f"gap {_fmt(residual[3])}"
+                if residual
+                else f"no residual stored for {point_id or 'this mode'}"
+            ),
+            source=f"app.residuals · baseline {baseline_id or 'unknown'}",
+        ),
+        RulStep(
+            ordinal=2, name="turned into this failure mode's own number",
+            what_it_does=(
+                "Each failure mode says, in the database rather than in code, which "
+                "residual measures it and which way round. Adding a mode is a row, not "
+                "a code change."
+            ),
+            value=expression or "no expression configured",
+            source="app.failure_modes.indicator_expression",
+        ),
+        RulStep(
+            ordinal=3, name="one number per day",
+            what_it_does=(
+                "The day's five-minute values are reduced to their median, so a single "
+                "odd afternoon cannot move the trend."
+            ),
+            value=_fmt(raw, 4, f" {unit}"),
+            source="app.health_state.indicator_raw",
+        ),
+        RulStep(
+            ordinal=4, name="degradation is not allowed to un-happen",
+            what_it_does=(
+                "Equipment does not repair itself, so the number is pulled into a "
+                "never-improving shape. The prediction is fitted to THIS, not to the "
+                "raw value, and the two can differ noticeably on a noisy indicator."
+            ),
+            value=(
+                f"{_fmt(monotonic, 4, f' {unit}')}"
+                + (
+                    f"  (raw was {_fmt(raw, 4)}, so the clamp moved it "
+                    f"{_fmt(abs((monotonic or 0) - (raw or 0)), 4)})"
+                    if raw is not None and monotonic is not None
+                    else ""
+                )
+            ),
+            source="app.health_state.indicator_monotonic",
+        ),
+        RulStep(
+            ordinal=5, name="when the decline was confirmed",
+            what_it_does=(
+                "Nothing is projected forward until a changepoint detector confirms the "
+                "trend is real. Before this date the model refuses to answer at all."
+            ),
+            value=(
+                f"confirmed {onset:%Y-%m-%d}"
+                if onset
+                else "not confirmed — nothing will be projected"
+            ),
+            source="app.health_state.t_onset",
+        ),
+        RulStep(
+            ordinal=6, name="the rate of decline, and how sure",
+            what_it_does=(
+                "A drift process is fitted to the days since the changepoint: how fast "
+                "the number is moving, and how much it wanders around that. The wander "
+                "is what makes the answer an interval instead of a date."
+            ),
+            value=(
+                f"drift {_fmt(mu, 5)} per day, spread {_fmt(sigma, 5)}, "
+                f"fitted on {n} day{'' if n == 1 else 's'} of evidence"
+                if estimate
+                else "no fit"
+            ),
+            source="app.rul_estimates.mu_hat, sigma_hat, n_samples",
+        ),
+        RulStep(
+            ordinal=7, name="how far there is to go",
+            what_it_does=(
+                "The mode counts as failed when its number reaches a threshold that has "
+                "a physical justification recorded beside it. The question becomes: how "
+                "long until a process drifting at that rate first touches that line."
+            ),
+            value=(
+                f"threshold {threshold:.3f} {unit}, currently at "
+                f"{_fmt(monotonic, 3, f' {unit}')}"
+                + (
+                    f" — {(monotonic / threshold * 100):.0f}% of the way"
+                    if monotonic is not None and threshold
+                    else ""
+                )
+            ),
+            source="app.failure_modes.failure_threshold",
+        ),
+        RulStep(
+            ordinal=8, name="the answer, as a range",
+            what_it_does=(
+                "The first time that drift is expected to touch the threshold, given as "
+                "three dates rather than one: a pessimistic end, a middle, and an "
+                "optimistic end. A missing end is the model declining to bound it, "
+                "which is an answer and not missing data."
+            ),
+            value=(
+                f"P10 {_fmt(p10, 1, ' days')} · P50 {_fmt(p50, 1, ' days')} · "
+                f"P90 {_fmt(p90, 1, ' days')}"
+                if estimate
+                else "no estimate published"
+            ),
+            source="app.rul_estimates.p10, p50, p90",
+        ),
+    ]
+
+    return RulExplanation(
+        asset_id=asset_id, mode_id=mode_id,
+        as_of=estimate[0] if estimate else (health[0] if health else as_of),
+        indicator_unit=unit, failure_threshold=float(threshold),
+        threshold_rationale=rationale, degradation_process=process,
+        steps=steps, refused=estimate is not None and p50 is None,
+    )

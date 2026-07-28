@@ -1,0 +1,42 @@
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 13px 15px 15px;
+  margin-top: 14px;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.head h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.muted {
+  font-size: 11px;
+  color: var(--faint);
+  font-family: var(--mono);
+}
+
+/* The caveat is not small print. The gap this chart shows is partly a real modelling
+   error and partly a difference between two definitions of failure, and a reader who
+   took it all as the first would be drawing a harsher conclusion than the data supports
+   -- while one who took it all as the second would be excusing a real late bias. */
+.caveat {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  background: var(--panel-2);
+  border-left: 3px solid var(--accent);
+  padding: 10px 12px;
+  margin: 12px 0 0;
+  max-width: 92ch;
+}

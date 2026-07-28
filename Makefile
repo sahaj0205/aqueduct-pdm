@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-twin web-verify-clock web-verify-funnel web-verify-diagnosis web-build validate
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-twin web-verify-clock web-verify-funnel web-verify-diagnosis web-verify-prediction web-build validate
 
 # Resolve and install the Python environment into .venv
 install:
@@ -232,6 +232,13 @@ web-verify-funnel:
 # ways. Comparing two different faults would give a bigger number and answer nothing.
 web-verify-diagnosis:
 	cd web && npm run verify:diagnosis
+
+# Check the prediction screen's two claims, which pull in opposite directions: that the
+# interval closes as evidence accumulates, and that the model is late every time anyway.
+# A screen making the first without the second would be a sales pitch. Needs `make api`;
+# the late-bias half needs `make reveal` and is skipped without it.
+web-verify-prediction:
+	cd web && npm run verify:prediction
 
 # Typecheck and production-build the frontend.
 web-build:

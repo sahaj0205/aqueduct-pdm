@@ -583,3 +583,31 @@ class DiagnosisPair(BaseModel):
             "anybody asked. The same symptom sent out two ways does."
         )
     )
+
+
+class RulStep(BaseModel):
+    """One step in the chain from a raw reading to a remaining-life interval."""
+
+    ordinal: int
+    name: str
+    what_it_does: str = Field(
+        description="Plain language, for a reader who does not know the pipeline"
+    )
+    value: str = Field(description="The actual number at this step, or why there is none")
+    source: str = Field(description="Where it is stored, so any figure can be traced")
+
+
+class RulExplanation(BaseModel):
+    """Every step from residual to interval, for one failure mode at one moment."""
+
+    asset_id: str
+    mode_id: str
+    as_of: datetime
+    indicator_unit: str
+    failure_threshold: float
+    threshold_rationale: str
+    degradation_process: str
+    steps: list[RulStep]
+    refused: bool = Field(
+        description="True when the model declines to bound the crossing. A refusal is an answer."
+    )

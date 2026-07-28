@@ -13,7 +13,8 @@
     "verify:clock": "node scripts/run-ts.mjs scripts/verify-clock.ts",
     "verify:twin": "node scripts/run-ts.mjs scripts/verify-twin.ts",
     "verify:funnel": "node scripts/run-ts.mjs scripts/verify-funnel.ts",
-    "verify:diagnosis": "node scripts/run-ts.mjs scripts/verify-diagnosis.ts"
+    "verify:diagnosis": "node scripts/run-ts.mjs scripts/verify-diagnosis.ts",
+    "verify:prediction": "node scripts/run-ts.mjs scripts/verify-prediction.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

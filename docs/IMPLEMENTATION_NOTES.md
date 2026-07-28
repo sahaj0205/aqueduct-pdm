@@ -9938,3 +9938,119 @@ worse than no script.
 
 START HERE: `web/src/components/ClassTimeline.tsx` — the docstring says why a screen
 that shows the classifier changing its mind is stronger than one that hides it.
+
+
+## Demo Phase 1, Checkpoint 1.11 — The prediction screen
+
+### What we did
+
+The prediction can now be checked rather than believed. The system says a machine has
+thirty-two days left; this screen walks the eight steps between a thermometer reading
+and that sentence, with the real number at each and the table it is stored in, so a
+sceptical reader can follow it end to end. Then it shows the same prediction against
+what actually happened — and the model is late every single time, by eighty-four days
+on the last estimate of its best series. Both halves are on one screen on purpose. The
+interval closing by 97% as evidence accumulates is real and is the thing the model does
+well; a screen that stopped there would be a sales pitch.
+
+### How it works
+
+    api/main.py :: GET /prediction/explain
+      WHY IT EXISTS: Six of the eight steps were already served across two endpoints and
+        the residual that starts the chain was served nowhere. Assembling eight steps in
+        the browser would have put the pipeline's structure in the frontend, where it
+        cannot be checked.
+      WHAT IT DOES: Reads the failure mode's configuration, the last health row and the
+        last estimate at or before the moment asked for, and returns eight steps each
+        carrying a plain-language description, the actual value, and the table it came
+        from.
+      CHOICES: Every figure is READ, never recomputed. A screen that recomputed the chain
+        to describe it could disagree with the chain, and a viewer would then have two
+        answers and no way to tell which one the system used.
+
+    api/main.py :: _RESIDUAL_REF
+      WHY IT EXISTS: Step 1 needs the raw residual the whole chain is built on, and
+        nothing said which point that is.
+      WHAT IT DOES: Reads it out of the failure mode's own indicator expression --
+        `-{residual:@asset.sa_temp.shut-valve-supply-air}` names both the instrument and
+        the baseline -- and resolves `@asset` against the machine.
+      CHOICES: Parsed rather than mapped in a table here. A second copy of "which point
+        measures which mode" would be a second thing to keep in step, and the expression
+        is already the authority the health layer uses.
+
+    web/src/components/RulExplainer.tsx
+      WHAT IT DOES: The eight steps as a numbered list, each with what it does in plain
+        language, the number, and the table.
+      CHOICES: The value is in the monospace face and the source underneath it, because
+        the value is the thing being checked and the source is how you would check it.
+
+    web/src/components/PredictedVsActual.tsx
+      WHY IT EXISTS: The least flattering picture in the project and the most useful one.
+      WHAT IT DOES: Plots each day's prediction as the failure DATE it implies rather
+        than as days remaining, against a horizontal line at the date the machine
+        actually failed. A correct forecaster's line walks onto that line; a late-biased
+        one approaches from above and never lands.
+      CHOICES: Dates, not a countdown. A countdown always looks like it is working --
+        the number goes down every day whether or not it is right.
+      ⚠ JUDGEMENT CALL: The caveat beside the chart is long, and it is long because the
+        gap it shows is two different things added together. The green line is when the
+        INJECTED FAULT reached terminal severity; the model is predicting when ITS OWN
+        indicator crosses ITS OWN threshold, and on this series that indicator only ever
+        reached 57 percent of it. A reader who took the whole gap as modelling error
+        would be drawing a harsher conclusion than the data supports; one who took it all
+        as definitional would be excusing a real late bias. VALIDATION.md section 5
+        splits the 10.1 percent coverage between exactly those two causes, and the screen
+        has to do the same or it is misreporting in one direction or the other.
+
+    web/src/screens/Prediction.tsx
+      CHOICES: The remaining-life history is fetched WITHOUT the clock's as_of. Every
+        other screen truncates at the clock; this one is about the whole arc of a
+        prediction, and truncating would hide the thing it exists to show.
+      CHANGED FROM BEFORE: The plan said the advisory detail's fan chart would be reused
+        unchanged. It cannot be -- it takes an advisory payload and is built around one
+        open advisory, and fabricating a payload to borrow it would couple this screen
+        to a shape it does not have. What IS reused is `narrowing()` from lib/chart.ts,
+        which is pure, so the close percentage quoted here and the one on the advisory
+        cannot disagree.
+
+### Verification
+
+    ahu-1 / coil-valve-leak-by: 84 estimates
+
+    what the model does well
+      ok  the interval closes over the run            97.4% over 68 bounded estimates
+      ok  and NOT monotonically, which is stated      monotone=false
+
+    the eight steps resolve
+      ok  all eight steps returned
+      ok  every step carries a real value, not a placeholder
+      ok  every step names where it is stored
+      ok  step 1 reaches an actual residual
+          ahu-1.sa_temp: measured 11.675, expected 15.983, gap -4.308
+      ok  the threshold carries its physical justification
+
+    and what it does badly
+      ok  every bounded estimate predicts failure LATER than it happened   84 of 84
+          actual failure 2036-05-01; last prediction puts it 84 days later
+      ok  the final error is late, not early                               84 days
+
+The eight steps on that series, end to end:
+
+    1  ahu-1.sa_temp: measured 11.675, expected 15.983, gap -4.308
+    2  -{residual:@asset.sa_temp.shut-valve-supply-air}
+    3  0.4003 degC
+    4  1.6041 degC   (raw was 0.4003, so the clamp moved it 1.2038)
+    5  confirmed 2036-03-19
+    6  drift 0.01669 per day, spread 0.05382, fitted on 53 days
+    7  threshold 2.800 degC, currently at 1.604 -- 57% of the way
+    8  P10 15.9 days · P50 31.7 days · P90 74.5 days
+
+Step 7's **57 percent** is worth pausing on: it is the same figure VALIDATION.md
+section 5 names as the definitional half of the 10.1 percent coverage failure. The
+document states it as a summary statistic; this screen shows where it comes from.
+
+`npx tsc --noEmit` clean, `npm run build` clean, `uv run ruff check .` clean.
+
+START HERE: `web/src/components/PredictedVsActual.tsx` — the docstring says why the
+chart plots dates rather than a countdown, and why the caveat beside it has to name
+both causes of the gap rather than the flattering one or the damning one alone.

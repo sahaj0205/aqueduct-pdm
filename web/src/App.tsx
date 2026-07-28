@@ -10,6 +10,7 @@ import { clampToEra, toIso } from "./lib/clock.ts";
 import { Diagnosis } from "./screens/Diagnosis.tsx";
 import { Engine } from "./screens/Engine.tsx";
 import { Operations } from "./screens/Operations.tsx";
+import { Prediction } from "./screens/Prediction.tsx";
 import { Twin } from "./screens/Twin.tsx";
 import type {
   AdvisorySummary,
@@ -198,7 +199,7 @@ export function App() {
           />
           <Route
             path="/prediction"
-            element={<NotBuilt name="Prediction versus truth" />}
+            element={<Prediction at={clock ? toIso(clock.at) : null} />}
           />
           <Route path="/diagnosis" element={<Diagnosis />} />
           <Route path="/reveal" element={<NotBuilt name="The reveal" />} />

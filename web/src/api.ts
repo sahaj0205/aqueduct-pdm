@@ -15,6 +15,7 @@ import type {
   GraphResult,
   HealthSeries,
   MachineTrace,
+  RulExplanation,
   RulHistory,
   SiteSummary,
   TwinState,
@@ -74,6 +75,12 @@ export const api = {
   // request per tick rather than one per node.
   twinState: (at: string) =>
     get<TwinState>(`/twin/state?as_of=${encodeURIComponent(at)}`),
+  // Every step from a raw reading to a remaining-life interval, for one mode.
+  explainRul: (assetId: string, modeId: string, at: string) =>
+    get<RulExplanation>(
+      `/prediction/explain?asset_id=${encodeURIComponent(assetId)}` +
+        `&mode_id=${encodeURIComponent(modeId)}&as_of=${encodeURIComponent(at)}`,
+    ),
   // The two faults that present identically and must come out differently.
   diagnosisPair: () => get<DiagnosisPair>("/diagnosis/pair"),
   // What the pipeline did on one machine on one day, with its fault-free counterpart.

@@ -432,3 +432,28 @@ export interface DiagnosisPair {
   composed: boolean;
   cost_ratio: number | null;
 }
+
+/* --------------------------------------------------------------------------
+ * how a remaining life is arrived at
+ * ------------------------------------------------------------------------ */
+
+export interface RulStep {
+  ordinal: number;
+  name: string;
+  what_it_does: string;
+  value: string;
+  source: string;
+}
+
+export interface RulExplanation {
+  asset_id: string;
+  mode_id: string;
+  as_of: string;
+  indicator_unit: string;
+  failure_threshold: number;
+  threshold_rationale: string;
+  degradation_process: string;
+  steps: RulStep[];
+  /** True when the model declines to bound the crossing. A refusal is an answer. */
+  refused: boolean;
+}
