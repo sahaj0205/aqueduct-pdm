@@ -96,7 +96,7 @@ export function Operations({ summary, advisories, topology, twinState }: Props) 
             const node = topology.nodes.find((n) => n.node_id === nodeId);
             if (!node?.asset_id) return;
             const first = advisories.find((a) => a.asset_id === node.asset_id);
-            if (first) navigate(`/advisory/${encodeURIComponent(first.advisory_id)}`);
+            if (first) navigate(`/console/advisory/${encodeURIComponent(first.advisory_id)}`);
           }}
         />
       )}
@@ -104,7 +104,7 @@ export function Operations({ summary, advisories, topology, twinState }: Props) 
         <AdvisoryQueue
           advisories={advisories}
           onSelect={(advisory) =>
-            navigate(`/advisory/${encodeURIComponent(advisory.advisory_id)}`)
+            navigate(`/console/advisory/${encodeURIComponent(advisory.advisory_id)}`)
           }
         />
       )}

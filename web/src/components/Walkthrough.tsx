@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 
 import type { TourStep } from "../lib/tour.ts";
 import styles from "./Walkthrough.module.css";
@@ -31,22 +30,17 @@ interface Props {
 }
 
 export function Walkthrough({ steps, index, onIndex, onExit, onMoment }: Props) {
-  const navigate = useNavigate();
-  const location = useLocation();
   const step = steps[index];
 
-  // Navigation and the clock are effects of the step, not of clicking "next" — so
-  // arriving at a step by any route puts the viewer in the same place. The pathname is
-  // checked first, because navigating to where you already are would otherwise push a
-  // history entry on every render.
+  // The clock is an effect of WHICH STEP IS CURRENT, not of clicking next — so arriving
+  // at a step by clicking a pip, pressing an arrow key or going back all put the viewer
+  // in the same place. There is no navigation here any more: the walk has its own
+  // address and the step decides which screen renders beneath it, so stepping through it
+  // never changes the URL out from under the reader.
   useEffect(() => {
-    if (!step) return;
-    if (location.pathname !== step.to) navigate(step.to);
-    if (step.at) onMoment(step.at);
-    // Deliberately depends on the step alone. `onMoment` sets the clock, setting the
-    // clock re-renders the shell, and a fresh handler each render would re-run this and
-    // set the clock again — so listing it here would be a loop rather than correctness.
-    // There is no linter in this project to tell either way; the reasoning is the check.
+    if (step?.at) onMoment(step.at);
+    // Depends on the step alone. `onMoment` sets the clock, setting the clock re-renders
+    // the shell, and a fresh handler each render would re-run this and set it again.
   }, [index, step]);
 
   useEffect(() => {

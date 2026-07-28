@@ -18,8 +18,14 @@
 /* Reading down a long table, the whole bar is obstruction. Scrolling down shrinks it to
    the date and the play button; scrolling up restores it, because heading back up the
    page is exactly the gesture somebody makes when they want the clock again. */
+/* Symmetric padding, so the row sits centred in the collapsed bar.
+   
+   It did not. The fold below was pulled up by a negative top margin as it closed, which
+   ate the space under the row and left the play button with breathing room above it and
+   none beneath — visibly off-centre in a bar that is nothing but that one row. The fold
+   simply collapses now and the padding does the centring. */
 .barCompact {
-  padding-block: var(--s2);
+  padding-block: var(--s3);
   box-shadow: var(--lift-2);
 }
 
@@ -34,9 +40,6 @@
 .barCompact .fold {
   max-height: 0;
   opacity: 0;
-  /* Pulled up by its own bottom spacing as it goes, so the collapse does not leave a
-     band of empty bar behind it mid-transition. */
-  margin-top: calc(var(--s2) * -1);
 }
 
 .barCompact .date {

@@ -35,32 +35,32 @@ interface Tab {
 
 const TABS: Tab[] = [
   {
-    to: "/",
+    to: "/console",
     label: "Needs doing",
     hint: "What is wrong with the building, in the order it should be fixed",
   },
   {
-    to: "/building",
+    to: "/console/building",
     label: "The building",
     hint: "Where each fault sits in the plant, and what is connected to what",
   },
   {
-    to: "/how-we-know",
+    to: "/console/how-we-know",
     label: "How we know",
     hint: "Every reading the system threw away on the way to a finding, and why",
   },
   {
-    to: "/sensor-or-machine",
+    to: "/console/sensor-or-machine",
     label: "Sensor or machine",
     hint: "Telling a broken instrument from broken equipment, and what it is worth",
   },
   {
-    to: "/time-left",
+    to: "/console/time-left",
     label: "Time left",
     hint: "How long a machine has, how sure we are, and how wrong we were",
   },
   {
-    to: "/rules",
+    to: "/console/rules",
     label: "The rules",
     hint: "Every threshold in the system and the physical reason for it",
   },
@@ -68,7 +68,7 @@ const TABS: Tab[] = [
 
 /** Served by a separate process on the admin credential. Kept visibly apart. */
 const ANSWER: Tab = {
-  to: "/answer",
+  to: "/console/answer",
   label: "The answer",
   hint: "What was actually broken — the ground truth, hidden behind a click",
 };
@@ -94,7 +94,7 @@ export function NavTabs({ onStartTour }: Props) {
         <NavLink
           key={tab.to}
           to={tab.to}
-          end={tab.to === "/"}
+          end={tab.to === "/console"}
           title={tab.hint}
           className={({ isActive }) => (isActive ? styles.on : styles.tab)}
         >

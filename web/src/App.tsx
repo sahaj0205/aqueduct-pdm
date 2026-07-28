@@ -13,7 +13,7 @@ import { api, reveal } from "./api.ts";
 import { AdvisoryDetail } from "./components/AdvisoryDetail.tsx";
 import { ControlBar } from "./components/ControlBar.tsx";
 import { Mark } from "./design/Mark.tsx";
-import { BRAND, storageKey } from "./lib/brand.ts";
+import { BRAND } from "./lib/brand.ts";
 import { Term } from "./design/Term.tsx";
 import type { ClockState } from "./components/ControlBar.tsx";
 import { NavTabs } from "./components/NavTabs.tsx";
@@ -55,6 +55,13 @@ import type {
 /**
  * Where each screen used to live, and where it lives now.
  *
+ * THREE PLACES, EACH WITH ITS OWN ADDRESS. The home page is the front door at "/", the
+ * guided walk is "/tour", and the working application is "/console" with every screen
+ * nested beneath it. Before this the front door was hidden at "/welcome" while the
+ * console owned the root, which is backwards — the thing you land on should be the thing
+ * at the root, and a guided walk with no address of its own cannot be linked to or
+ * returned to.
+ *
  * The paths were renamed alongside the tabs, because a URL is read aloud in a
  * demonstration and shown in the address bar of a shared screen, and "/engine" tells a
  * viewer as little there as it did on the tab. Old paths redirect rather than 404: this
@@ -66,20 +73,90 @@ import type {
  * the one place that maps the internal name to the name a viewer sees.
  */
 const MOVED: Record<string, string> = {
-  "/twin": "/building", //            Twin.tsx          → The building
-  "/engine": "/how-we-know", //       Engine.tsx        → How we know
-  "/diagnosis": "/sensor-or-machine", // Diagnosis.tsx  → Sensor or machine
-  "/prediction": "/time-left", //     Prediction.tsx    → Time left
-  "/config": "/rules", //             Configuration.tsx → The rules
-  "/reveal": "/answer", //            Reveal.tsx        → The answer
+  "/welcome": "/", //                 the front door is the home page now
+  "/building": "/console/building",
+  "/how-we-know": "/console/how-we-know",
+  "/sensor-or-machine": "/console/sensor-or-machine",
+  "/time-left": "/console/time-left",
+  "/rules": "/console/rules",
+  "/answer": "/console/answer",
+  "/twin": "/console/building", //    Twin.tsx          → The building
+  "/engine": "/console/how-we-know", // Engine.tsx      → How we know
+  "/diagnosis": "/console/sensor-or-machine",
+  "/prediction": "/console/time-left",
+  "/config": "/console/rules",
+  "/reveal": "/console/answer",
 };
+
+/**
+ * Every screen the console serves, in tab order. This list IS the routing table — the
+ * router maps each entry through the resolver below, and the guided walk resolves its
+ * steps through the same one.
+ */
+const CONSOLE_SCREENS = [
+  "/console",
+  "/console/building",
+  "/console/how-we-know",
+  "/console/sensor-or-machine",
+  "/console/time-left",
+  "/console/rules",
+  "/console/answer",
+] as const;
+
+/**
+ * Everything the screens need from the shell, gathered once.
+ *
+ * The guided walk and the router both have to be able to put up any screen, and passing
+ * six props through two call sites twice is how they drift apart.
+ */
+interface ScreenCtx {
+  at: string | null;
+  summary: SiteSummary | null;
+  advisories: AdvisorySummary[] | null;
+  topology: TwinTopology | null;
+  twinState: TwinState | null;
+}
+
+/**
+ * The screen a console path names.
+ *
+ * ONE RESOLVER, used by the router and by the guided walk. The walk shows a screen
+ * without navigating to it — it keeps its own address — so without this the two would be
+ * separate lists of paths, and a step pointing somewhere the router does not agree with
+ * is a blank page in the middle of a demonstration.
+ */
+function ScreenFor({ path, ctx }: { path: string; ctx: ScreenCtx }) {
+  switch (path) {
+    case "/console/building":
+      return <Twin at={ctx.at} advisories={ctx.advisories} />;
+    case "/console/how-we-know":
+      return <Engine at={ctx.at} twinState={ctx.twinState} />;
+    case "/console/sensor-or-machine":
+      return <Diagnosis />;
+    case "/console/time-left":
+      return <Prediction at={ctx.at} />;
+    case "/console/rules":
+      return <Configuration />;
+    case "/console/answer":
+      return <Reveal at={ctx.at} />;
+    default:
+      return (
+        <Operations
+          summary={ctx.summary}
+          advisories={ctx.advisories}
+          topology={ctx.topology}
+          twinState={ctx.twinState}
+        />
+      );
+  }
+}
 
 /** The advisory detail, reading its id from the URL rather than from a state flag. */
 function AdvisoryRoute() {
   const { advisoryId } = useParams<{ advisoryId: string }>();
   const navigate = useNavigate();
-  if (!advisoryId) return <Navigate to="/" replace />;
-  return <AdvisoryDetail advisoryId={advisoryId} onBack={() => navigate("/")} />;
+  if (!advisoryId) return <Navigate to="/console" replace />;
+  return <AdvisoryDetail advisoryId={advisoryId} onBack={() => navigate("/console")} />;
 }
 
 export function App() {
@@ -98,20 +175,14 @@ export function App() {
   const [faults, setFaults] = useState<InjectedFault[] | null>(null);
 
   /**
-   * Guided or self-directed, and which step of the guide.
+   * Which stop of the guided walk is showing.
    *
-   * STARTS GUIDED, and that is the point of the mode existing. Seven screens of equal
-   * weight is exactly the confusion this phase set out to remove, and somebody opening
-   * this for the first time has no way to know which tab answers their question.
-   *
-   * The choice is remembered for the session, so anybody who leaves the tour once is not
-   * put back into it on every reload — which is what makes starting guided tolerable for
-   * the person building the thing rather than merely correct for the person being shown
-   * it. Session rather than permanent storage, so a fresh window is a fresh audience.
+   * THE MODE FLAGS ARE GONE. There used to be a `guided` boolean and an `entered`
+   * boolean, each mirrored into session storage, and between them they decided which of
+   * three things the page was. The route decides that now — "/" is the front door,
+   * "/tour" is the walk, "/console" is the working application — so the only thing left
+   * worth remembering is how far through the walk somebody is.
    */
-  const [guided, setGuided] = useState(
-    () => sessionStorage.getItem(storageKey("explore")) !== "1",
-  );
   const [step, setStep] = useState(0);
 
   /**
@@ -123,9 +194,6 @@ export function App() {
    * and the front page is handed the results — the figures on it are counted from the
    * running system rather than written down.
    */
-  const [entered, setEntered] = useState(
-    () => sessionStorage.getItem(storageKey("entered")) === "1",
-  );
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -136,20 +204,15 @@ export function App() {
    */
   const enter = useCallback(
     (withTour: boolean) => {
-      sessionStorage.setItem(storageKey("entered"), "1");
-      if (!withTour) sessionStorage.setItem(storageKey("explore"), "1");
-      setEntered(true);
-      setGuided(withTour);
       setStep(0);
-      navigate("/");
+      navigate(withTour ? "/tour" : "/console");
     },
     [navigate],
   );
 
   const leaveTour = useCallback(() => {
-    sessionStorage.setItem(storageKey("explore"), "1");
-    setGuided(false);
-  }, []);
+    navigate("/console");
+  }, [navigate]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -245,12 +308,17 @@ export function App() {
    * glimpsed behind a panel is the confusion this screen exists to prevent. Data loading
    * carries on regardless, so reading it warms every fetch the first screen needs.
    */
-  const atFrontDoor = location.pathname === "/welcome";
+  const atFrontDoor = location.pathname === "/";
+  const onTour = location.pathname === "/tour";
+  const ctx: ScreenCtx = {
+    at: clock ? toIso(clock.at) : null,
+    summary,
+    advisories,
+    topology,
+    twinState,
+  };
 
-  // First visit lands on the front door rather than in the middle of the product.
-  if (!entered && !atFrontDoor) {
-    return <Navigate to="/welcome" replace />;
-  }
+
 
   if (atFrontDoor) {
     // The two responses the shell is already fetching are handed straight to it, so the
@@ -273,7 +341,7 @@ export function App() {
           checkpoint a reader who did not know what a cooling tower was had nowhere to
           find out without leaving the page. */}
       <header className="masthead">
-        <Link className="brand" to="/welcome" title="What is this?">
+        <Link className="brand" to="/" title="What is this?">
           <Mark size={22} />
           <h1>{BRAND.name}</h1>
         </Link>
@@ -304,7 +372,7 @@ export function App() {
           reshape the page under the viewer. The tour is only offered once the run list
           has arrived, because every step it takes is derived from that list. */}
       {!error &&
-        (guided && tour.length > 0 ? (
+        (onTour && tour.length > 0 ? (
           <Walkthrough
             steps={tour}
             index={step}
@@ -322,58 +390,40 @@ export function App() {
               tour.length > 0
                 ? () => {
                     setStep(0);
-                    setGuided(true);
+                    navigate("/tour");
                   }
                 : undefined
             }
           />
         ))}
 
-      {!error && (
+      {/* On the guided walk the current step decides which screen sits under the bar, so
+          the walk keeps its own address instead of navigating away from itself. */}
+      {!error && onTour && <ScreenFor path={tour[step]?.to ?? "/console"} ctx={ctx} />}
+
+      {!error && !onTour && (
         <Routes>
-          <Route
-            path="/"
-            element={
-              <Operations
-                summary={summary}
-                advisories={advisories}
-                topology={topology}
-                twinState={twinState}
+            {/* Every console screen resolves through the same function the guided walk
+                uses, so a path can never mean one thing to the router and another to the
+                walk. The list is the routing table. */}
+            {CONSOLE_SCREENS.map((path) => (
+              <Route
+                key={path}
+                path={path}
+                element={<ScreenFor path={path} ctx={ctx} />}
               />
-            }
-          />
-          <Route path="/advisory/:advisoryId" element={<AdvisoryRoute />} />
-          <Route
-            path="/building"
-            element={
-              <Twin at={clock ? toIso(clock.at) : null} advisories={advisories} />
-            }
-          />
-          <Route
-            path="/how-we-know"
-            element={
-              <Engine at={clock ? toIso(clock.at) : null} twinState={twinState} />
-            }
-          />
-          <Route path="/sensor-or-machine" element={<Diagnosis />} />
-          <Route
-            path="/time-left"
-            element={<Prediction at={clock ? toIso(clock.at) : null} />}
-          />
-          <Route path="/rules" element={<Configuration />} />
-          <Route
-            path="/answer"
-            element={<Reveal at={clock ? toIso(clock.at) : null} />}
-          />
+            ))}
 
-          {/* Anything that used to be a tab still lands where it moved to. */}
-          {Object.entries(MOVED).map(([from, to]) => (
-            <Route key={from} path={from} element={<Navigate to={to} replace />} />
-          ))}
+            <Route path="/console/advisory/:advisoryId" element={<AdvisoryRoute />} />
 
-          {/* An unknown path goes to the queue rather than to a blank screen. */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            {/* Anything that used to be a tab still lands where it moved to. */}
+            {Object.entries(MOVED).map(([from, to]) => (
+              <Route key={from} path={from} element={<Navigate to={to} replace />} />
+            ))}
+
+            {/* An unknown path goes to the console rather than to a blank screen. */}
+            <Route path="*" element={<Navigate to="/console" replace />} />
+          </Routes>
       )}
     </div>
     </div>

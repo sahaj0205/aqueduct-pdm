@@ -66,25 +66,25 @@ export function buildTour(
 
   return [
     {
-      to: "/",
+      to: "/console",
       at: endOfFirst,
-      title: "First, the two things every screen shares.",
-      say: "The bar at the top is the clock — you are inside a recording, and it is your position in it. Underneath is whichever screen you are on. Move the clock and every screen moves with you, always showing only what the system knew by that date.",
+      title: "First, how to read this page.",
+      say: "The bar at the top is the clock: you are inside a recording of a real building, and the bar is your position in it. Everything below the bar is one screen out of seven — this one is the work queue, listing every repair the system thinks somebody should be sent to do. Move the clock and the queue changes with it, always showing only what the system had worked out by that date.",
     },
     {
-      to: "/",
+      to: "/console",
       at: endOfFirst,
       title: "Something in this building is going wrong.",
       say: "Two numbers, and the gap between them: what leaving the work alone is expected to cost, against what doing it costs. Everything else on this screen explains that gap.",
     },
     {
-      to: "/building",
+      to: "/console/building",
       at: endOfFirst,
       title: "This is where it sits.",
       say: "Heat flows left to right — towers throw it away, chillers make cold water, the air handler blows it at the rooms. The colour is one question at a time; the switch above picks which.",
     },
     {
-      to: "/",
+      to: "/console",
       at: beforeAnything,
       title: "Now wind the clock back. Nothing is wrong yet.",
       say: onset
@@ -92,37 +92,37 @@ export function buildTour(
         : "This is the opening of the run, before anything has gone wrong. The queue is quiet, and the system has no idea what is coming.",
     },
     {
-      to: "/how-we-know",
+      to: "/console/how-we-know",
       at: endOfFirst,
       title: "It does not find out by being clever.",
       say: "Ten stages, and almost all of them are refusals. Read down the column of numbers: three hundred thousand readings become four findings, and every narrowing has a stated reason.",
     },
     {
-      to: "/how-we-know",
+      to: "/console/how-we-know",
       at: endOfFirst,
       title: "The rules fire on healthy machines too.",
       say: "The right-hand column is the same machine on the same day of the year with nothing wrong. Look at stage five, then stage six: the healthy machine's alarms all die at the requirement that a complaint must hold for an hour.",
     },
     {
-      to: "/sensor-or-machine",
+      to: "/console/sensor-or-machine",
       at: null,
       title: "The same symptom, two completely different jobs.",
       say: "Air coming out too warm is a coil that cannot cool, and it is also a thermometer reading high. Telling them apart is worth the ratio at the top of this screen, and it decides which van goes out.",
     },
     {
-      to: "/time-left",
+      to: "/console/time-left",
       at: null,
       title: "How long it has, and how wrong we were.",
       say: "The range closes as evidence arrives — that is the model working. Then look at the chart: the blue line never reaches the green one. It is late, consistently, which is the dangerous direction.",
     },
     {
-      to: "/rules",
+      to: "/console/rules",
       at: null,
       title: "Every number here had to justify itself.",
       say: "Click any row. The reason a threshold is that number and not another is stored beside it in a column that cannot be left empty — so no figure in this system arrived without an argument.",
     },
     {
-      to: "/answer",
+      to: "/console/answer",
       at: endOfFirst,
       title: "And here is what was actually broken.",
       say: "Everything up to this point was worked out from readings alone. This page is served by a different process on a different credential, because the detection path is not permitted to read it. That is what makes the accuracy figures mean anything.",
