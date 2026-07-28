@@ -10587,3 +10587,95 @@ The seven screens, in the order the tabs now run:
 
 START HERE: `web/src/components/NavTabs.tsx` — the order of that list is the argument the
 whole dashboard is now arranged to make.
+
+## Demo Phase R, Checkpoint R3 — The clock
+
+### What we did
+
+The clock is the one component visible on every screen of the demonstration, and it was
+the least readable thing in the build. It has been rebuilt around a drawn timeline, and
+the ground truth has been taken off it.
+
+Before this it was eleven small controls in a row — a play button, four speed buttons,
+four step buttons, two dropdowns — followed by an unlabelled grey slider. The date it was
+showing was set at the same size as the buttons crowding it, so the single most important
+piece of state in the whole application was also the hardest thing on the bar to find.
+The slider moved the clock correctly and told a viewer nothing: not how long the run was,
+not what month they were in, not whether the interesting part was ahead of them or behind.
+A demonstration was run by dragging a grey rectangle and watching numbers change
+somewhere else on the page.
+
+The run is now drawn. The track shows the whole run with month markings and its start and
+end dates, the position is a marked point on it, and the date itself is the largest thing
+on the bar. Clicking or dragging anywhere on the track moves the clock; arrow keys move a
+day and shift with arrow keys moves a week, so the four step buttons became two.
+
+The more consequential change is what came off the bar. It used to carry a dropdown
+listing every injected fault with the exact date it was injected, and chips naming
+whatever was running at that moment — the answer key, sitting in the operator's chrome,
+on every screen, permanently. This project's central claim is that nothing on the
+detection path can see that data. Printing it along the top of every screen undercuts the
+claim before a viewer reads a word. It now sits behind a switch that is off by default,
+labelled as reading the answer key, and the fault spans only appear on the timeline once
+that switch is on.
+
+### How it works
+
+`web/src/components/Timeline.tsx` :: Timeline
+  WHY IT EXISTS: Replaces a bare range input with a thousand steps and no labels. A
+    viewer needs to see where in a run they are standing, not infer it from a date.
+  WHAT IT DOES: Draws the run as a track, fills the part behind the clock, and marks the
+    position with a full-height line and a dot. Beneath it, one label per month plus the
+    run's own start and end dates pinned to the ends. A pointer press captures the
+    pointer and converts its horizontal position into a moment; arrow keys step a day and
+    shift with them steps a week.
+  CHOICES: COMPUTES NOTHING. Every position comes from `positionInEra` and every seek
+    goes back through `momentAtPosition` — both pure functions in lib/clock.ts that are
+    checked in a terminal by `npm run verify:clock`. A drawing doing its own date
+    arithmetic could disagree with the rest of the application about what day it is, and
+    the entire point of a shared clock is that nothing can.
+  CHOICES: The hit area is twenty-six pixels tall while the track drawn inside it is
+    four. A four-pixel target is correct visually and miserable to hit.
+  CHOICES: The pointer is captured on press, so a drag that wanders off the element keeps
+    scrubbing instead of stopping wherever the pointer happened to leave.
+  CHOICES: The position marker is a line and a dot rather than a dot alone. The line says
+    exactly which day; the dot is what the eye finds. A dot on its own reads as
+    approximate, which on a clock driving four screens it is not.
+  ⚠ JUDGEMENT CALL: Fault spans are drawn only when `faults` is passed, and the bar
+    passes null unless the demo drawer is open. The alternative — always drawing them,
+    since they are useful — was rejected because it puts the answer key on every screen
+    of a system whose whole argument is that the answer key is unreachable from there. A
+    screenshot of the default state now contains no ground truth at all.
+
+`web/src/components/ControlBar.tsx` :: ControlBar
+  CHANGED FROM BEFORE: Eleven controls and an unlabelled slider. Now a play button, the
+    date at title size with the day count under it, two step buttons, four speeds, a
+    demo-tools switch, the timeline, and the runs as pills.
+  CHANGED FROM BEFORE: The run selector was a dropdown. Four runs in this database, so a
+    dropdown hid three of them behind a click for no reason; they are now pills, and the
+    one you are in is marked.
+  CHANGED FROM BEFORE: The play interval used to be listed as depending on the whole
+    clock object, so every tick tore the timer down and started a fresh thousand
+    milliseconds. It now reads the newest state through a reference and depends only on
+    whether playback is running, so a playing clock keeps one steady timer.
+  CHOICES: The four step buttons became two. Moving a week is still available — drag the
+    track, or hold shift with an arrow key — and the bar says so in one line of text
+    rather than drawing two more buttons.
+  CHOICES: The demo switch is amber rather than blue. Blue in this palette means "the
+    thing you are pointing at"; this control is not a normal control, it turns the answer
+    key on, and it is the only amber thing on the bar.
+  ⚠ JUDGEMENT CALL: The switch keeps the jump-to-fault control available rather than
+    banishing it to the answer screen entirely. Banishing it is more pure and was
+    rejected: a demonstration needs to land on an interesting moment quickly, and forcing
+    a detour through another screen and back to do it would make the tool worse without
+    making the claim any stronger. The claim is protected by the default state, not by
+    removing the capability.
+
+`web/src/components/ControlBar.module.css` :: the bar
+  CHANGED FROM BEFORE: Kept sticky at the top of the page, which was right. Gained a
+    hairline along its bottom edge, because on paper the bar and the page behind it are
+    nearly the same value and content scrolling underneath had nothing to disappear
+    behind. The dark theme did not need this — everything behind it was darker.
+
+START HERE: `web/src/components/Timeline.tsx` — the run drawn is the whole checkpoint,
+and the bar around it is arranged to leave room for it.

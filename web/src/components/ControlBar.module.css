@@ -5,164 +5,344 @@
   position: sticky;
   top: 0;
   z-index: 20;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 9px 12px 10px;
-  margin-bottom: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  box-shadow: var(--lift-1);
+  padding: var(--s3) var(--s4);
+  margin-bottom: var(--s3);
 }
 
-.row {
+/* Sticky on paper needs to survive content scrolling under it. The dark theme got away
+   with a flat panel because everything behind it was darker; here the page is nearly the
+   same value as the bar, so it needs an edge of its own. */
+.bar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.top {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: var(--s4);
 }
 
 .play {
-  font-family: var(--mono);
-  font-size: 12px;
-  min-width: 82px;
-  padding: 5px 10px;
-  background: var(--accent);
-  color: #0d141c;
-  border: none;
-  border-radius: 3px;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--hairline-strong);
+  background: var(--raised);
+  color: var(--ink);
+  font-size: var(--t-micro);
   cursor: pointer;
+  transition: background 110ms ease, border-color 110ms ease, color 110ms ease;
+}
+
+.play:hover:not(:disabled) {
+  background: var(--info);
+  border-color: var(--info);
+  color: var(--on-fill);
 }
 
 .play:disabled {
-  background: var(--line);
-  color: var(--faint);
+  color: var(--ink-faint);
   cursor: not-allowed;
 }
 
+/* The most important piece of state in the application. It used to be set at the same
+   size as the buttons beside it, which made it the hardest thing on the bar to find. */
+.stamp {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.date {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-title);
+  font-weight: var(--w-semi);
+  letter-spacing: -0.012em;
+  color: var(--ink);
+  line-height: 1.15;
+}
+
+.where {
+  font-size: var(--t-micro);
+  color: var(--ink-muted);
+}
+
+.right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.nudge {
+  display: flex;
+  gap: var(--s1);
+}
+
+.nudge button {
+  padding: var(--s1) var(--s2);
+  font-size: var(--t-micro);
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r1);
+  background: var(--raised);
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.nudge button:hover {
+  color: var(--ink);
+  border-color: var(--hairline-strong);
+}
+
+/* Segmented, because the four speeds are one choice and spacing them apart would read
+   as four independent switches. */
 .speeds {
   display: flex;
-  gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: 3px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r1);
   overflow: hidden;
 }
 
 .speed,
 .speedOn {
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 4px 8px;
+  padding: var(--s1) var(--s2);
+  font-size: var(--t-micro);
+  font-variant-numeric: tabular-nums;
   border: none;
+  border-right: 1px solid var(--hairline);
+  background: var(--raised);
+  color: var(--ink-muted);
   cursor: pointer;
-  background: var(--panel-2);
-  color: var(--muted);
+}
+
+.speed:last-child,
+.speedOn:last-child {
+  border-right: none;
+}
+
+.speed:hover {
+  background: var(--sunken);
+  color: var(--ink);
 }
 
 .speedOn {
-  background: var(--accent);
-  color: #0d141c;
+  background: var(--info);
+  color: var(--on-fill);
+  font-weight: var(--w-medium);
 }
 
-.stamp {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.25;
-}
-
-/* The date is the single most important thing on this bar: every number on every
-   other screen is only meaningful relative to it. */
-.date {
-  font-family: var(--mono);
-  font-size: 17px;
-  color: var(--text);
-}
-
-.muted {
-  font-size: 11px;
-  color: var(--faint);
-}
-
-.nudge {
-  display: flex;
-  gap: 1px;
-}
-
-.nudge button {
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 4px 7px;
-  background: var(--panel-2);
-  color: var(--muted);
-  border: 1px solid var(--line);
+/* Amber, not blue. It is not a normal control — it turns the answer key on. */
+.key,
+.keyOn {
+  padding: var(--s1) var(--s3);
+  font-size: var(--t-micro);
+  border-radius: var(--r1);
   cursor: pointer;
+  border: 1px solid var(--hairline);
+  background: var(--raised);
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.key:hover {
+  border-color: var(--caution);
+  color: var(--caution);
+}
+
+.keyOn {
+  background: var(--caution);
+  border-color: var(--caution);
+  color: var(--on-fill);
+  font-weight: var(--w-medium);
+}
+
+/* ------------------------------------------------------------------------- runs */
+
+.runs {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-top: var(--s2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.runs::-webkit-scrollbar {
+  display: none;
+}
+
+.runsLabel {
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  margin-right: var(--s1);
+}
+
+.run,
+.runOn {
+  padding: 2px var(--s2);
+  font-size: var(--t-micro);
+  font-variant-numeric: tabular-nums;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.run:hover {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.runOn {
+  background: var(--info-wash);
+  border-color: color-mix(in srgb, var(--info) 30%, transparent);
+  color: var(--info);
+  font-weight: var(--w-medium);
+}
+
+/* What the timeline itself offers, said once rather than drawn as four more buttons. */
+.hint {
+  margin-left: auto;
+  padding-left: var(--s4);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+/* ----------------------------------------------------------------------- drawer */
+
+.drawer {
+  margin-top: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-radius: var(--r1);
+  background: var(--caution-wash);
+  border: 1px solid color-mix(in srgb, var(--caution) 30%, transparent);
+  border-left: 3px solid var(--caution);
+}
+
+.warn {
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: #7c2d12; /* cautionInk — dark enough to read on the amber wash behind it */
+  max-width: 84ch;
+}
+
+.warn strong {
+  font-weight: var(--w-semi);
+}
+
+.drawerRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  margin-top: var(--s2);
 }
 
 .select {
-  font-size: 12px;
-  padding: 4px 7px;
-  background: var(--panel-2);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-}
-
-.scrub {
-  width: 100%;
-  accent-color: var(--accent);
-}
-
-/* Anything sourced from the answer key is marked, every time it appears. A viewer
-   should never have to wonder whether a number on screen is what the system worked
-   out or what it was trying to find. */
-.key {
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--bg);
-  background: var(--warn);
-  padding: 2px 6px;
-  border-radius: 2px;
+  padding: var(--s1) var(--s2);
+  font-size: var(--t-micro);
+  border-radius: var(--r1);
+  border: 1px solid var(--hairline-strong);
+  background: var(--raised);
+  color: var(--ink);
+  max-width: 44ch;
 }
 
 .active {
   display: flex;
-  gap: 8px;
+  gap: var(--s2);
   flex-wrap: wrap;
 }
 
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  color: var(--text);
-  background: var(--panel-2);
-  border: 1px solid var(--warn);
-  border-radius: 3px;
-  padding: 3px 8px;
+  gap: var(--s1);
+  padding: 2px var(--s2);
+  border-radius: 999px;
+  background: var(--raised);
+  border: 1px solid color-mix(in srgb, var(--caution) 40%, transparent);
+  font-size: var(--t-micro);
+  color: var(--ink);
 }
 
 .rungs {
-  display: flex;
+  display: inline-flex;
   gap: 2px;
+  margin-left: var(--s1);
 }
 
 .rungs button {
-  font-family: var(--mono);
-  font-size: 10px;
   width: 17px;
   height: 17px;
-  padding: 0;
-  background: var(--panel);
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 2px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--hairline-strong);
+  background: var(--raised);
+  color: var(--ink-muted);
+  font-size: var(--t-micro);
   cursor: pointer;
 }
 
 .rungs button:hover {
-  border-color: var(--warn);
-  color: var(--text);
+  background: var(--caution);
+  border-color: var(--caution);
+  color: var(--on-fill);
+}
+
+.none {
+  font-size: var(--t-micro);
+  color: var(--ink-muted);
+}
+
+.offline {
+  margin-top: var(--s2);
+  font-size: var(--t-micro);
+  color: var(--ink-muted);
+}
+
+.offline code {
+  font-family: var(--mono);
+  color: var(--caution);
+  background: var(--sunken);
+  padding: 1px var(--s1);
+  border-radius: 3px;
+}
+
+@media (max-width: 760px) {
+  .top {
+    flex-wrap: wrap;
+  }
+
+  .right {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .hint {
+    display: none;
+  }
 }

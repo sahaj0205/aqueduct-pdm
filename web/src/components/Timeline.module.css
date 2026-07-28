@@ -1,0 +1,131 @@
+.wrap {
+  padding: var(--s2) 0 0;
+}
+
+.rail {
+  position: relative;
+  height: 26px;
+  cursor: pointer;
+  touch-action: none; /* so a drag scrubs instead of scrolling the page on a tablet */
+}
+
+.rail:focus-visible {
+  outline: none;
+  border-radius: var(--r1);
+  box-shadow: var(--ring);
+}
+
+/* The run itself. Centred in a taller hit area — a 4px target is correct visually and
+   miserable to hit, so the rail is 26px tall and only the middle of it is inked. */
+.track {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--hairline);
+}
+
+/* How much of the run is behind the clock. Reading position at a glance is most of
+   what a timeline is for. */
+.elapsed {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--hairline-strong);
+  pointer-events: none;
+}
+
+/* An injected fault's span, onset to failure. Drawn only when the demo drawer is open. */
+.span {
+  position: absolute;
+  top: 50%;
+  height: 10px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--caution) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--caution) 45%, transparent);
+  pointer-events: none;
+}
+
+/* One tick per rung of the severity ladder. */
+.rung {
+  position: absolute;
+  top: -2px;
+  width: 1px;
+  height: 14px;
+  background: var(--caution);
+  opacity: 0.55;
+}
+
+.handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  pointer-events: none;
+}
+
+/* A full-height line plus a dot: the line says exactly which day, the dot is what the
+   eye finds. A dot alone reads as approximate. */
+.grip::before {
+  content: "";
+  position: absolute;
+  left: -0.5px;
+  top: 3px;
+  bottom: 3px;
+  width: 1px;
+  background: var(--info);
+}
+
+.grip::after {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: var(--info);
+  border: 2px solid var(--raised);
+  box-shadow: var(--lift-1);
+}
+
+.axis {
+  position: relative;
+  height: 18px;
+  margin-top: var(--s1);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}
+
+.month {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* The run's own start and end, pinned to the ends rather than floating with the months
+   so the reader always knows the extent of what they are looking at. */
+.edge {
+  position: absolute;
+  top: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+  opacity: 0.75;
+}
+
+.edge[data-side="start"] {
+  left: 0;
+}
+
+.edge[data-side="end"] {
+  right: 0;
+}
