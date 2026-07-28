@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-twin web-verify-clock web-build validate
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-twin web-verify-clock web-verify-funnel web-build validate
 
 # Resolve and install the Python environment into .venv
 install:
@@ -217,6 +217,14 @@ web-verify-twin:
 # Needs `make api`; the severity half is skipped unless `make reveal` is also running.
 web-verify-clock:
 	cd web && npm run verify:clock
+
+# Check the engine funnel outside a browser. The funnel is an accounting statement:
+# everything arriving at a stage either passes or is dropped for a named reason, and the
+# named reasons have to add up. A funnel whose numbers do not balance is worse than none,
+# because it looks authoritative while misattributing one suppression mechanism to
+# another -- which happened once already, in this project's own notes. Needs `make api`.
+web-verify-funnel:
+	cd web && npm run verify:funnel
 
 # Typecheck and production-build the frontend.
 web-build:

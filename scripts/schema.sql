@@ -1435,8 +1435,8 @@ COMMENT ON COLUMN app.engine_trace.ordinal IS
     'so a caller can order the funnel without knowing the pipeline.';
 
 COMMENT ON COLUMN app.engine_trace.unit IS
-    'WHAT IS BEING COUNTED, and it changes three times down the funnel: readings, then '
-    'rule evaluations, then points, then failure modes, then findings. A funnel drawn '
+    'WHAT IS BEING COUNTED, and it changes six times down the ten stages: readings, '
+    'instants, rule evaluations, firings, points, failure modes, findings. A funnel drawn '
     'as if one number narrowed into the next would be lying -- 34,560 readings do not '
     'become 4 findings by attrition, they become 4 findings by being aggregated into a '
     'different kind of thing. Each stage says which kind it counts so the drawing can '

@@ -13,6 +13,7 @@ import type {
   ClockRange,
   GraphResult,
   HealthSeries,
+  MachineTrace,
   RulHistory,
   SiteSummary,
   TwinState,
@@ -72,6 +73,12 @@ export const api = {
   // request per tick rather than one per node.
   twinState: (at: string) =>
     get<TwinState>(`/twin/state?as_of=${encodeURIComponent(at)}`),
+  // What the pipeline did on one machine on one day, with its fault-free counterpart.
+  engineTrace: (assetId: string, at: string) =>
+    get<MachineTrace>(
+      `/engine/trace?asset_id=${encodeURIComponent(assetId)}` +
+        `&as_of=${encodeURIComponent(at)}`,
+    ),
   assets: () => get<AssetSummary[]>("/assets"),
   advisory: (id: string) =>
     get<AdvisoryDetail>(`/advisories/${encodeURIComponent(id)}`),

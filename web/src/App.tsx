@@ -7,6 +7,7 @@ import { ControlBar } from "./components/ControlBar.tsx";
 import type { ClockState } from "./components/ControlBar.tsx";
 import { NavTabs } from "./components/NavTabs.tsx";
 import { clampToEra, toIso } from "./lib/clock.ts";
+import { Engine } from "./screens/Engine.tsx";
 import { Operations } from "./screens/Operations.tsx";
 import { Twin } from "./screens/Twin.tsx";
 import type {
@@ -188,7 +189,12 @@ export function App() {
               <Twin at={clock ? toIso(clock.at) : null} advisories={advisories} />
             }
           />
-          <Route path="/engine" element={<NotBuilt name="The engine trace" />} />
+          <Route
+            path="/engine"
+            element={
+              <Engine at={clock ? toIso(clock.at) : null} twinState={twinState} />
+            }
+          />
           <Route
             path="/prediction"
             element={<NotBuilt name="Prediction versus truth" />}

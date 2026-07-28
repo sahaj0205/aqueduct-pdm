@@ -43,12 +43,14 @@ from api.models import (
     GraphResult,
     HealthPoint,
     HealthSeries,
+    MachineTrace,
     PointSummary,
     RulHistory,
     RulPoint,
     SiteSummary,
     TimeseriesPoint,
     TimeseriesResult,
+    TraceStage,
     TwinAssetState,
     TwinEdge,
     TwinNode,
@@ -938,4 +940,80 @@ def clock_eras(conn: Conn) -> ClockRange:
     ]
     return ClockRange(
         eras=eras, t_from=min(e.t_from for e in eras), t_to=max(e.t_to for e in eras)
+    )
+
+
+# ---------------------------------------------------------------------------
+# the engine trace
+# ---------------------------------------------------------------------------
+
+# The fault-free run every faulted day is compared against. Both clean scenarios sit in
+# 2039; a day outside their span has no counterpart and the comparison is simply absent
+# rather than approximated with a different time of year.
+_CLEAN_ERA = 2039
+
+
+def _stages(conn: psycopg.Connection, asset_id: str, as_of: datetime) -> list[TraceStage]:
+    rows = conn.execute(
+        "SELECT ordinal, stage, unit, entered, passed, dropped, detail "
+        "  FROM app.engine_trace WHERE asset_id = %(a)s AND as_of = %(t)s "
+        " ORDER BY ordinal",
+        {"a": asset_id, "t": as_of},
+    ).fetchall()
+    return [
+        TraceStage(
+            ordinal=r[0], stage=r[1], unit=r[2], entered=r[3], passed=r[4],
+            dropped=r[5], detail=r[6],
+        )
+        for r in rows
+    ]
+
+
+@app.get("/engine/trace", response_model=MachineTrace, tags=["engine"])
+def engine_trace(
+    conn: Conn,
+    asset_id: Annotated[str, Query(description="Which machine")],
+    as_of: Annotated[datetime, Query(description="Which day")],
+) -> MachineTrace:
+    """What the detection pipeline did on one machine on one day, stage by stage.
+
+    Every other endpoint here serves what the system CONCLUDED. This one serves how it
+    got there, and in particular everything it declined to conclude — a reading nobody
+    trusts, a machine that is not running, an hour after a start when nothing is in
+    balance, a rule briefly true during a gust. That is where the false-alarm rate
+    comes from, and until this table existed none of it was visible.
+
+    The fault-free counterpart is returned alongside where one exists. Every run in this
+    database reads the same source year shifted by whole years, so the same day of the
+    year in the clean run is the same weather and the same occupancy with nothing wrong.
+    Without it a viewer sees a funnel narrowing and has nothing to judge it against; with
+    it, the rules firing on healthy equipment and every one of those firings being killed
+    by the persistence requirement is on the screen at the same time.
+    """
+    stages = _stages(conn, asset_id, as_of)
+    if not stages:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"no trace for {asset_id!r} on {as_of.date()}. The table is populated by "
+                "`make engine-trace`, and a machine with no readings that day has no row."
+            ),
+        )
+
+    clean: list[TraceStage] | None = None
+    clean_as_of: datetime | None = None
+    if as_of.year != _CLEAN_ERA:
+        try:
+            candidate = as_of.replace(year=_CLEAN_ERA)
+        except ValueError:      # 29 February, which 2039 does not have
+            candidate = None
+        if candidate is not None:
+            found = _stages(conn, asset_id, candidate)
+            if found:
+                clean = found
+                clean_as_of = candidate
+
+    return MachineTrace(
+        asset_id=asset_id, as_of=as_of, stages=stages,
+        clean=clean, clean_as_of=clean_as_of,
     )

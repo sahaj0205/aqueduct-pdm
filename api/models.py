@@ -463,3 +463,43 @@ class ClockRange(BaseModel):
     eras: list[EraSummary]
     t_from: datetime
     t_to: datetime
+
+
+class TraceStage(BaseModel):
+    """One narrowing in the detection pipeline, and everything that did not get through."""
+
+    ordinal: int
+    stage: str
+    unit: str = Field(
+        description=(
+            "What is being counted, and it changes six times down the ten stages: "
+            "readings, instants, rule evaluations, firings, points, failure modes, "
+            "findings. A drawing that ran one bar smoothly into the next would be "
+            "claiming 292,000 readings become 2 findings by attrition. They do not — "
+            "they become 2 findings by being aggregated into a different kind of thing."
+        )
+    )
+    entered: int
+    passed: int
+    dropped: dict[str, int] = Field(
+        description="Reason to count, in the engine's own words, for everything that did not pass"
+    )
+    detail: dict = Field(description="Stage-specific evidence: which rules, which modes, which faults")
+
+
+class MachineTrace(BaseModel):
+    """What the pipeline did on one machine on one day."""
+
+    asset_id: str
+    as_of: datetime
+    stages: list[TraceStage]
+    clean: list[TraceStage] | None = Field(
+        default=None,
+        description=(
+            "The same machine on the same day of the year in the fault-free run, when "
+            "one exists. Every run reads the same source year shifted by whole years, "
+            "so this is the same weather and the same occupancy with nothing wrong — "
+            "which is what makes the two funnels comparable rather than merely adjacent."
+        ),
+    )
+    clean_as_of: datetime | None = None

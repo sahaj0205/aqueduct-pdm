@@ -365,3 +365,27 @@ export interface TwinState {
   points_with_baseline: number;
   stale_after_hours: number;
 }
+
+/* --------------------------------------------------------------------------
+ * the engine trace
+ * ------------------------------------------------------------------------ */
+
+export interface TraceStage {
+  ordinal: number;
+  stage: string;
+  /** Changes three times down the funnel. Bars must break where it does. */
+  unit: string;
+  entered: number;
+  passed: number;
+  dropped: Record<string, number>;
+  detail: Record<string, unknown>;
+}
+
+export interface MachineTrace {
+  asset_id: string;
+  as_of: string;
+  stages: TraceStage[];
+  /** The same machine on the same day of the year with nothing wrong, where one exists. */
+  clean: TraceStage[] | null;
+  clean_as_of: string | null;
+}

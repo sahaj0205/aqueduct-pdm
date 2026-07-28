@@ -9123,14 +9123,23 @@ The funnel, on a chiller in the middle of its condenser fouling run:
     #  stage                  unit           in       out   dropped
     1  readings               readings   211,896   211,896
     2  evaluable instants     instants    23,544    16,956   idle 2,816; settling since start 3,772
-    3  rule evaluations       evaluations 50,868    41,620   rule does not apply in this mode 9,248
-    4  inputs trusted         evaluations 41,620    41,620
+    3  rule evaluations       evaluations 50,868    50,868
+    4  inputs trusted         evaluations 50,868    41,620   reading not trusted 9,248
     5  rule fired             evaluations 41,620     2,718   nothing wrong at this instant 38,902
     6  sustained              firings      2,718     2,368   held under 60 min, not a fault 350
     7  baseline coverage      points           9         2   no baseline fitted 7
     8  degradation confirmed  modes            3         2   no changepoint yet 1
     9  prediction published   modes            2         2
     10 advisory raised        findings         4         4
+
+CORRECTED after checkpoint 1.8. Stages 3 and 4 above were first written as 50,868 ->
+41,620 at stage 3 for "rule does not apply in this operating mode", with stage 4 passing
+everything through. That was wrong, and wrong in a way worth recording: at the time only
+stages 2, 5, 6, 8 and 10 had been queried, and 3 and 4 were INFERRED from them rather
+than read. The 9,248 is real but it is dropped one stage later and for a different
+reason -- the quality layer refusing readings it does not trust, not a rule declining to
+apply. Misattributing one suppression mechanism to another is exactly the error this
+screen exists to make impossible, so it is corrected here rather than quietly.
 
 And the same day on the chiller that barely runs, which is the whole argument in one
 row: 24,120 instants, 23,780 of them idle, 169 evaluable, 507 rule evaluations, none
@@ -9156,8 +9165,9 @@ every day past the replay's frontier would record zero advisories. `make engine-
 is resumable and takes roughly the same time as the replay.
 
 START HERE: `analytics/trace/funnel.py` — the module docstring lists the ten stages and
-says why the unit changes three times, which is the one thing a caller has to
-understand before drawing this.
+says why the unit changes, which is the one thing a caller has to understand before
+drawing this. (Corrected in 1.8: it changes six times, not three. Seven kinds of thing
+are counted down ten stages.)
 
 
 ## Demo Phase 1, Checkpoint 1.5 — Reveal service
@@ -9694,3 +9704,117 @@ faulted run — which is where a demonstration puts it.
 
 START HERE: `docs/plots/digital_twin.svg` — open it. It is the rendered output of the
 real component against real data, not a description of one.
+
+
+## Demo Phase 1, Checkpoint 1.8 — The engine trace screen
+
+### What we did
+
+The dashboard can now show the argument this project's headline number rests on. It
+raises one false finding per 604 healthy machine-days, and until this screen the only
+way to believe that was to read it in a document. The screen shows the pipeline as ten
+narrowings on one machine on one day, each with a count and the engine's own reason for
+everything it threw away — and beside it, the same machine on the same day of the year
+with nothing wrong. On a faulted chiller the rules fire 2,255 times and 1,967 of those
+firings survive the persistence test. On the healthy twin, in the same weather, they
+fire 11 times and **not one survives**. That contrast is the false-alarm story stated as
+a measurement rather than a claim.
+
+### How it works
+
+    api/main.py :: GET /engine/trace
+      WHY IT EXISTS: Checkpoint 1.4 built the table and the driver that fills it, and
+        nothing served it. This is that endpoint.
+      WHAT IT DOES: Returns one machine's ten stages for one day, and alongside them the
+        same machine on the same day of the year in the fault-free run.
+      CHOICES: The counterpart is returned WITH the trace rather than fetched separately.
+        Every run in this database reads the same source year shifted by whole years, so
+        the same calendar day in the clean run is the same weather, the same occupancy
+        and the same control decisions with nothing wrong. Without that column a viewer
+        sees a funnel narrowing and has nothing to judge it against.
+      CHOICES: A missing trace is a 404 saying why -- a machine with no readings that day
+        has no row, which is a fact about the run rather than a gap in the table.
+
+    web/src/components/Funnel.tsx
+      WHY IT EXISTS: Ten stages, their counts, their drop reasons and the clean
+        comparison, in one readable column.
+      CHOICES: The bars are LOGARITHMIC. The first stage counts about 235,000 readings
+        and the last counts four findings; on a linear scale every bar after the second
+        is one pixel, which would say the pipeline throws everything away at once --
+        the opposite of what it does.
+      CHOICES: The bar BREAKS where the unit changes, with a line saying what is now
+        being counted. A continuous taper would claim 235,000 readings turn into four
+        findings by attrition. They do not: they turn into four findings by being
+        aggregated into a different kind of object.
+      CHOICES: Zero-valued drop reasons are filtered out. A stage can carry a reason
+        that did not bite on a particular day, and printing "0" beside it invites the
+        reader to wonder what they are looking at.
+      CHOICES: A stage that passed nothing draws a bar in a different colour rather than
+        no bar. An absent bar reads as a rendering fault; this is a result.
+
+    web/src/components/StageDetail.tsx
+      WHY IT EXISTS: One stage opened.
+      WHAT IT DOES: What it was given, the percentage that got through, what the clean
+        twin did with the same stage, every drop reason with its count, and the evidence
+        the layer recorded while running -- which rules were evaluated, which failure
+        modes are past their changepoint, which readings have a fitted baseline, which
+        faults reached the queue.
+      CHOICES: The evidence is what the layer itself wrote, not a summary composed here.
+
+    web/scripts/verify-funnel.ts
+      WHY IT EXISTS: The funnel is an accounting statement and has to add up.
+      WHAT IT DOES: Finds the busiest day in the database by asking rather than assuming,
+        then checks on every machine that nothing passes a stage it did not enter, that
+        the named reasons account for exactly the difference at every stage that
+        subtracts, that no stage reports two different units, and that the clean twin is
+        the same day of the year with the same ten stages.
+      CHOICES: The exact-balance check is applied to stages 2, 4, 5 and 6 only. Stages 1
+        and 3 carry a reason that can legitimately be zero, and stage 10's candidates are
+        a set union rather than a subtraction -- checking those for exact balance would
+        be checking a different property and failing for the wrong reason.
+
+    analytics/trace/funnel.py :: stage 6's unit
+      CHANGED FROM BEFORE: It reported `episodes` on the path where no rule ran and
+        `firings` everywhere else, so one stage carried two different units depending on
+        a branch nobody would think to check -- 230 rows of 1,892. Zero firings is still
+        a count of firings. Fixed in the code and corrected in place for the stored rows,
+        which needed no re-run because the right value is the same on both paths.
+
+### Verification
+
+    the engine on 2037-06-16
+
+      ok  nothing passes a stage it did not enter          (all 4 machines, all 10 stages)
+      ok  reasons account for every drop                   (stages 2, 4, 5, 6)
+      ok  no stage reports two different units             (all 4 machines)
+      ok  the clean twin is the same day of the year       2037-06-16 vs 2039-06-16
+      ok  the clean twin has the same ten stages
+
+          chiller-1: fired 2,255 vs 11 clean · sustained 1,967 vs 0 clean
+          chiller-2: fired   530 vs  1 clean · sustained   478 vs 0 clean
+          ahu-1:     fired     0 vs  0 clean · sustained     0 vs 0 clean
+          chiller-3: fired     0 vs  0 clean · sustained     0 vs 0 clean
+
+The two middle rows are the screen's whole argument. On healthy equipment, in the same
+weather and the same week of the year, the rules still fire — and the persistence
+requirement kills every single firing. Nothing reaches the operator.
+
+`npx tsc --noEmit` clean, `npm run build` clean, `uv run ruff check .` clean.
+
+### Two corrections to earlier work, both found by building this
+
+The 1.4 notes recorded 9,248 evaluations dropped at stage 3 for "rule does not apply in
+this operating mode". That is wrong: they are dropped one stage later, by the quality
+layer refusing readings it does not trust. At the time only stages 2, 5, 6, 8 and 10 had
+been queried and stages 3 and 4 were inferred from them rather than read. Misattributing
+one suppression mechanism to another is exactly the error this screen exists to prevent,
+so it is corrected in place with a note saying what happened.
+
+Four files said the funnel's unit "changes three times". It changes six times: seven
+kinds of thing are counted down ten stages -- readings, instants, evaluations, firings,
+points, failure modes, findings. The verification counted them and disagreed with the
+prose, which is the correct direction for that argument to be settled in.
+
+START HERE: `web/src/components/Funnel.tsx` — the docstring says why the bars are
+logarithmic and why the bar has to break where the unit changes, which are the two
+decisions that make this readable rather than merely accurate.

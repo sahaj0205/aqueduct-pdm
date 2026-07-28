@@ -1,0 +1,136 @@
+.funnel {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.header,
+.row,
+.rowOn {
+  display: grid;
+  grid-template-columns: 220px 90px 90px 1fr 92px;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 7px 12px;
+  font-size: 12px;
+  border: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.header {
+  background: var(--panel-2);
+  color: var(--faint);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.row,
+.rowOn {
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--panel-2);
+}
+
+.rowOn {
+  background: var(--panel-2);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ord {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+  min-width: 14px;
+}
+
+.r {
+  text-align: right;
+  font-family: var(--mono);
+}
+
+/* Two bars per row, the second inside the first: what arrived, and what got through.
+   Logarithmic, because the first stage is six orders of magnitude above the last. */
+.barCell {
+  position: relative;
+  height: 15px;
+  display: block;
+}
+
+.bar,
+.barOut,
+.barOutNone {
+  position: absolute;
+  left: 0;
+  border-radius: 2px;
+}
+
+.bar {
+  top: 0;
+  height: 15px;
+  background: #2b3644;
+}
+
+.barOut {
+  top: 3px;
+  height: 9px;
+  background: var(--accent);
+}
+
+/* Nothing got through. Drawn in the same place and a different colour rather than
+   omitted, because an absent bar reads as a rendering bug and this is a result. */
+.barOutNone {
+  top: 3px;
+  height: 9px;
+  background: var(--ok);
+  opacity: 0.55;
+}
+
+/* Where the funnel stops counting one kind of thing and starts counting another. */
+.break {
+  background: #131922;
+  border-bottom: 1px solid var(--line);
+  padding: 3px 12px 4px 232px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  font-style: italic;
+}
+
+.reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 5px 12px 8px 232px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.reason {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.reason strong {
+  font-family: var(--mono);
+  color: var(--warn);
+}
+
+/* The clean run got nothing through where the faulted one did. This is the number the
+   whole screen exists to put on a page, so it is the one thing that is coloured. */
+.cleanZero {
+  color: var(--ok);
+  font-weight: 600;
+}

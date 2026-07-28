@@ -8,7 +8,7 @@ faults, it is crying wolf until nobody opens the screen. This project's false al
 rate is one finding per 604 healthy machine-days, and the reason is not a cleverer
 detector -- it is eight successive refusals to judge. None of them were visible.
 
-THE FUNNEL, and it is honest about changing units three times:
+THE FUNNEL, and it is honest about counting seven different kinds of thing:
 
     1  readings              samples the building reported
     2  evaluable instants    when rules were allowed to run at all
@@ -21,8 +21,8 @@ THE FUNNEL, and it is honest about changing units three times:
     9  prediction published  modes the remaining-life model would answer for
    10  advisory raised       findings that reached the operator, and demotions
 
-Stages 1-6 count readings and rule evaluations, 7 counts points, 8 and 9 count
-failure modes, 10 counts findings. A drawing that ran one bar smoothly into the next
+Seven kinds in all -- readings, instants, evaluations, firings, points, failure
+modes, findings -- so the unit changes six times down the ten stages. A drawing that ran one bar smoothly into the next
 would be claiming 34,560 readings become 4 findings by attrition. They do not; they
 become 4 findings by being aggregated into a different kind of object. Each stage
 declares its unit so the picture can break where the kind changes.
@@ -154,7 +154,10 @@ def rule_stages(
                   detail={"note": "no rule is registered for this equipment class"}),
             Stage(4, "inputs trusted", "evaluations", 0, 0),
             Stage(5, "rule fired", "evaluations", 0, 0),
-            Stage(6, "sustained", "episodes", 0, 0),
+            # "firings" and not "episodes": zero firings is still a count of firings,
+            # and using a different word on the no-rules-ran path made one stage report
+            # two different units depending on a branch nobody would think to check.
+            Stage(6, "sustained", "firings", 0, 0),
         ]
         return stages
 
