@@ -1,0 +1,173 @@
+/* The guided path. Sits where the tabs sit in Explore mode, so the shape of the page
+   does not change when a viewer switches between them. */
+
+.bar {
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  box-shadow: var(--lift-2);
+  margin-bottom: var(--s4);
+  overflow: hidden;
+}
+
+/* One pip per step, filled behind you. A progress bar would say how far through you are;
+   pips also say how much is left, which is what somebody being shown a demonstration
+   actually wants to know. */
+.progress {
+  display: flex;
+  gap: 2px;
+  padding: 0;
+}
+
+.pip,
+.pipOn,
+.pipDone {
+  flex: 1 1 auto;
+  height: 4px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: var(--hairline);
+  transition: background 140ms ease;
+}
+
+.pip:hover {
+  background: var(--hairline-strong);
+}
+
+.pipDone {
+  background: color-mix(in srgb, var(--info) 45%, transparent);
+}
+
+.pipOn {
+  background: var(--info);
+}
+
+.body {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s5);
+  padding: var(--s4) var(--s5) var(--s5);
+  flex-wrap: wrap;
+}
+
+.text {
+  flex: 1 1 460px;
+  min-width: 0;
+}
+
+.count {
+  font-size: var(--t-label);
+  font-weight: var(--w-semi);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.title {
+  margin: var(--s1) 0 0;
+  font-size: var(--t-display);
+  font-weight: var(--w-semi);
+  line-height: var(--lh-display);
+  letter-spacing: var(--track-display);
+  color: var(--ink);
+  text-wrap: balance;
+  max-width: 26ch;
+}
+
+.say {
+  margin: var(--s3) 0 0;
+  max-width: 72ch;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s3);
+  flex-shrink: 0;
+  padding-top: var(--s5);
+}
+
+.moves {
+  display: flex;
+  gap: var(--s2);
+}
+
+.back,
+.next {
+  font-size: var(--t-body);
+  font-weight: var(--w-medium);
+  padding: var(--s3) var(--s5);
+  border-radius: var(--r1);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.back {
+  background: var(--raised);
+  color: var(--ink-muted);
+  border: 1px solid var(--hairline-strong);
+}
+
+.back:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.back:disabled {
+  color: var(--ink-faint);
+  border-color: var(--hairline);
+  cursor: not-allowed;
+}
+
+.next {
+  background: var(--info);
+  color: var(--on-fill);
+  border: 1px solid var(--info);
+  box-shadow: var(--lift-1);
+}
+
+.next:hover {
+  filter: brightness(1.08);
+}
+
+/* Always visible, never the loudest thing here. A guided mode that hides its exit is a
+   slideshow wearing an application as a costume. */
+.exit {
+  font-size: var(--t-micro);
+  padding: var(--s1) var(--s2);
+  background: none;
+  border: none;
+  color: var(--ink-faint);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--hairline-strong);
+}
+
+.exit:hover {
+  color: var(--info);
+  text-decoration-color: var(--info);
+}
+
+@media (max-width: 760px) {
+  .controls {
+    align-items: stretch;
+    width: 100%;
+    padding-top: 0;
+    flex-direction: column-reverse;
+  }
+
+  .moves {
+    justify-content: space-between;
+  }
+
+  .title {
+    font-size: 26px;
+    max-width: none;
+  }
+}

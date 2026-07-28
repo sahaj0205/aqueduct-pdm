@@ -136,6 +136,7 @@ export function Configuration() {
       />
 
       {tab === "modes" && modes && (
+        <div className={styles.scroll}>
         <table className={styles.table}>
           <thead>
             <tr>
@@ -191,9 +192,11 @@ export function Configuration() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       {tab === "rules" && rules && (
+        <div className={styles.scroll}>
         <table className={styles.table}>
           <thead>
             <tr>
@@ -223,9 +226,11 @@ export function Configuration() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       {tab === "interventions" && interventions && (
+        <div className={styles.scroll}>
         <table className={styles.table}>
           <thead>
             <tr>
@@ -270,6 +275,7 @@ export function Configuration() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       {!rules && <div className="muted">Loading the configuration…</div>}

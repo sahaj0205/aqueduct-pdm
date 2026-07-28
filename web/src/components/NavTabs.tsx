@@ -73,9 +73,23 @@ const ANSWER: Tab = {
   hint: "What was actually broken — the ground truth, hidden behind a click",
 };
 
-export function NavTabs() {
+interface Props {
+  /**
+   * Re-enters the guided path. Omitted when there is no run list to build a tour from,
+   * in which case the offer is simply not made rather than made and then failing.
+   */
+  onStartTour?: () => void;
+}
+
+export function NavTabs({ onStartTour }: Props) {
   return (
     <nav className={styles.tabs} aria-label="screens">
+      {onStartTour && (
+        <button className={styles.tour} onClick={onStartTour}>
+          ▸ Walk me through it
+        </button>
+      )}
+
       {TABS.map((tab) => (
         <NavLink
           key={tab.to}

@@ -83,3 +83,27 @@
   color: var(--caution);
   border-bottom-color: var(--caution);
 }
+
+/* The way back into the guided path, first in the row because somebody who is lost
+   reads left to right and this is the answer to being lost. Styled as an offer rather
+   than as an eighth screen — it is not a place, it is a thing that happens. */
+.tour {
+  align-self: center;
+  margin-right: var(--s3);
+  padding: var(--s2) var(--s3);
+  font-size: var(--t-micro);
+  font-weight: var(--w-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--info) 35%, transparent);
+  border-radius: 999px;
+  background: var(--info-wash);
+  color: var(--info);
+  transition: background 110ms ease;
+}
+
+.tour:hover {
+  background: var(--info);
+  color: var(--on-fill);
+  border-color: var(--info);
+}

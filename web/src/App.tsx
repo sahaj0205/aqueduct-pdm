@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 
 import { api, reveal } from "./api.ts";
@@ -7,7 +7,9 @@ import { ControlBar } from "./components/ControlBar.tsx";
 import { Term } from "./design/Term.tsx";
 import type { ClockState } from "./components/ControlBar.tsx";
 import { NavTabs } from "./components/NavTabs.tsx";
+import { Walkthrough } from "./components/Walkthrough.tsx";
 import { clampToEra, toIso } from "./lib/clock.ts";
+import { buildTour } from "./lib/tour.ts";
 import { Diagnosis } from "./screens/Diagnosis.tsx";
 import { Engine } from "./screens/Engine.tsx";
 import { Operations } from "./screens/Operations.tsx";
@@ -84,6 +86,28 @@ export function App() {
   const [clock, setClock] = useState<ClockState | null>(null);
   const [faults, setFaults] = useState<InjectedFault[] | null>(null);
 
+  /**
+   * Guided or self-directed, and which step of the guide.
+   *
+   * STARTS GUIDED, and that is the point of the mode existing. Seven screens of equal
+   * weight is exactly the confusion this phase set out to remove, and somebody opening
+   * this for the first time has no way to know which tab answers their question.
+   *
+   * The choice is remembered for the session, so anybody who leaves the tour once is not
+   * put back into it on every reload — which is what makes starting guided tolerable for
+   * the person building the thing rather than merely correct for the person being shown
+   * it. Session rather than permanent storage, so a fresh window is a fresh audience.
+   */
+  const [guided, setGuided] = useState(
+    () => sessionStorage.getItem("aqueduct.explore") !== "1",
+  );
+  const [step, setStep] = useState(0);
+
+  const leaveTour = useCallback(() => {
+    sessionStorage.setItem("aqueduct.explore", "1");
+    setGuided(false);
+  }, []);
+
   const load = useCallback(async () => {
     setError(null);
     try {
@@ -126,6 +150,14 @@ export function App() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Derived, never written down. Every moment the tour stops at comes from the run list
+  // the API returned, refined by the answer key only when the reveal service is running —
+  // see lib/tour.ts for why a tour with dates typed into it would fail silently.
+  const tour = useMemo(
+    () => (range ? buildTour(range, faults) : []),
+    [range, faults],
+  );
 
   // Everything the clock drives is refetched when it moves. Kept separate from the
   // load above so that dragging the scrubber does not refetch the topology, the asset
@@ -186,7 +218,34 @@ export function App() {
         <ControlBar range={range} clock={clock} onChange={setClock} faults={faults} />
       )}
 
-      {!error && <NavTabs />}
+      {/* The tour and the tabs occupy the same place, so switching between them does not
+          reshape the page under the viewer. The tour is only offered once the run list
+          has arrived, because every step it takes is derived from that list. */}
+      {!error &&
+        (guided && tour.length > 0 ? (
+          <Walkthrough
+            steps={tour}
+            index={step}
+            onIndex={setStep}
+            onExit={leaveTour}
+            onMoment={(at) =>
+              setClock((current) =>
+                current ? { ...current, at, playing: false } : current,
+              )
+            }
+          />
+        ) : (
+          <NavTabs
+            onStartTour={
+              tour.length > 0
+                ? () => {
+                    setStep(0);
+                    setGuided(true);
+                  }
+                : undefined
+            }
+          />
+        ))}
 
       {!error && (
         <Routes>

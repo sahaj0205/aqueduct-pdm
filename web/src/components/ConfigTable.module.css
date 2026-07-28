@@ -124,3 +124,10 @@
   color: var(--ink-faint);
   margin-top: 2px;
 }
+
+/* Indicator expressions and rationale text make these the widest tables in the build.
+   They scroll inside the panel — the page itself clips rather than scrolls sideways, so
+   a table that overflowed without this would lose its right-hand columns silently. */
+.scroll {
+  overflow-x: auto;
+}

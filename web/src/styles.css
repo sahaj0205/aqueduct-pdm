@@ -129,3 +129,43 @@ textarea {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
 }
+
+/* --------------------------------------------------------------- projector pass
+   Everything below is about this being READ, on a screen somebody else is looking at,
+   from further away than arm's length. */
+
+/* The page must never scroll sideways. Wide things — nine-column tables, the building
+   drawing, the tab row, the funnel — each scroll inside their own container, and this is
+   the guard that catches the next one that forgets to. It clips at the page rather than
+   at the body, so a genuinely overflowing child is still visible as a scrollbar inside
+   its own panel rather than being silently hidden. */
+.page {
+  overflow-x: clip;
+}
+
+/* Long words in monospace — point identifiers, expressions, rule names — must break
+   rather than widen the column they sit in. */
+code,
+.mono {
+  overflow-wrap: anywhere;
+}
+
+/* Selection has to be visible on paper, and the browser default against a white
+   background is weak at a distance. */
+::selection {
+  background: color-mix(in srgb, var(--info) 22%, transparent);
+}
+
+/* A projector at the back of a room shows motion as smear. Anybody who has asked their
+   system to stop animating gets a build with no transitions at all rather than shorter
+   ones — the difference between the two is not worth a viewer's attention either way. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

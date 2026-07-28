@@ -11181,3 +11181,100 @@ scripted pass used in R7.
 
 START HERE: `web/src/design/tokens.css` — what is no longer in that file is the point of
 this checkpoint, and the comment where the legacy block used to be says why it could go.
+
+## Demo Phase R, Checkpoint R9 — The walkthrough, and reading it from a distance
+
+### What we did
+
+The dashboard now offers to explain itself, and it starts by doing so.
+
+Everything up to this checkpoint made each screen readable on its own. None of it solved
+the problem somebody has when they open the thing for the first time: seven screens, no
+idea which one answers their question, and no reason to believe the answers connect. That
+is the confusion this whole phase set out to remove, and renaming the tabs only helps a
+reader who already knows they are being shown an argument.
+
+There is now a guided path. Nine stops, one claim and one sentence each, driving the real
+screens and the real clock in the order the case runs — something is wrong, here is where
+it sits, now wind the clock back to before anyone knew, here is how it finds out, here is
+it refusing to cry wolf on a healthy machine, here is the fault it has to tell apart, here
+is how long the machine has, here is why every number had to justify itself, and finally
+here is what was actually broken. Leaving is always one click and the way back is always
+offered, so nobody is trapped in a slideshow.
+
+The tour builds itself from whatever is in the database. Twice earlier in this phase a
+sentence with a figure written into it turned out to be describing a system that had moved
+on — a caption claiming a baseline for six of a hundred and seven readings when it was
+four of a hundred and nine, and a comment claiming three unit changes in a funnel that has
+six. A tour with dates typed into it fails the same way, silently, in front of an
+audience. Every moment it stops at is derived, and the whole thing still works with the
+answer-key service switched off.
+
+The last piece was reading it from a distance. The page can no longer scroll sideways at
+all, every wide thing scrolls inside its own frame instead, long identifiers break rather
+than stretching their column, and anybody whose system asks for less motion gets a build
+with none.
+
+### How it works
+
+`web/src/lib/tour.ts` :: buildTour(range, faults)
+  WHY IT EXISTS: Produces the guided path from the run list the API returns, rather than
+    from a list of dates written down here.
+  WHAT IT DOES: Takes the runs, and optionally the answer key. Returns nine steps, each
+    naming a screen, a moment to stand the clock at, a claim and a sentence. The third
+    step wants the day before anything was injected — with the answer key it takes the
+    earliest injection and steps back one day, without it takes the opening of the first
+    run, which is commissioning data with nothing wrong in it either way.
+  CHOICES: It DEGRADES rather than breaks. With no answer key every step still has a
+    moment to stand at and no step disappears, because a tour that silently drops steps
+    teaches a presenter a running order that will not hold on another machine.
+  CHOICES: Three steps deliberately move no clock at all. The two-causes comparison, the
+    remaining-life history and the configuration tables are not about a moment — two of
+    them are composed across runs — and moving the clock there would imply a connection to
+    the date on the bar that does not exist.
+  ⚠ JUDGEMENT CALL: Step five returns to a screen the tour has already visited rather than
+    moving on. The claim that rules fire on healthy machines and die at the persistence
+    requirement is the strongest thing this system can say about itself, and it is two
+    rows of a ten-row table — pointing at it explicitly is worth a stop of its own.
+
+`web/src/components/Walkthrough.tsx` :: Walkthrough
+  WHAT IT DOES: Shows the step's claim at display size with its sentence underneath, a pip
+    per step filled in behind you, back and next, and a way out. Arrow keys move between
+    steps and escape leaves.
+  CHOICES: Navigation and the clock are effects of WHICH STEP IS CURRENT, not of clicking
+    next — so arriving at a step by clicking a pip, pressing an arrow key or going back
+    all put the viewer in exactly the same place.
+  CHOICES: It drives the real routes and the real shared clock. There is no presentation
+    build and no screenshots, so anything a viewer sees on the tour they can go and poke
+    at afterwards.
+  CHOICES: Pips rather than a progress bar. A bar says how far through you are; pips also
+    say how much is left, which is what somebody sitting through a demonstration actually
+    wants to know.
+  ⚠ JUDGEMENT CALL: Typing into a field suppresses the arrow-key handling, and the clock's
+    own arrow keys live on the timeline rather than here. Two components listening for the
+    same key on the same page is a conflict waiting to happen; the timeline only has focus
+    when somebody has deliberately tabbed to it.
+
+`web/src/App.tsx` :: guided
+  CHOICES: STARTS GUIDED. Somebody opening this for the first time has no way to know
+    which tab answers their question, and that is the entire complaint this phase began
+    with.
+  CHOICES: The choice is remembered for the session, so anybody who leaves the tour is not
+    put back into it on every reload. Session rather than permanent, so a fresh window is
+    a fresh audience — which is what makes starting guided tolerable for the person
+    building the thing rather than merely correct for the person being shown it.
+
+`web/src/styles.css` :: the projector rules
+  WHAT IT DOES: The page clips sideways rather than scrolling, so a component that forgets
+    to manage its own width is caught rather than quietly widening every screen.
+    Monospace breaks mid-word so a long point identifier cannot stretch its column.
+    Selection is tinted, because the browser default on white is weak at a distance. A
+    reduced-motion preference removes transitions entirely.
+  CHOICES: Clipping at the page rather than hiding at the body, so a genuinely overflowing
+    child still shows a scrollbar inside its own panel instead of vanishing.
+  CHANGED FROM BEFORE: The three configuration tables gained a scroll frame as a direct
+    consequence — they carry indicator expressions and are the widest tables in the build,
+    and with the page clipping they would have lost their right-hand columns in silence.
+
+START HERE: `web/src/lib/tour.ts` — nine steps, and the argument the whole redesign has
+been arranging itself into.
