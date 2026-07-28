@@ -122,11 +122,11 @@ export function RulFanChart({
               domain={[left, right]}
               scale="time"
               tickFormatter={shortDay}
-              tick={{ fill: "#57534e", fontSize: 11 }}
+              tick={{ fill: "#57534e", fontSize: 11.5 }}
               stroke="#e4e0d9"
             />
             <YAxis
-              tick={{ fill: "#57534e", fontSize: 11 }}
+              tick={{ fill: "#57534e", fontSize: 11.5 }}
               stroke="#e4e0d9"
               width={52}
             />
@@ -173,7 +173,7 @@ export function RulFanChart({
                 label={{
                   value: `P50 ${day(crossing.p50)}`,
                   fill: "#b91c1c",
-                  fontSize: 10,
+                  fontSize: 11.5,
                   position: "insideTopRight",
                 }}
               />
@@ -190,7 +190,7 @@ export function RulFanChart({
                 label={{
                   value: `failure threshold ${threshold} ${unit}`,
                   fill: "#b45309",
-                  fontSize: 10,
+                  fontSize: 11.5,
                   position: "insideTopLeft",
                 }}
               />
@@ -242,11 +242,11 @@ export function RulFanChart({
                   domain={[left, right]}
                   scale="time"
                   tickFormatter={shortDay}
-                  tick={{ fill: "#57534e", fontSize: 11 }}
+                  tick={{ fill: "#57534e", fontSize: 11.5 }}
                   stroke="#e4e0d9"
                 />
                 <YAxis
-                  tick={{ fill: "#57534e", fontSize: 11 }}
+                  tick={{ fill: "#57534e", fontSize: 11.5 }}
                   stroke="#e4e0d9"
                   width={52}
                   label={{
@@ -254,7 +254,7 @@ export function RulFanChart({
                     angle: -90,
                     position: "insideLeft",
                     fill: "#78716c",
-                    fontSize: 10,
+                    fontSize: 11.5,
                   }}
                 />
                 <Tooltip

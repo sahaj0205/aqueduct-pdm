@@ -123,28 +123,9 @@
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
 
-  /* ================================================================ legacy
-   * The names twenty CSS modules already use, re-pointed at the values above.
-   *
-   * Not deleted, because deleting them would break every module in the build at once
-   * and this checkpoint would have no way to prove it changed only presentation. Each
-   * one disappears as its screen is rebuilt in R4 to R9.
-   */
-  --bg: var(--paper);
-  --panel: var(--raised);
-  --panel-2: var(--sunken);
-  --line: var(--hairline);
-  --text: var(--ink);
-  --muted: var(--ink-muted);
-  --faint: var(--ink-faint);
-
-  --ok: var(--good);
-  --warn: var(--caution);
-  --bad: var(--alarm);
-  --accent: var(--info);
-
-  --sensor: var(--cls-sensor);
-  --equipment: var(--cls-equipment);
-  --control: var(--cls-control);
-  --ambiguous: var(--cls-ambiguous);
+  /* The legacy aliases R1 introduced -- --panel, --line, --muted and the rest -- are
+     GONE. They existed so the flip from dark navy to paper could be one file rather than
+     a rewrite of twenty stylesheets in the same commit, and every screen has since been
+     rebuilt onto the names above. Verified before removal: zero references remained in
+     any .css, .ts or .tsx file in the build. */
 }

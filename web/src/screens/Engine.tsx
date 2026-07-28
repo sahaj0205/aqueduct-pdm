@@ -4,6 +4,7 @@ import { api } from "../api.ts";
 import { Funnel } from "../components/Funnel.tsx";
 import { StageDetail } from "../components/StageDetail.tsx";
 import { Picker } from "../design/Picker.tsx";
+import pageStyles from "./Engine.module.css";
 import { ScreenHead } from "../design/ScreenHead.tsx";
 import { Term } from "../design/Term.tsx";
 import type { MachineTrace, TwinState } from "../types.ts";
@@ -150,7 +151,7 @@ export function Engine({ at }: Props) {
           {openStage ? (
             <StageDetail stage={openStage} clean={openClean} />
           ) : (
-            <p className="muted" style={{ marginTop: 12, fontSize: 12 }}>
+            <p className={pageStyles.prompt}>
               Click any stage for what it was given, what it threw away, and what it
               recorded while running.
             </p>

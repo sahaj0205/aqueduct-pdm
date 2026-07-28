@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { api } from "../api.ts";
+import { Picker } from "../design/Picker.tsx";
 import { ScreenHead } from "../design/ScreenHead.tsx";
 import { Term } from "../design/Term.tsx";
 import type { InterventionConfig, ModeConfig, RuleConfig } from "../types.ts";
@@ -68,9 +69,7 @@ export function Configuration() {
     return (
       <div className="notice">
         <strong>The configuration could not be read.</strong>
-        <div className="muted" style={{ marginTop: 6 }}>
-          {error}
-        </div>
+        <p className="muted">{error}</p>
       </div>
     );
   }
@@ -122,20 +121,19 @@ export function Configuration() {
         Every number in this system, and why it is that number
       </ScreenHead>
 
-      <div className={styles.tabs}>
-        {(["modes", "rules", "interventions"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            className={t === tab ? styles.tabOn : styles.tab}
-            onClick={() => {
-              setTab(t);
-              setOpen(null);
-            }}
-          >
-            {labels[t]} ({counts[t]})
-          </button>
-        ))}
-      </div>
+      <Picker
+        label="showing"
+        value={tab}
+        onChange={(next) => {
+          setTab(next);
+          setOpen(null);
+        }}
+        options={(["modes", "rules", "interventions"] as Tab[]).map((t) => ({
+          id: t,
+          label: labels[t],
+          sub: `${counts[t]}`,
+        }))}
+      />
 
       {tab === "modes" && modes && (
         <table className={styles.table}>
@@ -157,8 +155,8 @@ export function Configuration() {
                   onClick={() => setOpen(open === m.mode_id ? null : m.mode_id)}
                 >
                   <td>
-                    <div className={styles.id}>{m.mode_id}</div>
-                    <div className={styles.sub}>{m.mode_name}</div>
+                    <div className={styles.id}>{m.mode_name}</div>
+                    <div className={styles.code}>{m.mode_id}</div>
                   </td>
                   <td className={styles.sub}>{m.brick_class}</td>
                   <td className={styles.r}>
@@ -249,8 +247,8 @@ export function Configuration() {
                   }
                 >
                   <td>
-                    <div className={styles.id}>{i.intervention_id}</div>
-                    <div className={styles.sub}>{i.description}</div>
+                    <div className={styles.id}>{i.description}</div>
+                    <div className={styles.code}>{i.intervention_id}</div>
                   </td>
                   <td className={styles.sub}>{i.applies_to_fault}</td>
                   <td className={styles.sub}>{i.applies_to_class ?? "any"}</td>

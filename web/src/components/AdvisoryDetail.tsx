@@ -124,11 +124,11 @@ export function AdvisoryDetail({
         <div>
           <RulFanChart payload={p} history={history} health={health} />
 
-          <div className={styles.card} style={{ marginTop: 16 }}>
+          <div className={`${styles.card} ${styles.spaced}`}>
             <h3>Health index trend</h3>
-            <div className={styles.body} style={{ paddingLeft: 0 }}>
+            <div className={`${styles.body} ${styles.flushLeft}`}>
               {trend.length === 0 ? (
-                <div className="muted" style={{ padding: "0 14px" }}>
+                <div className={styles.emptyNote}>
                   No health history — this finding is a rule firing, and health is
                   scored per failure mode.
                 </div>
@@ -144,12 +144,12 @@ export function AdvisoryDetail({
                       tickFormatter={(v: number) =>
                         new Date(v).toISOString().slice(2, 10)
                       }
-                      tick={{ fill: "#57534e", fontSize: 11 }}
+                      tick={{ fill: "#57534e", fontSize: 11.5 }}
                       stroke="#e4e0d9"
                     />
                     <YAxis
                       domain={[0, 100]}
-                      tick={{ fill: "#57534e", fontSize: 11 }}
+                      tick={{ fill: "#57534e", fontSize: 11.5 }}
                       stroke="#e4e0d9"
                       width={40}
                     />
@@ -208,7 +208,7 @@ export function AdvisoryDetail({
                   <tr key={signal.point_id}>
                     <td>
                       <div className={styles.point}>{signal.point_id}</div>
-                      <div className="muted" style={{ fontSize: 11 }}>
+                      <div className={styles.signalLabel}>
                         {signal.label} ({signal.unit})
                       </div>
                     </td>
@@ -240,12 +240,12 @@ export function AdvisoryDetail({
               condemned the readings.
             </div>
             {p.diagnosis_evidence.length > 0 && (
-              <div className={styles.body} style={{ paddingTop: 10 }}>
-                <div className={styles.note} style={{ padding: 0, marginBottom: 4 }}>
+              <div className={`${styles.body} ${styles.bodyTight}`}>
+                <div className={`${styles.note} ${styles.noteFlush}`}>
                   What the fault classification rests on:
                 </div>
                 {p.diagnosis_evidence.map((line) => (
-                  <div key={line} className={styles.point} style={{ padding: "2px 0" }}>
+                  <div key={line} className={`${styles.point} ${styles.evidenceLine}`}>
                     {line}
                   </div>
                 ))}
@@ -262,7 +262,7 @@ export function AdvisoryDetail({
               <div className={`${styles.big} ${styles.bad}`}>
                 {p.cost.priceable ? usd(p.cost.total_usd) : "not priceable"}
               </div>
-              <div className="muted" style={{ fontSize: 11.5, marginBottom: 10 }}>
+              <div className={styles.horizonNote}>
                 over the next {Math.round(p.cost.horizon_days)} days
               </div>
               <dl className={styles.kv}>
@@ -293,9 +293,9 @@ export function AdvisoryDetail({
             <h3>Severity</h3>
             <div className={styles.body}>
               <div className={styles.big}>{p.severity.score.toFixed(3)}</div>
-              <dl className={styles.kv} style={{ marginTop: 8 }}>
+              <dl className={`${styles.kv} ${styles.kvSpaced}`}>
                 {Object.entries(p.severity.terms).map(([name, value]) => (
-                  <span key={name} style={{ display: "contents" }}>
+                  <span key={name} className={styles.contents}>
                     <dt>
                       {name} × {p.severity.weights[name] ?? "?"}
                     </dt>
@@ -323,10 +323,10 @@ export function AdvisoryDetail({
                     {" · "}
                     {p.trace.cause.hops} hops upstream
                   </div>
-                  <div style={{ color: "var(--text)" }}>
+                  <div className={styles.mechanism}>
                     {p.trace.cause.mechanism}
                   </div>
-                  <div className="muted" style={{ marginTop: 5, fontSize: 11.5 }}>
+                  <div className={styles.causeNote}>
                     {p.trace.cause.timing}. This advisory is ranked below its cause but
                     is not hidden — the inference can be wrong, and only you can
                     overrule it.
@@ -334,7 +334,7 @@ export function AdvisoryDetail({
                 </div>
               )}
 
-              <div className={styles.note} style={{ padding: 0 }}>
+              <div className={`${styles.note} ${styles.noteFlush}`}>
                 Upstream — anything that could physically have caused this
               </div>
               {p.trace.upstream.length === 0 ? (
@@ -348,7 +348,7 @@ export function AdvisoryDetail({
                 ))
               )}
 
-              <div className={styles.note} style={{ padding: "10px 0 0" }}>
+              <div className={`${styles.note} ${styles.noteAbove}`}>
                 Downstream — who suffers if this is left
               </div>
               {p.trace.downstream_assets.length === 0 &&
@@ -390,7 +390,7 @@ export function AdvisoryDetail({
                 </div>
               ) : (
                 <>
-                  <div style={{ marginBottom: 8 }}>{p.intervention.description}</div>
+                  <div className={styles.description}>{p.intervention.description}</div>
                   <dl className={styles.kv}>
                     <dt>duration</dt>
                     <dd>{p.intervention.duration_hours} technician-hours</dd>
@@ -416,13 +416,13 @@ export function AdvisoryDetail({
                     </div>
                   )}
                   {p.intervention.matched_on_class && (
-                    <div className={styles.note} style={{ padding: "8px 0 0" }}>
+                    <div className={`${styles.note} ${styles.noteAbove}`}>
                       Chosen for the <strong>{p.fault.fault_class}</strong> classification
                       specifically. The same reported symptom under a different class
                       calls for a different job at a different cost.
                     </div>
                   )}
-                  <div className={styles.note} style={{ padding: "6px 0 0" }}>
+                  <div className={`${styles.note} ${styles.noteAbove}`}>
                     {p.intervention.basis}
                   </div>
                 </>
@@ -433,7 +433,7 @@ export function AdvisoryDetail({
           {p.notes.length > 0 && (
             <div className={styles.card}>
               <h3>Caveats</h3>
-              <div className={styles.body} style={{ paddingTop: 4 }}>
+              <div className={`${styles.body} ${styles.bodyTight}`}>
                 {p.notes.map((note) => (
                   <div className={styles.caveat} key={note}>
                     {note}
@@ -445,7 +445,7 @@ export function AdvisoryDetail({
 
           <div className={styles.card}>
             <h3>Why this class</h3>
-            <div className={styles.body} style={{ fontSize: 12.5 }}>
+            <div className={`${styles.body} ${styles.reasonBody}`}>
               {p.fault.class_reason}
             </div>
           </div>

@@ -82,21 +82,21 @@ export function PredictedVsActual({ points, actualFailure, modeId }: Props) {
                   domain={["dataMin", "dataMax"]}
                   tickFormatter={fmt}
                   stroke="#78716c"
-                  fontSize={10}
+                  fontSize={11.5}
                 />
                 <YAxis
                   type="number"
                   domain={["dataMin", "dataMax"]}
                   tickFormatter={fmt}
                   stroke="#78716c"
-                  fontSize={10}
+                  fontSize={11.5}
                   width={78}
                 />
                 <Tooltip
                   contentStyle={{
                     background: "#ffffff",
                     border: "1px solid #e4e0d9",
-                    fontSize: 11,
+                    fontSize: 11.5,
                   }}
                   labelFormatter={(v) => `predicted on ${fmt(Number(v))}`}
                   formatter={(value, name) => [
@@ -139,7 +139,7 @@ export function PredictedVsActual({ points, actualFailure, modeId }: Props) {
                     label={{
                       value: `actually failed ${fmt(truth)}`,
                       fill: "#14532d",
-                      fontSize: 10,
+                      fontSize: 11.5,
                       position: "insideBottomRight",
                     }}
                   />

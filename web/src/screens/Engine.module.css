@@ -1,0 +1,6 @@
+/* What to do next, said once under the table rather than as an inline style. */
+.prompt {
+  margin-top: var(--s3);
+  font-size: var(--t-body);
+  color: var(--ink-muted);
+}

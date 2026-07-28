@@ -1,9 +1,9 @@
 .tabs {
   display: flex;
   gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: 3px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r1);
   overflow: hidden;
   margin: 14px 0 12px;
   width: fit-content;
@@ -11,49 +11,49 @@
 
 .tab,
 .tabOn {
-  font-size: 12px;
+  font-size: var(--t-body);
   padding: 6px 13px;
   border: none;
   cursor: pointer;
-  background: var(--panel);
-  color: var(--muted);
+  background: var(--raised);
+  color: var(--ink-muted);
 }
 
 .tab:hover {
-  background: var(--panel-2);
-  color: var(--text);
+  background: var(--sunken);
+  color: var(--ink);
 }
 
 .tabOn {
-  background: var(--accent);
+  background: var(--info);
   color: var(--on-fill);
 }
 
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  font-size: var(--t-body);
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r1);
 }
 
 .table th {
   text-align: left;
-  font-size: 10px;
+  font-size: var(--t-micro);
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--ink-faint);
   font-weight: 500;
   padding: 8px 12px 7px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel-2);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--sunken);
 }
 
 .table td {
   padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
+  border-bottom: 1px solid var(--hairline);
+  color: var(--ink-muted);
   vertical-align: top;
 }
 
@@ -62,26 +62,26 @@
 }
 
 .row:hover td {
-  background: var(--panel-2);
+  background: var(--sunken);
 }
 
 .id {
   font-family: var(--mono);
-  color: var(--text);
-  font-size: 12px;
+  color: var(--ink);
+  font-size: var(--t-body);
 }
 
 .sub {
-  font-size: 11px;
-  color: var(--faint);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
   line-height: 1.45;
   margin-top: 2px;
 }
 
 .mono {
   font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--faint);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
   word-break: break-all;
 }
 
@@ -93,25 +93,34 @@
 
 /* The reason. This is what the screen is for -- everything above it is an index. */
 .why {
-  font-size: 11.5px;
+  font-size: var(--t-micro);
   line-height: 1.6;
-  color: var(--muted);
-  background: var(--panel-2);
-  border-left: 3px solid var(--accent);
+  color: var(--ink-muted);
+  background: var(--sunken);
+  border-left: 3px solid var(--info);
   max-width: 0;
 }
 
 .applies {
   margin-top: 7px;
-  font-size: 11px;
-  color: var(--faint);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
 }
 
 /* A mode declared with a real threshold that this building cannot measure. Marked
    rather than blanked: an empty cell reads as missing data, and this is a decision. */
 .notMeasured {
-  color: var(--warn);
+  color: var(--caution);
   font-style: italic;
   font-family: var(--sans, inherit);
-  font-size: 11px;
+  font-size: var(--t-micro);
+}
+
+/* The identifier, under the human name. The swap the advisory queue got in R4: the name
+   is what you read, the code is what you quote. */
+.code {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  margin-top: 2px;
 }

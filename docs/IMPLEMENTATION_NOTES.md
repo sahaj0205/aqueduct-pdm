@@ -11108,3 +11108,76 @@ which is not a boundary worth respecting for a three-line change.
 
 START HERE: `web/src/design/Bridge.tsx` — both screens rebuilt in this checkpoint are
 arranged around it, and the landing screen was rewritten to use it too.
+
+## Demo Phase R, Checkpoint R8 — The rules, the answer, and the advisory detail
+
+### What we did
+
+The last three screens were rebuilt, and with them the compatibility layer that made the
+whole redesign possible was removed because nothing needed it any more.
+
+Thirty-three of the thirty-six remaining hand-written style attributes lived in two files:
+the advisory detail, which had nineteen spacing and size overrides scattered beside its
+markup, and the answer-key screen, which had fourteen. Both are now styled entirely from
+their own stylesheets. The configuration screen gave up the fourth hand-built row of
+mutually exclusive buttons in this project in favour of the shared one, and its failure
+mode and intervention tables now lead with the real name and put the identifier
+underneath, which is the swap the work queue got several checkpoints ago.
+
+Every remaining piece of text below the readable floor was raised. Fourteen of them were
+chart axis labels at ten and eleven pixels — the numbers along the bottom and side of a
+plot, which is exactly the text somebody squints at from the back of a room.
+
+The build now has ZERO hand-written style attributes carrying static styling, down from
+seventy-six. Twelve remain and all twelve are computed geometry or colour — a position as
+a percentage, a measured tooltip coordinate, a bar width — which cannot live in a
+stylesheet at all. Font sizes are down from sixteen distinct values to three raw ones,
+with nothing at all below the floor, and everything else resolving through the five-step
+scale.
+
+Because every screen had been rebuilt, the aliases introduced in R1 were checked and found
+to have no references left anywhere in the build, and were deleted.
+
+### How it works
+
+`web/src/design/tokens.css` :: the legacy block, removed
+  CHANGED FROM BEFORE: R1 re-declared every old variable name — panel, line, muted, text,
+    faint and the rest — as an alias pointing at the new light values. That existed so
+    the flip from dark navy to paper could be one file rather than a rewrite of twenty
+    stylesheets in a single commit, and it was always meant to be temporary.
+  CHOICES: Removed only after checking that zero references remained in any stylesheet or
+    source file in the build. The four fault-class aliases were the last holdouts, in the
+    badge component, and were moved onto their real names first.
+
+`web/src/components/AdvisoryDetail.tsx` :: nineteen inline styles
+  CHANGED FROM BEFORE: Every spacing and size override written beside the markup is now a
+    named class. They were not arbitrary — a card starting a new group, a body whose chart
+    manages its own inset, a note used as a heading for the lines under it — so each one
+    got a name saying which of those it was rather than being flattened into a utility.
+
+`web/src/screens/Reveal.tsx` :: fourteen inline styles
+  CHANGED FROM BEFORE: The screen was styled entirely inline, including the three
+    coloured group headings, which passed a CSS variable name through a prop as a string.
+    The groups now carry a class name instead, so the colour is decided in the stylesheet
+    where the rest of the screen's colour is decided.
+  CHOICES: The button that reveals the answer key was given the weight of a decision
+    rather than of a link — larger, amber, with a shadow. Pressing it is the moment the
+    demonstration exists for, and it previously looked like a form control.
+  CHOICES: The note about fault-free runs covering the current moment moved onto a green
+    ground. It is the basis of every false-alarm figure quoted anywhere in the project and
+    it was set as ordinary grey small print.
+
+`web/src/screens/Configuration.tsx` :: the tables
+  CHANGED FROM BEFORE: The three-way switch was this project's FOURTH hand-built row of
+    mutually exclusive buttons. It now uses the shared one.
+  CHANGED FROM BEFORE: Failure modes and interventions led with their identifier and put
+    the human name underneath. Swapped. Rules were deliberately left alone: a rule's
+    identifier IS its name, and its description is a sentence explaining it rather than a
+    shorter label for it, so promoting the description would put a paragraph in a cell.
+
+Chart labels across three components raised from ten and eleven pixels to the floor, and
+six stylesheets converted from hand-picked pixel values to the token scale by the same
+scripted pass used in R7.
+
+START HERE: `web/src/design/tokens.css` — what is no longer in that file is the point of
+this checkpoint, and the comment where the legacy block used to be says why it could go.

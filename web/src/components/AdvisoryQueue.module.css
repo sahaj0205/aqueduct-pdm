@@ -305,6 +305,6 @@
   color: var(--caution);
   background: var(--raised);
   padding: 1px var(--s1);
-  border-radius: 3px;
+  border-radius: var(--r1);
   border: 1px solid var(--hairline);
 }

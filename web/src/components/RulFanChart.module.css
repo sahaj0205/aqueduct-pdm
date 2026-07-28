@@ -1,28 +1,28 @@
 .wrap {
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r1);
+  background: var(--raised);
   overflow: hidden;
 }
 
 .head {
   padding: 10px 14px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel-2);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--sunken);
 }
 
 .head h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--t-body);
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--ink-muted);
   font-weight: 600;
 }
 
 .head .sub {
-  font-size: 11.5px;
-  color: var(--faint);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
   margin-top: 3px;
 }
 
@@ -31,15 +31,15 @@
 }
 
 .panelLabel {
-  font-size: 10.5px;
+  font-size: var(--t-micro);
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--ink-faint);
   padding: 8px 0 0 14px;
 }
 
 .divider {
-  border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--hairline) 60%, transparent);
 }
 
 .readout {
@@ -47,60 +47,60 @@
   flex-wrap: wrap;
   gap: 20px;
   padding: 10px 14px 12px;
-  border-top: 1px solid var(--line);
-  background: color-mix(in srgb, var(--panel-2) 60%, var(--panel));
+  border-top: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--sunken) 60%, var(--raised));
 }
 
 .stat .k {
-  font-size: 10.5px;
+  font-size: var(--t-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--ink-faint);
 }
 
 .stat .v {
   font-family: var(--mono);
-  font-size: 15px;
+  font-size: var(--t-title);
   font-variant-numeric: tabular-nums;
 }
 
 .good {
-  color: var(--ok);
+  color: var(--good);
 }
 
 .refused {
   margin: 0;
   padding: 16px 16px 18px;
-  border-top: 1px solid var(--line);
-  background: color-mix(in srgb, var(--warn) 7%, var(--panel));
+  border-top: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--caution) 7%, var(--raised));
 }
 
 .refused .title {
-  font-size: 12px;
+  font-size: var(--t-body);
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--warn);
+  color: var(--caution);
   font-weight: 700;
   margin-bottom: 6px;
 }
 
 .refused .body {
-  color: var(--text);
-  font-size: 13px;
+  color: var(--ink);
+  font-size: var(--t-body);
   max-width: 76ch;
 }
 
 .tooltip {
   background: var(--sunken);
-  border: 1px solid var(--line);
-  border-radius: 3px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r1);
   padding: 7px 9px;
-  font-size: 12px;
+  font-size: var(--t-body);
   font-family: var(--mono);
 }
 
 .tooltip .when {
-  color: var(--muted);
+  color: var(--ink-muted);
   margin-bottom: 3px;
 }
 

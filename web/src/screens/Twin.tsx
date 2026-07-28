@@ -70,9 +70,7 @@ export function Twin({ at, advisories }: Props) {
     return (
       <div className="notice">
         <strong>The twin could not be drawn.</strong>
-        <div className="muted" style={{ marginTop: 6 }}>
-          {error}
-        </div>
+        <p className="muted">{error}</p>
       </div>
     );
   }

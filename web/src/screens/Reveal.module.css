@@ -1,0 +1,146 @@
+/* The answer key. Amber throughout, because this is the one screen showing data the
+   detection path is denied, and it should not look like the operator's screens. */
+
+.gate {
+  max-width: 78ch;
+}
+
+.gateBody {
+  margin-top: var(--s2);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+}
+
+.gateBody strong {
+  color: var(--ink);
+  font-weight: var(--w-semi);
+}
+
+/* The button the whole screen exists for. Given the weight of a decision rather than
+   the weight of a link, because pressing it is the moment of the demonstration. */
+.show {
+  margin-top: var(--s4);
+  font-size: var(--t-body);
+  font-weight: var(--w-semi);
+  padding: var(--s3) var(--s5);
+  border-radius: var(--r1);
+  cursor: pointer;
+  border: none;
+  background: var(--caution);
+  color: var(--on-fill);
+  box-shadow: var(--lift-1);
+  transition: filter 110ms ease;
+}
+
+.show:hover {
+  filter: brightness(1.08);
+}
+
+/* --------------------------------------------------------------- the three groups */
+
+.group {
+  margin-bottom: var(--s5);
+}
+
+.groupHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0 0 var(--s2);
+  font-size: var(--t-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  font-weight: var(--w-semi);
+}
+
+.count {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+
+.running {
+  color: var(--alarm);
+}
+.failed {
+  color: var(--caution);
+}
+.pending {
+  color: var(--ink-faint);
+}
+
+.empty {
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------------ one fault row */
+
+.fault {
+  display: flex;
+  gap: var(--s3);
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.mode {
+  font-family: var(--mono);
+  font-size: var(--t-body);
+  font-weight: var(--w-medium);
+  min-width: 220px;
+}
+
+.when,
+.ladder {
+  font-size: var(--t-micro);
+  color: var(--ink-muted);
+}
+
+.cascade {
+  padding: var(--s2) 0 var(--s1);
+}
+
+.ask {
+  font-size: var(--t-micro);
+  padding: var(--s1) var(--s3);
+  border-radius: var(--r1);
+  cursor: pointer;
+  background: var(--raised);
+  color: var(--ink-muted);
+  border: 1px solid var(--hairline-strong);
+}
+
+.ask:hover:not(:disabled) {
+  border-color: var(--caution);
+  color: var(--caution);
+}
+
+.ask:disabled {
+  cursor: progress;
+  color: var(--ink-faint);
+}
+
+.none {
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}
+
+/* Fault-free runs covering this moment. The basis of every false-alarm figure quoted
+   anywhere in the project, so it is stated rather than left in a footnote. */
+.cleanRuns {
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+  background: var(--good-wash);
+  border-left: 3px solid var(--good);
+  border-radius: var(--r1);
+  padding: var(--s3) var(--s4);
+  max-width: 92ch;
+}
+
+.cleanRuns strong {
+  color: var(--good);
+  font-weight: var(--w-semi);
+}
