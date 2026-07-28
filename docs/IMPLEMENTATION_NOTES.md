@@ -10679,3 +10679,125 @@ that switch is on.
 
 START HERE: `web/src/components/Timeline.tsx` — the run drawn is the whole checkpoint,
 and the bar around it is arranged to leave room for it.
+
+## Demo Phase R, Checkpoint R4 — The landing screen
+
+### What we did
+
+The first screen anybody sees now leads with the two figures a manager asks about first —
+what does leaving this alone cost, and what does dealing with it cost — and states the gap
+between them instead of leaving it to be worked out by eye.
+
+Before this, the top of the screen was seven equal cells in a grey grid: machines,
+advisories, worst health, cost of inaction, cost to act, unpriced, fault classes. Every
+one was the same size in the same colour in the same monospace, so everything was equally
+loud, which means none of it was, and the reader had to decide for themselves which of the
+seven mattered. Two of them did.
+
+The work queue underneath was showing the wrong things large. The machine's code name was
+the big text and its real name the small one; the fault's code name was big and its
+description small — correct for somebody searching logs, backwards for everybody else, and
+the interface had always been given both by the API. They are swapped. One column showed a
+bare number under the heading "Priority", which is meaningless unless you already know the
+figure is dollars saved for every dollar spent; the number has not changed, the heading now
+says what it is, and the column stopped needing to be explained. The column holding the
+system's reasoning was a cut-off sentence with the rest hidden in a hover tooltip —
+unreachable on a touchscreen, impossible to quote, invisible when printed. It opens.
+
+One thing found while building it, which mattered more than the layout. The gap between
+the two figures was written as inaction divided by effort, on the assumption that ignoring
+work is the expensive direction. Run against the real database it printed "0.0 times
+dearer to ignore than to fix", because at that moment the queue held two chiller jobs
+costing thirty-five thousand dollars to do against two hundred and twenty-seven dollars of
+expected waste from leaving them alone. The sentence was not just badly rounded, it was
+backwards. It now computes the comparison in whichever direction is actually true and says
+which, and both directions occur in this database.
+
+### How it works
+
+`web/src/components/SummaryStrip.tsx` :: bridge(inaction, effort)
+  WHY IT EXISTS: The relationship between the two totals is the argument for the existence
+    of the whole system, and it was previously something the reader had to infer from two
+    numbers in adjacent boxes.
+  WHAT IT DOES: Takes the two totals. Returns nothing at all if either is zero or less.
+    Otherwise divides the larger by the smaller, and reports which way round that was:
+    "dearer to ignore than to fix", or "dearer to fix than to ignore".
+  CHOICES: Large values are rounded to a whole number and small ones given one decimal, so
+    both 17 times and 9.3 times read correctly. A single decimal everywhere turned a real
+    ratio of 0.006 into "0.0", which reads as a broken feed rather than as a finding.
+  CHOICES: Returning null on a zero is deliberate. An entirely unpriced queue sums to zero
+    on both sides and dividing by it would print an infinity as though it were a result.
+  ⚠ JUDGEMENT CALL: Inverting the fraction rather than showing a number below one. "0.006
+    times dearer to ignore" is technically the same claim as "154 times dearer to fix" and
+    completely fails to communicate it. The cost of inverting is that the reader must read
+    the label to know the direction, so the label is placed directly under the figure and
+    is never abbreviated.
+  ⚠ JUDGEMENT CALL: The alarm colour is applied only when ignoring the work is the
+    expensive direction. Colouring both directions red would have the screen shouting
+    about a queue it has just finished saying is not urgent.
+
+`web/src/components/SummaryStrip.tsx` :: the "does not pay for itself" note
+  WHY IT EXISTS: A queue where the work costs more than the consequence looks like a
+    mistake, and somebody will assume the data is missing. It is not.
+  WHAT IT DOES: Appears only when the comparison runs that way. Says that the failure
+    itself is priced only where the model will bound a date for it, that where it will not
+    the single priced consequence is wasted energy, and that the energy figure is held flat
+    at today's severity rather than projected along the degradation trend.
+  CHOICES: Every clause was checked against analytics/advisories/generate.py rather than
+    inferred from the shape of the numbers. The failure term is computed from the published
+    prediction interval and the function supplying that probability returns nothing at all
+    when the interval is unbounded, so an unbounded prediction genuinely leaves the energy
+    term as the only priced consequence. The flat-indicator caveat is that function's own,
+    and it is quoted because it is the reason a small number here is not a safe number.
+
+`web/src/components/SummaryStrip.tsx` :: SummaryStrip
+  CHANGED FROM BEFORE: Seven identical cells in a bordered grid. Now two large figures with
+    the comparison between them on a raised panel, and everything else — worst machine,
+    open jobs, machines watched, where the blame lands — in a quieter recessed row beneath.
+    The demotion is the point: those four are context for the money, not competitors with
+    it.
+  CHANGED FROM BEFORE: The worst-health machine was named by its code. It now takes a
+    lookup of real names, falling back to the code when the machine is not in it.
+  CHOICES: The count of unpriced work moved into the caption of the figure it qualifies,
+    rather than standing as its own cell. As its own cell it was a number with no stated
+    relationship to anything; in the caption it says what it actually means, which is that
+    both totals exclude it.
+
+`web/src/screens/Operations.tsx` :: assetNames
+  WHY IT EXISTS: Feeds real machine names to the strip above the queue.
+  WHAT IT DOES: Builds a lookup from two sources. The building drawing knows every machine
+    in the plant; the queue knows every machine with an open job.
+  CHOICES: Both, in that order, because neither alone is complete — the worst-health
+    machine can easily be one with no open job at all, which is exactly the case a
+    queue-only lookup would leave displaying a raw identifier.
+
+`web/src/components/AdvisoryQueue.tsx` :: AdvisoryQueue
+  CHANGED FROM BEFORE: Still not re-sorted here, which remains the most important thing
+    about it — the two-tier ranking is decided upstream and a table free to re-sort would
+    be free to disagree with the numbers it is displaying.
+  CHANGED FROM BEFORE: Identifier and human name swapped in both the machine and the fault
+    columns. The name is set at reading size; the code sits under it in monospace for when
+    it needs quoting.
+  CHANGED FROM BEFORE: "Priority" is now "Saved per $1". Same figure, same column, same
+    sort order. It previously required outside knowledge to interpret at all.
+  CHANGED FROM BEFORE: Four column headings became defined terms, so what health, remaining
+    life, blame and cost of inaction actually mean is available on the heading itself
+    rather than assumed.
+  CHANGED FROM BEFORE: The tier boundary between priced and unpriced rows was a grey line
+    of small text. It is now on an amber ground, because crossing it changes what the rows
+    below are sorted by and a reader who misses that will think the ordering is broken.
+
+`web/src/components/AdvisoryQueue.tsx` :: the expanding row
+  WHY IT EXISTS: The system's stated reasoning for each row was truncated into a hover
+    tooltip. A tooltip cannot be reached by touch, cannot be selected or quoted, and does
+    not exist on paper.
+  WHAT IT DOES: A chevron at the end of each row opens a panel underneath it holding the
+    full sentence, the failure window where one was published, and a plain statement of why
+    the row sits where it does in the ordering.
+  CHOICES: The chevron stops the click travelling to the row. The row itself still opens
+    the full advisory, and both actions have to remain available — expanding in place is
+    what makes the queue scannable, and the full page is where the evidence is.
+
+START HERE: `web/src/components/SummaryStrip.tsx` — the bridge function at the top is both
+the point of the screen and the one piece of arithmetic on it that had to be rewritten
+after meeting real data.

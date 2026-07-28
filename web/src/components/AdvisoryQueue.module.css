@@ -1,120 +1,134 @@
 .panel {
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  box-shadow: var(--lift-1);
   overflow: hidden;
+  margin-bottom: var(--s5);
 }
 
 .head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  background: var(--panel-2);
-  border-bottom: 1px solid var(--line);
+  gap: var(--s4);
+  flex-wrap: wrap;
+  padding: var(--s4) var(--s5);
+  border-bottom: 1px solid var(--hairline);
 }
 
 .head h2 {
-  font-size: 13px;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--muted);
+  margin: 0;
+  font-size: var(--t-title);
+  font-weight: var(--w-semi);
+  color: var(--ink);
 }
 
 .head .hint {
-  font-size: 11.5px;
-  color: var(--faint);
+  font-size: var(--t-micro);
+  color: var(--ink-muted);
+}
+
+/* Nine columns will not fit a narrow window. They scroll inside the panel rather than
+   pushing the page sideways. */
+.scroll {
+  overflow-x: auto;
 }
 
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--t-body);
 }
 
 .table thead th {
   text-align: left;
-  font-size: 10.5px;
-  letter-spacing: 0.07em;
+  font-size: var(--t-label);
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
-  color: var(--faint);
-  font-weight: 600;
-  padding: 8px 12px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-weight: var(--w-semi);
+  padding: var(--s2) var(--s3);
+  background: var(--sunken);
+  border-bottom: 1px solid var(--hairline);
   white-space: nowrap;
 }
 
 .table td {
-  padding: 9px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  padding: var(--s3);
+  border-bottom: 1px solid var(--hairline);
   vertical-align: top;
 }
 
+.r {
+  text-align: right;
+}
+
 .row {
-  background: var(--panel);
+  background: var(--raised);
+  transition: background 90ms ease;
 }
 
 .row:hover {
-  background: var(--panel-2);
+  background: var(--info-wash);
 }
 
-/* A consequential advisory is DEMOTED, never hidden. Dimmed and indented behind a
-   marker so it reads as subordinate at a glance, but every field is still on screen
-   and still legible. The cross-asset inference can be wrong -- and on this dataset it
-   demonstrably is on one row -- so the operator has to be able to overrule it, which
-   they cannot do if it is not there. See AI_LOG.md D-09. */
+.rowOpen {
+  background: var(--sunken);
+}
+
+/* A consequential advisory is DEMOTED, never hidden. Marked and muted so it reads as
+   subordinate at a glance, but every field is still on screen and still legible. The
+   cross-asset inference can be wrong -- and on this dataset it demonstrably is on one
+   row -- so the operator has to be able to overrule it, which they cannot do if it is
+   not there. See AI_LOG.md D-09. */
 .consequential {
-  background: color-mix(in srgb, var(--panel) 70%, var(--bg));
-  color: var(--muted);
+  background: var(--sunken);
 }
 
-.consequential .fault,
-.consequential .num {
-  opacity: 0.72;
+.consequential .primary {
+  color: var(--ink-muted);
+  font-weight: var(--w-normal);
 }
 
 .consequential td:first-child {
-  border-left: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: inset 2px 0 0 var(--info);
+}
+
+.rankHead {
+  width: 40px;
 }
 
 .rank {
   font-family: var(--mono);
-  color: var(--faint);
-  width: 34px;
   font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+  font-size: var(--t-micro);
+  padding-top: calc(var(--s3) + 3px);
+}
+
+/* The human name is what you read. */
+.primary {
+  font-size: var(--t-body);
+  font-weight: var(--w-medium);
+  color: var(--ink);
+  line-height: var(--lh-tight);
+}
+
+/* The identifier is underneath, for when you need to quote it. */
+.code {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  margin-top: 2px;
 }
 
 .asset {
-  white-space: nowrap;
-}
-
-.assetId {
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.assetName {
-  font-size: 11px;
-  color: var(--faint);
-  max-width: 190px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 130px;
 }
 
 .fault {
-  min-width: 210px;
-}
-
-.faultTitle {
-  display: block;
-}
-
-.faultId {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--faint);
+  min-width: 220px;
 }
 
 .num {
@@ -124,61 +138,173 @@
   white-space: nowrap;
 }
 
+.cost {
+  font-weight: var(--w-medium);
+  color: var(--ink);
+}
+
+/* The sort key. Given weight because it is the reason the row is where it is. */
+.saved {
+  font-weight: var(--w-semi);
+  color: var(--ink);
+}
+
 .sub {
-  font-size: 11px;
-  color: var(--faint);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
   font-family: var(--mono);
+  margin-top: 2px;
 }
 
 .unpriced {
-  color: var(--faint);
+  color: var(--ink-faint);
   font-style: italic;
+  font-family: var(--sans);
 }
 
 .ok {
-  color: var(--ok);
+  color: var(--good);
+  font-weight: var(--w-semi);
 }
 .warn {
-  color: var(--warn);
+  color: var(--caution);
+  font-weight: var(--w-semi);
 }
 .bad {
-  color: var(--bad);
+  color: var(--alarm);
+  font-weight: var(--w-semi);
 }
 .none {
-  color: var(--faint);
-}
-
-.why {
-  color: var(--muted);
-  font-size: 12px;
-  max-width: 340px;
+  color: var(--ink-faint);
 }
 
 .upstream {
-  margin-top: 4px;
-  font-size: 11.5px;
-  color: var(--accent);
-}
-
-.upstream .arrow {
-  color: var(--faint);
-  margin-right: 4px;
-}
-
-.upstream .cause {
+  margin-top: var(--s1);
+  font-size: var(--t-micro);
+  color: var(--info);
   font-family: var(--mono);
 }
 
+.upstream .arrow {
+  color: var(--ink-faint);
+  font-family: var(--sans);
+}
+
+/* The boundary between the two ranking tiers, said out loud rather than left implicit.
+   An operator scanning down a column that suddenly reads "unpriced" needs to know they
+   have crossed into a group ordered on a different quantity. */
 .tierRule td {
-  background: var(--bg);
-  color: var(--faint);
-  font-size: 11px;
-  padding: 6px 12px;
-  letter-spacing: 0.03em;
-  border-bottom: 1px solid var(--line);
+  background: var(--caution-wash);
+  color: #7c2d12;
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid color-mix(in srgb, var(--caution) 30%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--caution) 30%, transparent);
+}
+
+/* --------------------------------------------------------------------- expansion */
+
+.expandCell {
+  width: 36px;
+  text-align: right;
+}
+
+.expand {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--r1);
+  background: none;
+  cursor: pointer;
+  color: var(--ink-faint);
+}
+
+.expand:hover {
+  background: var(--raised);
+  border-color: var(--hairline-strong);
+  color: var(--ink);
+}
+
+.chev,
+.chevOpen {
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transition: transform 120ms ease;
+}
+
+.chev {
+  transform: rotate(-45deg) translate(-1px, -1px);
+}
+
+.chevOpen {
+  transform: rotate(45deg) translate(-2px, -2px);
+  color: var(--info);
+}
+
+.detail td {
+  background: var(--sunken);
+  border-bottom: 1px solid var(--hairline);
+  padding: 0;
+}
+
+.detailBody {
+  padding: var(--s3) var(--s5) var(--s4) calc(var(--s3) + 40px);
+  border-left: 2px solid var(--info);
+}
+
+/* The sentence that used to be truncated into a hover tooltip. */
+.reason {
+  margin: 0;
+  max-width: 92ch;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--ink);
+}
+
+.detailFacts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin-top: var(--s2);
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+  max-width: 92ch;
+}
+
+.detailFacts strong {
+  color: var(--ink);
+  font-weight: var(--w-semi);
+  font-family: var(--mono);
+}
+
+.more {
+  color: var(--ink-faint);
 }
 
 .empty {
-  padding: 26px 14px;
-  color: var(--muted);
+  padding: var(--s6) var(--s5);
+  color: var(--ink-muted);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+}
+
+.empty strong {
+  color: var(--ink);
+  font-weight: var(--w-semi);
+}
+
+.empty code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  color: var(--caution);
+  background: var(--raised);
+  padding: 1px var(--s1);
+  border-radius: 3px;
+  border: 1px solid var(--hairline);
 }

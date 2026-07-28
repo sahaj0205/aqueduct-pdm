@@ -35,6 +35,22 @@ export function Operations({ summary, advisories, topology, twinState }: Props) 
   // a headline reading "six" above a queue showing two is worse than no headline.
   const open = summary?.advisories ?? null;
 
+  /**
+   * Machine id to human name, so the worst-health machine is named rather than coded.
+   *
+   * Built from two sources because neither alone is complete: the drawing knows every
+   * machine in the building, and the queue knows every machine with an open job. The
+   * worst-health machine can easily be one with no open job at all, which is exactly the
+   * case a queue-only lookup would leave showing a raw identifier.
+   */
+  const assetNames: Record<string, string> = {};
+  for (const node of topology?.nodes ?? []) {
+    if (node.asset_id) assetNames[node.asset_id] = node.label;
+  }
+  for (const advisory of advisories ?? []) {
+    assetNames[advisory.asset_id] ??= advisory.asset_name;
+  }
+
   return (
     <>
       <ScreenHead
@@ -64,7 +80,7 @@ export function Operations({ summary, advisories, topology, twinState }: Props) 
             : `${open} thing${open === 1 ? "" : "s"} need${open === 1 ? "s" : ""} attention.`}
       </ScreenHead>
 
-      {summary && <SummaryStrip summary={summary} />}
+      {summary && <SummaryStrip summary={summary} assetNames={assetNames} />}
       {topology && advisories && (
         <DigitalTwin
           topology={topology}

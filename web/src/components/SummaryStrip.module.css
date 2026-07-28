@@ -1,63 +1,166 @@
-.strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
-  gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 18px;
+/* The bridge: two figures and the distance between them. */
+
+.bridge {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s5);
+  flex-wrap: wrap;
+
+  padding: var(--s5);
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  box-shadow: var(--lift-1);
+  margin-bottom: var(--s3);
 }
 
-.cell {
-  background: var(--panel);
-  padding: 10px 13px 11px;
+.bridge > :global(*) {
+  flex: 1 1 240px;
+  min-width: 0;
 }
 
-.label {
-  font-size: 10.5px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--faint);
-  margin-bottom: 3px;
-  white-space: nowrap;
+/* The middle. Not a stat — it is the relationship between the two either side of it, so
+   it is centred against them rather than aligned to the same baseline. */
+.gap {
+  flex: 0 1 190px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s2);
+  padding-top: var(--s4);
+  text-align: center;
 }
 
-.value {
-  font-family: var(--mono);
-  font-size: 19px;
-  line-height: 1.1;
+.rule {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--hairline-strong) 22%,
+    var(--hairline-strong) 78%,
+    transparent
+  );
+}
+
+/* Neutral by default. The alarm variant is used only when ignoring the work is the
+   expensive direction — colouring both directions red would make the strip shout about
+   a queue it has just finished saying is not urgent. */
+.ratio,
+.ratioBad {
+  font-size: var(--t-display);
+  font-weight: var(--w-semi);
+  line-height: 1;
+  letter-spacing: var(--track-display);
   font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
 
-.note {
-  font-size: 11px;
-  color: var(--muted);
-  margin-top: 3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.ratioBad {
+  color: var(--alarm);
 }
 
-.ok {
-  color: var(--ok);
+/* The explanation for a ratio pointing the unexpected way. Spans the full width beneath
+   the bridge, because it qualifies all three figures rather than any one of them. */
+.notWorth {
+  flex: 1 1 100%;
+  margin: var(--s2) 0 0;
+  padding-top: var(--s4);
+  border-top: 1px solid var(--hairline);
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+  max-width: 96ch;
 }
-.warn {
-  color: var(--warn);
+
+.ratioNote {
+  font-size: var(--t-micro);
+  line-height: 1.35;
+  color: var(--ink-muted);
 }
-.bad {
-  color: var(--bad);
+
+/* ------------------------------------------------------------------------- facts
+   Context for the money above, and quieter than it on purpose. */
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--s4) var(--s5);
+
+  padding: var(--s4) var(--s5);
+  background: var(--sunken);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  margin-bottom: var(--s2);
+}
+
+.classCell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+}
+
+.classLabel {
+  font-size: var(--t-label);
+  font-weight: var(--w-semi);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  line-height: var(--lh-tight);
 }
 
 .classes {
   display: flex;
-  gap: 5px;
+  gap: var(--s2);
   flex-wrap: wrap;
-  margin-top: 4px;
+  align-items: center;
+}
+
+.classRow {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s1);
+}
+
+.classCount {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-body);
+  font-weight: var(--w-semi);
+  color: var(--ink);
+}
+
+.classNote {
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+}
+
+.none {
+  font-size: var(--t-micro);
+  color: var(--ink-muted);
 }
 
 .vintage {
-  font-size: 11px;
-  color: var(--faint);
-  margin: -10px 0 18px;
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: var(--ink-faint);
+  margin: 0 0 var(--s5);
+  max-width: 84ch;
+}
+
+@media (max-width: 860px) {
+  /* The bridge stacks, and the connector between the two figures stops pretending to be
+     a horizontal relationship it no longer is. */
+  .gap {
+    flex-basis: 100%;
+    flex-direction: row;
+    padding-top: 0;
+  }
+
+  .ratioNote br {
+    display: none;
+  }
 }
