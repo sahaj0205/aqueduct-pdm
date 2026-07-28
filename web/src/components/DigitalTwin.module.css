@@ -1,76 +1,143 @@
 .wrap {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 13px 15px 14px;
-  margin-bottom: 18px;
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  box-shadow: var(--lift-1);
+  padding: var(--s4) var(--s5) var(--s5);
+  margin-bottom: var(--s5);
 }
 
 .head {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--s4);
   flex-wrap: wrap;
-  margin-bottom: 6px;
+  margin-bottom: var(--s3);
 }
 
-.head h2 {
-  font-size: 14px;
+.heading h2 {
   margin: 0;
+  font-size: var(--t-title);
+  font-weight: var(--w-semi);
+  color: var(--ink);
 }
 
-.muted {
-  font-size: 11.5px;
-  color: var(--faint);
+/* The switch names each encoding; this says what the current one is FOR. */
+.question {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--t-micro);
+  color: var(--ink-muted);
 }
 
-/* The coverage sentence sits on the drawing rather than in a footnote: a picture where
-   most nodes are grey has to say why, or it reads as a broken feed. */
-.coverage {
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--muted);
-  margin: 0 0 10px;
-  max-width: 74ch;
+.switch {
+  display: flex;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r1);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.option,
+.optionOn {
+  padding: var(--s2) var(--s3);
+  font-size: var(--t-micro);
+  border: none;
+  border-right: 1px solid var(--hairline);
+  background: var(--raised);
+  color: var(--ink-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.option:last-child,
+.optionOn:last-child {
+  border-right: none;
+}
+
+.option:hover {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.optionOn {
+  background: var(--info);
+  color: var(--on-fill);
+  font-weight: var(--w-medium);
+}
+
+/* ABOVE the drawing, not below it. The whole point of moving it. */
+.legend {
+  display: flex;
+  gap: var(--s2) var(--s4);
+  flex-wrap: wrap;
+  padding: var(--s2) var(--s3);
+  background: var(--sunken);
+  border-radius: var(--r1);
+}
+
+.key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--t-micro);
+  color: var(--ink-muted);
+}
+
+/* A div rather than an inline <svg>. See the note in DigitalTwin.tsx — the verification
+   script slices the file it writes from the first "<svg" in the markup, and this sits
+   above the diagram. */
+.swatch {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  border: 1.25px solid;
+  flex-shrink: 0;
+}
+
+/* What this encoding cannot see, said next to its key rather than in a footnote. */
+.caveat {
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+  margin: var(--s3) 0 var(--s3);
+  max-width: 92ch;
 }
 
 .scroll {
   overflow-x: auto;
-  padding-bottom: 4px;
+  padding-bottom: var(--s1);
 }
 
 .node {
   cursor: pointer;
 }
 
+/* Darken on hover, not brighten. The old rule raised brightness by a quarter, which on
+   dark boxes read as a highlight and on pale ones washes them out to white. */
 .node:hover rect:first-of-type {
-  filter: brightness(1.25);
+  filter: brightness(0.955);
 }
 
 .chw {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text);
-  background: var(--panel-2);
-  border-left: 3px solid var(--warn);
-  padding: 8px 11px;
-  margin: 10px 0 0;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--ink);
+  background: var(--caution-wash);
+  border-left: 3px solid var(--caution);
+  border-radius: var(--r1);
+  padding: var(--s3) var(--s4);
+  margin: var(--s3) 0 0;
+  max-width: 92ch;
 }
 
-.legend {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-  padding-top: 9px;
-  border-top: 1px solid var(--line);
+.chw strong {
+  font-weight: var(--w-semi);
 }
 
-.key {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: var(--muted);
+.coverage {
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  margin: var(--s3) 0 0;
 }

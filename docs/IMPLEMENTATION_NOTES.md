@@ -10801,3 +10801,117 @@ which, and both directions occur in this database.
 START HERE: `web/src/components/SummaryStrip.tsx` — the bridge function at the top is both
 the point of the screen and the one piece of arithmetic on it that had to be rewritten
 after meeting real data.
+
+## Demo Phase R, Checkpoint R5 — The building
+
+### What we did
+
+The drawing of the building now answers one question at a time, and says which question
+it is answering.
+
+It used to answer four at once. The colour inside each box was the machine's condition,
+the colour AND thickness of its border was how far today's readings had wandered from
+normal, a row of coloured dots in the corner was what kind of fault had been blamed, and
+the lines between boxes were the flow of water and air. Four separate meanings riding one
+shape — with a key covering two of the four, in small grey text, placed underneath the
+picture. A reader had to be taught all of that before the drawing meant anything, and the
+teaching was below the point where most people stop scrolling.
+
+There is now a switch above the drawing offering three questions in plain words: how much
+life is left in each machine, which readings have moved away from normal today, and where
+a technician would be sent and carrying what. Whichever one is chosen is the colour inside
+the box, the border is just the box's outline, and the key for that question sits above
+the picture rather than below it. Nothing was taken away — all three are one click apart,
+and clicking any machine still shows every channel at once for that machine.
+
+Clicking a machine used to open a panel below the drawing, so the thing you had just
+clicked scrolled out of view. The panel now sits beside the drawing and stays there.
+
+One inherited claim turned out to be false. The paragraph under the old drawing stated
+that this building has a fitted baseline for "six of its hundred and seven readings".
+Checked against the running system it is a hundred and nine readings, of which four carry
+a baseline at the moment under test. Both numbers were wrong and nothing could have caught
+it, because both were written into a sentence. They are now counted from the data each
+time the picture is drawn.
+
+### How it works
+
+`web/src/lib/twin-layout.ts` :: Encoding and ENCODINGS
+  WHY IT EXISTS: Names the three questions the drawing can answer, and — the part that
+    matters — states each as a question rather than as a label. "Drift" is a word a reader
+    either knows or does not; "which readings have moved away from normal today" is
+    something anybody can decide whether they want to see.
+  WHAT IT DOES: Three entries, each with an identifier, a one-word switch label, and the
+    question it answers. The switch shows the label; the line under the heading shows the
+    question for whichever is selected.
+
+`web/src/lib/twin-layout.ts` :: paintFor(encoding, box)
+  WHY IT EXISTS: Resolves the one colour a box is drawn in. Having exactly one function
+    decide this is what stops the four-channels-at-once problem coming back.
+  WHAT IT DOES: For condition, takes the machine's condition band. For drift, takes the
+    drift band, or the unknown colour where no reading on that node has a baseline. For
+    blame, takes the colour of the first open fault class, or the unknown colour where
+    nothing is open.
+  CHOICES: A machine carrying advisories of two different classes takes the first rather
+    than a blend. A blended colour would be a fifth class that means nothing, and the
+    inspector lists all of them anyway.
+  CHOICES: Absent drift takes the same grey as "not scored", deliberately. Null drift is
+    not a claim that the node is fine, it is the absence of anyone measuring, and those
+    two should look identical because they are both "nothing is being said here".
+
+`web/src/lib/twin-layout.ts` :: metricFor(encoding, box)
+  WHY IT EXISTS: Each box used to print three lines of text — its name at eleven pixels,
+    its health at nine and a half, its reading count at nine. The lower two were below the
+    size at which text is readable at arm's length, and two of the three were about
+    channels the reader was not currently looking at.
+  WHAT IT DOES: Returns the single figure relevant to the current question, already
+    formatted: days remaining or a health score, a drift figure in standard deviations, or
+    the fault classes open on that machine. Returns nothing for a water loop, which is a
+    path rather than a machine and has no state of its own to report.
+  CHOICES: Remaining life is preferred over health where both exist, because "fails in
+    three weeks" is a stronger statement than "scores sixty-one".
+
+`web/src/lib/twin-layout.ts` :: keyFor(encoding, coverage)
+  WHY IT EXISTS: Builds the key AND the sentence saying what this particular encoding
+    cannot see. Each of the three is grey for a different reason and a single generic
+    caption could not explain any of them.
+  CHOICES: Every figure in the drift caveat is counted from the data in front of it rather
+    than written into the sentence. This is the direct consequence of finding the previous
+    sentence asserting two numbers that were both wrong.
+
+`web/src/components/DigitalTwin.tsx` :: DigitalTwin
+  CHANGED FROM BEFORE: Took five props and drew four encodings. Now takes an optional
+    encoding and an optional handler for changing it, and draws one.
+  CHOICES: Both new props are optional with a default. The verification script renders
+    this component outside a browser and would otherwise have to be taught about a switch
+    that cannot exist there; with a default it keeps rendering exactly the drawing it
+    always did.
+  ⚠ JUDGEMENT CALL: The key's colour swatches are plain elements rather than inline SVG.
+    They were inline SVG rectangles, which was harmless while the key sat below the
+    diagram — but the verification script extracts the picture by slicing from the FIRST
+    "<svg" in the rendered markup, so moving the key above it would have silently
+    truncated the written-out file to a single twelve-pixel square. Nothing would have
+    failed; the file would just have quietly stopped being the drawing.
+
+`web/src/components/DigitalTwin.tsx` :: tooltip(box)
+  WHY IT EXISTS: Holds everything the box stopped printing, for a reader who wants it
+    without opening the inspector.
+  CHOICES: Assembled into ONE string rather than written as several expressions inside the
+    tooltip element. An SVG title may contain only a single text node; the first version
+    was built from five expressions, React warned about it, and a browser given several
+    renders the comment markup between them as visible text inside the tooltip.
+
+`web/src/components/DigitalTwin.module.css` :: .node:hover
+  CHANGED FROM BEFORE: Raised brightness by a quarter on hover. That reads as a highlight
+    on a dark box and washes a pale one out towards white, so it now darkens very slightly
+    instead.
+
+`web/src/screens/Twin.tsx` and `Twin.module.css` :: the split layout
+  CHANGED FROM BEFORE: The inspector was rendered after the drawing, so opening it pushed
+    the drawing up and off the screen. It now sits in a second column, stays put while the
+    page scrolls, and drops back underneath on a window too narrow to hold both.
+  CHOICES: The encoding is held by the screen rather than inside the drawing, so it
+    survives the clock moving and the state being refetched underneath it.
+
+START HERE: `web/src/lib/twin-layout.ts` — the three small functions near the top decide
+what the picture says, and the component below them only draws what they return.

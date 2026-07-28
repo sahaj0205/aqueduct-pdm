@@ -86,6 +86,21 @@ export const CLASS = {
   ambiguous: inkMuted,
 } as const;
 
+/**
+ * The same four fault classes as a fill, a border and a text colour.
+ *
+ * Needed because the building drawing can be painted by blame as well as by condition,
+ * and a drawn node is a tinted box with a saturated border rather than a solid colour —
+ * see NODE above for why. CLASS on its own gives only the saturated value, which is
+ * correct for a badge and far too loud for a box the size of a machine.
+ */
+export const CLASS_PAINT = {
+  sensor: { fill: infoWash, stroke: info, text: infoInk },
+  equipment: { fill: "#ffedd5", stroke: "#c2410c", text: "#7c2d12" },
+  control: { fill: "#ede9fe", stroke: "#6d28d9", text: "#4c1d95" },
+  ambiguous: { fill: sunken, stroke: hairlineStrong, text: inkMuted },
+} as const;
+
 /** Chart furniture: the parts of a plot that are not data and must not read as data. */
 export const CHART = {
   /** The plot area itself. */

@@ -1,0 +1,37 @@
+/* Drawing and inspector together, so clicking a node does not scroll the node you
+   clicked out of view. */
+
+.full {
+  display: block;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  gap: var(--s4);
+  align-items: start;
+}
+
+.drawing {
+  min-width: 0; /* without this the wide diagram refuses to let its column shrink */
+}
+
+.aside {
+  position: sticky;
+  top: var(--s8);
+  max-height: calc(100vh - var(--s8) - var(--s5));
+  overflow-y: auto;
+}
+
+/* Below this the two columns would each be too narrow to be worth having, so the
+   inspector goes back under the drawing. */
+@media (max-width: 1080px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .aside {
+    position: static;
+    max-height: none;
+  }
+}

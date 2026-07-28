@@ -88,6 +88,9 @@ export function NodeInspector({ node, state, onClose }: Props) {
         </p>
       ) : (
         <>
+          {/* Six columns of numbers in a 400px side panel. The table scrolls inside
+              itself rather than forcing the column it sits in to widen. */}
+          <div className={styles.scroll}>
           <table className={styles.table}>
             <thead>
               <tr>
@@ -141,6 +144,7 @@ export function NodeInspector({ node, state, onClose }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
           <p className={styles.note}>
             <strong>{withBaseline.length} of {rows.length}</strong> readings here carry a
             fitted expectation. <em>now</em> is an hourly average; <em>sample</em> is the

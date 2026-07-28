@@ -18,20 +18,31 @@
  * how far down the flow a node sits — which is deterministic, identical on every load,
  * and is the property that argument actually needs.
  *
- * THREE CHANNELS, THREE DIFFERENT QUESTIONS, and they must not be collapsed:
+ * THREE QUESTIONS, ASKED ONE AT A TIME. This drawing answers three different things:
  *
- *   fill    condition — remaining life if the model will bound one, else health.
- *           The slow-moving fact about the machine.
- *   border  drift — how far this node's readings have moved from what a fitted
- *           baseline expects. The fast-moving symptom. ABSENT on most nodes, because
- *           only six of a hundred and seven readings have a baseline at all.
- *   badge   what kind of fault: sensor, equipment, control. What decides which van
- *           goes out.
+ *   condition  remaining life if the model will bound one, else health. The slow-moving
+ *              fact about the machine.
+ *   drift      how far this node's readings have moved from what a fitted baseline
+ *              expects. The fast-moving symptom, and ABSENT on most nodes, because only
+ *              six of a hundred and seven readings have a baseline at all.
+ *   blame      sensor, equipment or control — what decides which van goes out.
  *
- * A node with a green fill and a red border is a machine in good condition doing
- * something odd today. A node with a red fill and no border is one whose condition is
- * known to be bad and whose drift nobody can measure. Those are different situations
- * and one colour could not say both.
+ * THEY USED TO BE DRAWN SIMULTANEOUSLY, and that was the mistake this checkpoint
+ * corrects. Condition was the fill, drift was the border thickness and colour, blame was
+ * a row of coloured dots in the corner, and the direction of flow was the edges — four
+ * encodings riding one shape, with a legend for two of them placed underneath the
+ * picture. The reasoning was that a green box with a red border says something a single
+ * colour cannot, which is true, and irrelevant to a reader who has not been told that
+ * borders mean drift and is not going to work it out from a legend they scroll past.
+ *
+ * So the caller picks one. The fill carries whichever question is being asked, the
+ * border is just the node's outline, and the legend for that one encoding sits ABOVE the
+ * drawing where it is read before the picture rather than after it. Switching is one
+ * click, and the three states are still all reachable — just never at once.
+ *
+ * `condition`, `drift` and `classes` remain on every box regardless of which encoding is
+ * showing, because scripts/verify-twin.ts asserts against them and those assertions are
+ * about the data being honest, not about which one is currently painted.
  */
 
 import type {
@@ -41,8 +52,43 @@ import type {
   TwinState,
   TwinTopology,
 } from "../types.ts";
+import { CLASS_PAINT } from "../design/palette.ts";
 import { COLOURS, conditionBand, driftBand } from "./format.ts";
 import type { NodeState } from "./format.ts";
+
+/** Which of the three questions the drawing is currently answering. */
+export type Encoding = "condition" | "drift" | "blame";
+
+/** A resolved fill, border and text colour for one box under one encoding. */
+export interface Paint {
+  fill: string;
+  stroke: string;
+  text: string;
+}
+
+/**
+ * The three encodings, each stated as the question it answers rather than as its name.
+ *
+ * "Drift" is a label; "which readings have moved away from normal today" is something a
+ * reader can decide whether they want. The switch above the drawing shows both.
+ */
+export const ENCODINGS: { id: Encoding; label: string; question: string }[] = [
+  {
+    id: "condition",
+    label: "Condition",
+    question: "How much life is left in each machine?",
+  },
+  {
+    id: "drift",
+    label: "Drift",
+    question: "Which readings have moved away from normal today?",
+  },
+  {
+    id: "blame",
+    label: "Blame",
+    question: "Where would a technician be sent, and carrying what?",
+  },
+];
 
 export interface TwinBox {
   id: string;
@@ -53,10 +99,18 @@ export interface TwinBox {
   y: number;
   w: number;
   h: number;
-  /** Fill: condition. Never null — "unknown" is a state, not an absence. */
+  /** Condition. Never null — "unknown" is a state, not an absence. */
   condition: NodeState;
-  /** Border: drift. Null where no reading on this node has a fitted baseline. */
+  /** Drift. Null where no reading on this node has a fitted baseline. */
   drift: NodeState | null;
+  /** The colours to actually draw with, resolved for whichever encoding is showing. */
+  paint: Paint;
+  /**
+   * The one figure worth printing inside the box under the current encoding, already
+   * formatted. Null on nodes the question does not apply to — a water loop has no
+   * condition because it is a path rather than a machine.
+   */
+  metric: string | null;
   health: number | null;
   rulDays: number | null;
   peakSigma: number | null;
@@ -87,9 +141,30 @@ export interface TwinPicture {
    * cross-asset layer and nothing else on the dashboard shows it as a path.
    */
   chwActive: { cause: string; symptom: string; note: string } | null;
-  legend: { state: NodeState; label: string }[];
-  /** Stated on the drawing, because a mostly-grey picture must say why it is grey. */
-  coverage: { withBaseline: number; reporting: number; nodes: number };
+  /** The key for the encoding currently showing, carrying its own colours. */
+  legend: { paint: Paint; label: string }[];
+  /**
+   * One sentence saying what the current encoding can and cannot see, placed with the
+   * legend above the drawing. A mostly-grey picture has to say why it is grey or it
+   * reads as a broken feed, and each encoding is grey for a different reason.
+   */
+  caveat: string;
+  /**
+   * Stated on the drawing, because a mostly-grey picture must say why it is grey.
+   *
+   * `pointsWithBaseline` and `pointsTotal` are counted rather than quoted. The paragraph
+   * this replaced asserted "six of its hundred and seven readings" as a fixed sentence;
+   * checked against the running API it is a hundred and nine readings with four carrying
+   * a baseline at the moment under test, so the sentence had been wrong on both numbers
+   * for some time and nothing could have caught it.
+   */
+  coverage: {
+    withBaseline: number;
+    reporting: number;
+    nodes: number;
+    pointsWithBaseline: number;
+    pointsTotal: number;
+  };
 }
 
 const BOX = { w: 128, h: 46 };
@@ -165,10 +240,115 @@ export function columnsOf(topology: TwinTopology): Map<string, number> {
   return adjusted;
 }
 
+/** What the box is filled with, for one encoding. Fill is the ONLY channel carrying it. */
+function paintFor(
+  encoding: Encoding,
+  box: {
+    kind: TwinBox["kind"];
+    condition: NodeState;
+    drift: NodeState | null;
+    classes: FaultClass[];
+  },
+): Paint {
+  if (encoding === "drift") {
+    // Null drift is not "fine", it is "nobody is measuring this here", and it takes the
+    // unknown colour for exactly that reason.
+    return COLOURS[box.drift ?? "unknown"];
+  }
+  if (encoding === "blame") {
+    // A machine can carry advisories of more than one class. The first is taken rather
+    // than blending them, because a blended colour would be a fifth class that means
+    // nothing, and the inspector lists all of them anyway.
+    const first = box.classes[0];
+    return first ? CLASS_PAINT[first] : COLOURS.unknown;
+  }
+  return COLOURS[box.condition];
+}
+
+/** The one figure worth printing inside the box, for one encoding. */
+function metricFor(
+  encoding: Encoding,
+  box: {
+    kind: TwinBox["kind"];
+    health: number | null;
+    rulDays: number | null;
+    peakSigma: number | null;
+    classes: FaultClass[];
+  },
+): string | null {
+  if (box.kind === "loop") return null; // a path, not a machine — no state of its own
+
+  if (encoding === "drift") {
+    if (box.peakSigma !== null) return `${box.peakSigma.toFixed(1)}σ`;
+    return "no baseline";
+  }
+  if (encoding === "blame") {
+    if (box.classes.length === 0) return "nothing open";
+    return box.classes.join(" + ");
+  }
+  if (box.kind !== "equipment") return "not a machine";
+  // Remaining life is preferred where it exists because "fails in three weeks" is a
+  // stronger statement than "scores 61".
+  if (box.rulDays !== null) return `${Math.round(box.rulDays)}d left`;
+  if (box.health !== null) return `${box.health}/100`;
+  return "not scored";
+}
+
+/** The key for one encoding, and the honest sentence about what it cannot see. */
+function keyFor(
+  encoding: Encoding,
+  coverage: TwinPicture["coverage"],
+): { legend: TwinPicture["legend"]; caveat: string } {
+  if (encoding === "drift") {
+    return {
+      legend: [
+        { paint: COLOURS.healthy, label: "within 2σ of normal" },
+        { paint: COLOURS.degrading, label: "2σ to 3σ out" },
+        { paint: COLOURS.critical, label: "beyond 3σ" },
+        { paint: COLOURS.unknown, label: "no fitted baseline" },
+      ],
+      // Every figure counted from the data in front of it. See the note on `coverage`.
+      caveat:
+        `Drift needs a baseline fitted from healthy operation, and at this moment ` +
+        `${coverage.pointsWithBaseline} of ${coverage.pointsTotal} readings carry one — ` +
+        `so ${coverage.withBaseline} of ${coverage.nodes} nodes can say anything at all ` +
+        `here. Grey means nothing is being claimed, not that everything is fine.`,
+    };
+  }
+  if (encoding === "blame") {
+    return {
+      legend: [
+        { paint: CLASS_PAINT.sensor, label: "the instrument is wrong" },
+        { paint: CLASS_PAINT.equipment, label: "the machine is wrong" },
+        { paint: CLASS_PAINT.control, label: "the logic driving them is wrong" },
+        { paint: CLASS_PAINT.ambiguous, label: "the evidence cannot separate them" },
+        { paint: COLOURS.unknown, label: "nothing open here" },
+      ],
+      caveat:
+        `Which van goes out. An instrument fault needs a calibration kit and a machine ` +
+        `fault needs a wrench, and on the same reported symptom the two differ by more ` +
+        `than three times in cost. Only machines with an open job are coloured.`,
+    };
+  }
+  return {
+    legend: [
+      { paint: COLOURS.healthy, label: "in condition" },
+      { paint: COLOURS.degrading, label: "degrading" },
+      { paint: COLOURS.critical, label: "critical" },
+      { paint: COLOURS.unknown, label: "not scored" },
+    ],
+    caveat:
+      `Coloured by remaining life where the model will bound one, otherwise by health. ` +
+      `Rooms and water loops are always grey: a room is a space and a loop is a path, ` +
+      `and neither has a condition of its own to report.`,
+  };
+}
+
 export function buildTwin(
   topology: TwinTopology,
   state: TwinState | null,
   advisories: AdvisorySummary[],
+  encoding: Encoding = "condition",
 ): TwinPicture {
   const columns = columnsOf(topology);
 
@@ -195,6 +375,10 @@ export function buildTwin(
   const boxes: TwinBox[] = [];
   let withBaseline = 0;
   let reportingTotal = 0;
+  // Counted per READING as well as per node, because "one node can show drift" and "four
+  // readings carry a baseline" are different facts and the caveat needs both.
+  let pointsWithBaseline = 0;
+  let pointsTotal = 0;
 
   const orderedColumns = [...byColumn.keys()].sort((a, b) => a - b);
   const tallest = Math.max(...orderedColumns.map((c) => byColumn.get(c)!.length), 1);
@@ -213,24 +397,21 @@ export function buildTwin(
       let peak: number | null = null;
       let reporting = 0;
       for (const point of node.points) {
+        pointsTotal += 1;
         const live = point.point_id ? state?.points[point.point_id] : undefined;
         if (live?.value !== undefined && live.value !== null) reporting += 1;
         if (live?.sigma !== undefined && live.sigma !== null) {
+          pointsWithBaseline += 1;
           peak = peak === null ? live.sigma : Math.abs(live.sigma) > Math.abs(peak) ? live.sigma : peak;
         }
       }
       if (peak !== null) withBaseline += 1;
       reportingTotal += reporting;
 
-      boxes.push({
-        id: node.node_id,
-        label: node.label,
-        brickClass: node.brick_class,
-        assetId: node.asset_id,
-        x: PAD.x + column * (BOX.w + GAP.x),
-        y: PAD.y + offset + row * (BOX.h + GAP.y),
-        w: BOX.w,
-        h,
+      // Resolved before the box is assembled, because the paint and the printed figure
+      // are both functions of these three and of which question is being asked.
+      const facts = {
+        kind,
         // CONDITION IS FOR MACHINES ONLY. Every one of the five occupied rooms maps to
         // the same database asset as the air handler that serves them, because that is
         // where their thermometers live -- so colouring by asset would paint five
@@ -241,18 +422,31 @@ export function buildTwin(
         condition:
           kind === "equipment"
             ? conditionBand(asset?.rul_p50 ?? null, asset?.health ?? null)
-            : "unknown",
+            : ("unknown" as NodeState),
         drift: driftBand(peak),
         health: scored?.health ?? null,
         rulDays: scored?.rul_p50 ?? null,
         peakSigma: peak,
+        classes: classesFor(node.asset_id),
+      };
+
+      boxes.push({
+        id: node.node_id,
+        label: node.label,
+        brickClass: node.brick_class,
+        assetId: node.asset_id,
+        x: PAD.x + column * (BOX.w + GAP.x),
+        y: PAD.y + offset + row * (BOX.h + GAP.y),
+        w: BOX.w,
+        h,
+        ...facts,
+        paint: paintFor(encoding, facts),
+        metric: metricFor(encoding, facts),
         pointCount: node.points.length,
         reporting,
-        classes: classesFor(node.asset_id),
         advisories: node.asset_id
           ? advisories.filter((a) => a.asset_id === node.asset_id).length
           : 0,
-        kind,
       });
     });
   }
@@ -300,24 +494,16 @@ export function buildTwin(
   const width = PAD.x * 2 + (orderedColumns.length) * (BOX.w + GAP.x);
   const height = PAD.y * 2 + tallest * (BOX.h + GAP.y);
 
-  return {
-    width,
-    height,
-    boxes,
-    edges,
-    chwActive,
-    legend: [
-      { state: "healthy", label: "in condition" },
-      { state: "degrading", label: "degrading" },
-      { state: "critical", label: "critical" },
-      { state: "unknown", label: "not scored" },
-    ],
-    coverage: {
-      withBaseline,
-      reporting: reportingTotal,
-      nodes: boxes.length,
-    },
+  const coverage = {
+    withBaseline,
+    reporting: reportingTotal,
+    nodes: boxes.length,
+    pointsWithBaseline,
+    pointsTotal,
   };
+  const { legend, caveat } = keyFor(encoding, coverage);
+
+  return { width, height, boxes, edges, chwActive, legend, caveat, coverage };
 }
 
 export { COLOURS };

@@ -1,93 +1,134 @@
+/* The instruments on one node. Sits beside the drawing now rather than under it, so it
+   is narrow and its table has to survive being narrow. */
+
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 13px 15px 14px;
-  margin-bottom: 18px;
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  box-shadow: var(--lift-2);
+  padding: var(--s4);
+  margin-bottom: var(--s5);
 }
 
 .head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
 }
 
 .head h3 {
-  font-size: 14px;
+  font-size: var(--t-title);
+  font-weight: var(--w-semi);
   margin: 0 0 2px;
+  color: var(--ink);
 }
 
 .muted {
-  font-size: 11.5px;
-  color: var(--faint);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  line-height: var(--lh-body);
 }
 
 .close {
-  font-size: 11.5px;
-  padding: 4px 10px;
-  background: var(--panel-2);
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 3px;
+  font-size: var(--t-micro);
+  padding: var(--s1) var(--s3);
+  background: var(--raised);
+  color: var(--ink-muted);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r1);
   cursor: pointer;
+  flex-shrink: 0;
+}
+
+.close:hover {
+  border-color: var(--hairline-strong);
+  color: var(--ink);
 }
 
 .condition {
   display: flex;
-  gap: 18px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: var(--text);
-  background: var(--panel-2);
-  border-radius: 3px;
-  padding: 8px 11px;
-  margin-bottom: 11px;
+  flex-direction: column;
+  gap: var(--s1);
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: var(--ink);
+  background: var(--sunken);
+  border-radius: var(--r1);
+  padding: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.condition strong {
+  font-family: var(--mono);
+  font-weight: var(--w-semi);
+}
+
+/* Nine columns of numbers in a 400px panel: it scrolls inside itself rather than
+   stretching the column it lives in. */
+.scroll {
+  overflow-x: auto;
+  margin: 0 calc(var(--s4) * -1);
+  padding: 0 var(--s4);
 }
 
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--t-micro);
 }
 
 .table th {
   text-align: left;
-  font-size: 10px;
-  letter-spacing: 0.07em;
+  font-size: var(--t-micro);
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
-  color: var(--faint);
-  font-weight: 500;
-  padding: 0 8px 5px 0;
-  border-bottom: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-weight: var(--w-semi);
+  padding: 0 var(--s2) var(--s1) 0;
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
 }
 
 .table td {
-  padding: 6px 8px 6px 0;
-  border-bottom: 1px solid var(--line);
+  padding: var(--s2) var(--s2) var(--s2) 0;
+  border-bottom: 1px solid var(--hairline);
   vertical-align: top;
+  color: var(--ink);
 }
 
 .r {
   text-align: right;
   font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .sub {
-  font-size: 10.5px;
-  color: var(--faint);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
   font-family: var(--mono);
   margin-top: 2px;
 }
 
-.warn { color: var(--warn); }
-.bad { color: var(--bad); }
+.warn {
+  color: var(--caution);
+}
+
+.bad {
+  color: var(--alarm);
+}
 
 .note {
-  font-size: 11.5px;
-  line-height: 1.55;
-  color: var(--muted);
-  margin: 10px 0 0;
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+  margin: var(--s3) 0 0;
   max-width: 78ch;
+}
+
+.note strong {
+  color: var(--ink);
+  font-weight: var(--w-semi);
 }

@@ -5,6 +5,8 @@ import { DigitalTwin } from "../components/DigitalTwin.tsx";
 import { NodeInspector } from "../components/NodeInspector.tsx";
 import { ScreenHead } from "../design/ScreenHead.tsx";
 import { Term } from "../design/Term.tsx";
+import type { Encoding } from "../lib/twin-layout.ts";
+import styles from "./Twin.module.css";
 import type { AdvisorySummary, TwinState, TwinTopology } from "../types.ts";
 
 /**
@@ -29,6 +31,9 @@ export function Twin({ at, advisories }: Props) {
   const [state, setState] = useState<TwinState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  // Which of the three questions the drawing is answering. Held here rather than inside
+  // the drawing so it survives the clock moving and the state being refetched.
+  const [encoding, setEncoding] = useState<Encoding>("condition");
 
   useEffect(() => {
     let cancelled = false;
@@ -103,16 +108,27 @@ export function Twin({ at, advisories }: Props) {
         Where each fault sits in the plant
       </ScreenHead>
 
-      <DigitalTwin
-        topology={topology}
-        state={state}
-        advisories={advisories ?? []}
-        selected={selected}
-        onSelect={setSelected}
-      />
-      {node && (
-        <NodeInspector node={node} state={state} onClose={() => setSelected(null)} />
-      )}
+      {/* Drawing and inspector side by side rather than stacked. Clicking a node used to
+          open a panel below the fold, so the picture you had just clicked scrolled out
+          of view and the connection between the two was lost. */}
+      <div className={node ? styles.split : styles.full}>
+        <div className={styles.drawing}>
+          <DigitalTwin
+            topology={topology}
+            state={state}
+            advisories={advisories ?? []}
+            selected={selected}
+            onSelect={setSelected}
+            encoding={encoding}
+            onEncoding={setEncoding}
+          />
+        </div>
+        {node && (
+          <aside className={styles.aside}>
+            <NodeInspector node={node} state={state} onClose={() => setSelected(null)} />
+          </aside>
+        )}
+      </div>
     </>
   );
 }
