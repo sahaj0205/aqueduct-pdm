@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { api } from "../api.ts";
 import { DigitalTwin } from "../components/DigitalTwin.tsx";
 import { NodeInspector } from "../components/NodeInspector.tsx";
+import { ScreenHead } from "../design/ScreenHead.tsx";
+import { Term } from "../design/Term.tsx";
 import type { AdvisorySummary, TwinState, TwinTopology } from "../types.ts";
 
 /**
@@ -77,6 +79,30 @@ export function Twin({ at, advisories }: Props) {
 
   return (
     <>
+      <ScreenHead
+        sub={
+          <>
+            Heat flows left to right: the <Term id="cooling-tower">cooling towers</Term>{" "}
+            throw it away, the <Term id="chiller">chillers</Term> make cold water, the{" "}
+            <Term id="air-handler">air handler</Term> blows cooled air into the rooms.
+            Click any box for the instruments attached to it.
+          </>
+        }
+        why={
+          <>
+            Nothing in this drawing is written into the frontend. Every box, every
+            connection and every instrument comes from the building&rsquo;s semantic
+            model — a machine-readable description of what is plumbed to what, in a
+            standard vocabulary for building systems, see{" "}
+            <Term id="brick-class">Brick class</Term>. A building with a sixth room gets
+            a sixth box with no code change, and a rule written for this air handler
+            applies to a machine nobody has seen yet.
+          </>
+        }
+      >
+        Where each fault sits in the plant
+      </ScreenHead>
+
       <DigitalTwin
         topology={topology}
         state={state}

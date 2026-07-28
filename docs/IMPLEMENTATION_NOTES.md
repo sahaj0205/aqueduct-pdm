@@ -10450,3 +10450,140 @@ those convert as each file is rebuilt in R5 to R8.
 
 START HERE: `web/src/design/tokens.css` — every other file in this checkpoint either
 defines a value that belongs there or consumes one.
+
+## Demo Phase R, Checkpoint R2 — Plain-language names and the story order
+
+### What we did
+
+Every screen in the dashboard was renamed to something a person can understand without
+knowing how the system is built, the screens were put into the order of the argument
+rather than the order of the codebase, and each one now opens by stating what it claims.
+
+Six of the seven screens were named after the internal machinery that produces them —
+Twin, Engine, Diagnosis, Prediction, Reveal, Configuration. Those are architecture words
+promoted to the top of the interface. Somebody arriving cold could not tell what any of
+them would show, so the only way to find out was to open all seven and read. "Engine" is
+now "How we know", which is less a rename than an admission of what that screen was
+always for.
+
+The order was also wrong. It ran roughly along the layers of the codebase, which is
+useful to the person who wrote it and to nobody else. Read left to right the tabs now
+make a case: something is wrong, here is where it sits, here is how we know, here is
+which kind of fault it is, here is how long it has, here are the rules we judged it by —
+and only at the end, set apart, here is what was actually broken.
+
+Each screen also gained a headline, in the largest text on that screen, stating what it
+is claiming rather than what it is called. Where a headline carries a number, that number
+comes from the data and moves with the clock. Three screens used to begin with a
+paragraph of explanation; that text is still there, folded shut behind a marker beside
+the headline, so the screen leads with its finding instead of with a lesson.
+
+No number, no calculation and no piece of data changed.
+
+### How it works
+
+`web/src/design/ScreenHead.tsx` :: ScreenHead
+  WHY IT EXISTS: The first rule of this redesign is that every screen states what you are
+    looking at before it shows you anything. Previously a screen opened with its internal
+    name at fifteen pixels, which tells a reader who already knows the system nothing new
+    and everyone else nothing at all.
+  WHAT IT DOES: Renders the claim at the display size, an optional supporting line under
+    it, and — opposite rather than below — an optional folded explanation.
+  CHOICES: The claim is capped at twenty-two characters of width so it breaks into two or
+    three short lines rather than running as one long ruler across a wide monitor.
+  CHOICES: The disclosure sits opposite the headline, not under it, so opening it never
+    pushes the screen's content down the page and never moves what the reader was
+    pointing at.
+  ⚠ JUDGEMENT CALL: A headline is a claim, not a noun. "Configuration" is a filing label;
+    "Every number in this system, and why it is that number" is an assertion the screen
+    then has to make good on. Writing the headline first is what forces each screen to
+    have a point, and two screens' headlines were rewritten once it became clear the old
+    name was hiding the fact that the screen did not have one.
+
+`web/src/components/NavTabs.tsx` :: TABS and ANSWER
+  WHY IT EXISTS: The switcher between screens, and the first thing anybody reads.
+  WHAT IT DOES: Six operator screens in the order of the argument, then a spacer, then
+    the answer key on its own past a divider. Every tab carries a one-line hint on hover,
+    but the label has to stand on its own — the hint is never required reading.
+  CHANGED FROM BEFORE: Labels were Operations, Twin, Engine, Diagnosis, Prediction,
+    Reveal, Configuration, in that order, with a flag for screens not yet built. All
+    seven are built, so the flag went; all seven are renamed; the order is now the
+    argument.
+  ⚠ JUDGEMENT CALL: The answer key is pushed to the far end behind a divider rather than
+    sitting in the run of operator screens. It is served by a different process on a
+    different credential and it gives the game away, so the visual separation is an
+    honest signal that it is a different kind of thing. The alternative — leaving it
+    seventh in the row — made it look like one more screen of findings.
+
+`web/src/components/NavTabs.module.css` :: the tab row
+  CHANGED FROM BEFORE: A joined segmented control of filled boxes. That read well on a
+    dark page; on paper it puts seven grey blocks across the top of every screen, heavier
+    than the content beneath. Now underline tabs, which spend almost no ink and still say
+    exactly where you are. The row scrolls sideways rather than wrapping, so it never
+    becomes two rows and shifts the whole page down.
+
+`web/src/App.tsx` :: MOVED
+  WHY IT EXISTS: The paths were renamed alongside the tabs, because a URL is read aloud
+    during a demonstration and sits in the address bar of a shared screen, where "/engine"
+    tells a viewer as little as it did on the tab.
+  WHAT IT DOES: Maps each old path to its new one. Every entry is turned into a redirect
+    route, so a link somebody saved last week still lands on the right screen instead of
+    bouncing to the queue.
+  CHOICES: The component files were deliberately NOT renamed — `screens/Engine.tsx` still
+    renders "How we know". Renaming seven files and their imports would be a large diff
+    with no visible effect whatever. This table is instead the single documented place
+    that maps an internal name to the name a viewer sees.
+
+The seven screens, in the order the tabs now run:
+
+`screens/Operations.tsx` :: the headline
+  WHAT IT DOES: Reads how many advisories are open and says so — "6 things need
+    attention", or "Nothing needs attention right now", or just "What needs doing" before
+    the data has arrived. Singular and plural are both handled.
+  CHOICES: The number is passed from the data and never written into the string. The
+    clock moves and this number moves with it; a headline reading "six" above a queue
+    showing two is worse than no headline at all.
+
+`screens/Twin.tsx` :: the headline
+  WHAT IT DOES: "Where each fault sits in the plant", with a supporting line that names
+    the direction heat travels — towers throw it away, chillers make cold water, the air
+    handler blows cooled air at the rooms — and tells the reader that boxes are
+    clickable. All three pieces of equipment are defined terms.
+
+`screens/Engine.tsx` :: the headline
+  CHANGED FROM BEFORE: Opened with "The engine" and then a six-line paragraph. Now
+    "Everything the system threw away, and why", with one line of direction — read
+    downwards — and the paragraph folded into the disclosure.
+
+`screens/Diagnosis.tsx` :: Head
+  WHY IT EXISTS: Defined as its own small component because the screen has a loading
+    state and a loaded state, and a screen that has no title until its data arrives looks
+    broken for the half second before it does.
+  WHAT IT DOES: Renders "One symptom. Two causes. N× apart." where N is the cost ratio
+    the API computed, falling back to "One symptom, two causes" while loading.
+  CHOICES: The ratio was 3.16 the last time anybody looked, and writing that into the
+    string would leave the headline asserting a figure the tables below it had quietly
+    stopped agreeing with.
+
+`screens/Prediction.tsx` :: the headline
+  CHANGED FROM BEFORE: "Prediction". Now "How long it has left, and how sure we are",
+    with the supporting line making the point the screen exists to make — never a single
+    date, always a range, and the range narrows as evidence arrives.
+
+`screens/Configuration.tsx` :: the headline
+  CHANGED FROM BEFORE: "Configuration" plus a seven-line paragraph. Now "Every number in
+    this system, and why it is that number", with one line telling the reader that rows
+    are clickable, and the whole justification — the not-null constraint, rows versus
+    code, the one failure mode that cannot be measured in this building — folded away.
+
+`screens/Reveal.tsx` :: the headline
+  WHAT IT DOES: "What was actually broken" in both the gated state and the revealed one.
+    The gated state's supporting line is the tease — everything elsewhere was worked out
+    from readings alone, this is the marking scheme. The revealed state's line carries the
+    date the clock is standing at.
+  CHANGED FROM BEFORE: The gate's own heading said "This is the answer", which gave away
+    in the heading what the button underneath existed to offer. It now says it is worth
+    forming a view on the other screens first, which is the actual instruction.
+
+START HERE: `web/src/components/NavTabs.tsx` — the order of that list is the argument the
+whole dashboard is now arranged to make.

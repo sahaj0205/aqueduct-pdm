@@ -1,0 +1,52 @@
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s5);
+  margin: var(--s5) 0 var(--s5);
+}
+
+.text {
+  min-width: 0;
+}
+
+/* The largest type on the screen, and the only thing at this size. If a second element
+   competes with it, one of the two is not the point of the screen. */
+.claim {
+  margin: 0;
+  font-size: var(--t-display);
+  font-weight: var(--w-semi);
+  line-height: var(--lh-display);
+  letter-spacing: var(--track-display);
+  color: var(--ink);
+  text-wrap: balance;
+  max-width: 22ch;
+}
+
+.sub {
+  margin: var(--s3) 0 0;
+  max-width: 62ch;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+}
+
+/* The disclosure sits opposite the headline rather than under it, so that opening it
+   never pushes the screen's content down the page. */
+.aside {
+  position: relative;
+  flex-shrink: 0;
+  padding-top: var(--s2);
+}
+
+@media (max-width: 700px) {
+  .head {
+    flex-direction: column;
+    gap: var(--s3);
+  }
+
+  .claim {
+    font-size: 26px;
+    max-width: none;
+  }
+}

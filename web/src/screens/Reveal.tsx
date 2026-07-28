@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { reveal } from "../api.ts";
 import { CascadeList } from "../components/CascadeList.tsx";
+import { ScreenHead } from "../design/ScreenHead.tsx";
 import type { AtMoment, Cascade, InjectedFault } from "../types.ts";
 
 /**
@@ -82,21 +83,18 @@ export function Reveal({ at }: Props) {
   if (!shown) {
     return (
       <section>
-        <div className="masthead" style={{ marginBottom: 10 }}>
-          <h2 style={{ fontSize: 15, margin: 0 }}>The answer key</h2>
-          <span className="sub">what was actually wrong, as opposed to what was found</span>
-        </div>
+        <ScreenHead sub="Everything on every other screen was worked out from readings alone. This is the marking scheme.">
+          What was actually broken
+        </ScreenHead>
         <div className="notice">
-          <strong>This is the answer.</strong>
+          <strong>Worth forming a view on the other screens first.</strong>
           <div className="muted" style={{ marginTop: 7, lineHeight: 1.6, maxWidth: "78ch" }}>
-            Everything on every other screen was worked out from readings alone. This one
-            says what was really injected, when, and how bad it got — and it is served by
-            a different process on a different credential, because the detection path
-            connects as a role that has no access to this data at all. An endpoint over
-            there that asked for a label fails with <code>permission denied</code>.
-            <br />
-            <br />
-            Worth looking at the other screens first and forming a view. Then check it.
+            This page says what was really injected, when, and how bad it got. It is
+            served by a <strong>different process on a different credential</strong>,
+            because the detection path connects as a role with no access to this data at
+            all — an endpoint over there that asked for a label fails with{" "}
+            <code>permission denied</code>. That separation is what makes every accuracy
+            figure in this project mean anything.
           </div>
           <button
             onClick={() => setShown(true)}
@@ -121,12 +119,24 @@ export function Reveal({ at }: Props) {
 
   return (
     <section>
-      <div className="masthead" style={{ marginBottom: 10 }}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>The answer key</h2>
-        <span className="sub">
-          {at ? `as the clock stands at ${at.slice(0, 10)}` : "no clock position"}
-        </span>
-      </div>
+      <ScreenHead
+        sub={
+          at
+            ? `The ground truth as the clock stands at ${at.slice(0, 10)}.`
+            : "The clock has no position yet."
+        }
+        why={
+          <>
+            Served by a separate process on the admin credential — the only credential in
+            this system permitted to read the ground truth. Every other screen connects as
+            a role that has no grant of any kind on this data, which is why this is the
+            one page that stops working when one particular process is not running, and
+            why the accuracy numbers elsewhere are not marking their own homework.
+          </>
+        }
+      >
+        What was actually broken
+      </ScreenHead>
 
       {missing && (
         <div className="notice">

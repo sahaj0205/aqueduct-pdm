@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api, reveal } from "../api.ts";
 import { PredictedVsActual } from "../components/PredictedVsActual.tsx";
 import { RulExplainer } from "../components/RulExplainer.tsx";
+import { ScreenHead } from "../design/ScreenHead.tsx";
+import { Term } from "../design/Term.tsx";
 import { narrowing, toEpoch } from "../lib/chart.ts";
 import type { AnswerKey, RulExplanation, RulHistory } from "../types.ts";
 
@@ -122,12 +124,30 @@ export function Prediction({ at }: Props) {
 
   return (
     <section>
-      <div className="masthead" style={{ marginBottom: 10 }}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Prediction</h2>
-        <span className="sub">
-          how a remaining life is arrived at, and how far off it was
-        </span>
-      </div>
+      <ScreenHead
+        sub={
+          <>
+            Never a single date — always a range, and the range narrows as evidence
+            arrives. Below it, the same model measured against what actually happened.
+          </>
+        }
+        why={
+          <>
+            Three things in order, and the order is the argument. First the range closing
+            as evidence accumulates, which is what the model does well. Then the same
+            prediction set against the real failure date, where it misses consistently
+            and in the dangerous direction — late. The step-by-step derivation last, so
+            anyone wanting to check either claim can follow it from a raw instrument
+            reading to the interval.
+            <br />
+            <br />A screen that stopped after the first of those would be a sales pitch.
+            See <Term id="rul">remaining useful life</Term> and{" "}
+            <Term id="percentile-band">p10 / p50 / p90</Term>.
+          </>
+        }
+      >
+        How long it has left, and how sure we are
+      </ScreenHead>
 
       <div style={{ display: "flex", gap: 8, margin: "0 0 14px", flexWrap: "wrap" }}>
         {["ahu-1", "chiller-1", "chiller-2"].map((id) => (

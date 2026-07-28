@@ -1,39 +1,85 @@
+/* Underline tabs rather than the segmented control this used to be.
+   A joined bar of filled buttons was readable on a dark page; on paper it puts seven
+   grey boxes across the top of every screen and reads heavier than the content under
+   it. An underline spends almost no ink and still says exactly where you are. */
+
 .tabs {
   display: flex;
-  gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 14px;
+  align-items: stretch;
+  gap: var(--s1);
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: var(--s3);
+
+  /* Seven plain-language labels are wider than seven one-word ones. On a narrow window
+     they scroll rather than wrap, so the row never becomes two rows and shifts the page
+     down. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tab,
 .on,
-.pending {
-  padding: 7px 14px;
-  font-size: 12.5px;
+.answer,
+.answerOn {
+  position: relative;
+  padding: var(--s3) var(--s3) calc(var(--s3) - 2px);
+  font-size: var(--t-body);
   text-decoration: none;
-  background: var(--panel);
-  color: var(--muted);
+  color: var(--ink-muted);
   white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: color 110ms ease, border-color 110ms ease;
 }
 
-.tab:hover {
-  color: var(--text);
-  background: var(--panel-2);
+.tab:hover,
+.answer:hover {
+  color: var(--ink);
+  border-bottom-color: var(--hairline-strong);
 }
 
-.on {
-  background: var(--panel-2);
-  color: var(--text);
-  box-shadow: inset 0 -2px 0 var(--accent);
+.on,
+.answerOn {
+  color: var(--ink);
+  font-weight: var(--w-medium);
+  border-bottom-color: var(--info);
 }
 
-/* Listed but not built. Shown rather than hidden so the shape of what is coming is
-   visible, and so no tab moves sideways when the next one lands. */
-.pending {
-  color: var(--faint);
-  cursor: not-allowed;
-  font-style: italic;
+/* Pushes the answer key to the far end of the row, away from the operator's screens. */
+.spacer {
+  flex: 1 1 auto;
+  min-width: var(--s5);
+}
+
+/* The answer key reads as a different kind of thing, because it is one: a separate
+   process on a separate credential, holding the ground truth every other screen is
+   deliberately denied. */
+.answer,
+.answerOn {
+  color: var(--ink-faint);
+}
+
+.answer::before,
+.answerOn::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--s2) * -1);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 16px;
+  background: var(--hairline-strong);
+}
+
+.answerOn {
+  color: var(--caution);
+  border-bottom-color: var(--caution);
+}
+
+.answer:hover {
+  color: var(--caution);
+  border-bottom-color: var(--caution);
 }

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 
 import { api } from "../api.ts";
+import { ScreenHead } from "../design/ScreenHead.tsx";
+import { Term } from "../design/Term.tsx";
 import type { InterventionConfig, ModeConfig, RuleConfig } from "../types.ts";
 import styles from "../components/ConfigTable.module.css";
 
@@ -86,20 +88,39 @@ export function Configuration() {
 
   return (
     <section>
-      <div className="masthead" style={{ marginBottom: 10 }}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Configuration</h2>
-        <span className="sub">every rule, every threshold, and the reason for it</span>
-      </div>
-
-      <p className="muted" style={{ maxWidth: "84ch", lineHeight: 1.55, marginTop: 0 }}>
-        Look at the last column. Every threshold in this system has a written physical
-        justification stored beside it, and the column is <code>NOT NULL</code> with a
-        length check — a number cannot enter this database without a reason attached.
-        Failure modes and interventions are rows, so adding either is data rather than
-        code. Rules are Python, because a rule is an expression over readings; what is
-        data about a rule is the Brick class it applies to, which is what lets a fourth
-        kind of machine inherit the existing rules with no code change.
-      </p>
+      <ScreenHead
+        sub={
+          <>
+            Click any row for the written physical justification stored beside it. The
+            shortest one here runs to over five hundred characters.
+          </>
+        }
+        why={
+          <>
+            The rationale is not documentation kept alongside the system. It is a{" "}
+            <code>NOT NULL</code> column with a minimum length check, so a threshold
+            physically cannot enter this database without a reason attached to it.
+            <br />
+            <br />
+            <Term id="failure-mode">Failure modes</Term> and interventions are rows, so
+            adding either is data rather than code. Rules are Python, because a rule is an
+            expression over readings and making it a row would mean inventing a small
+            language to put in the row. What <em>is</em> data about a rule is the{" "}
+            <Term id="brick-class">Brick class</Term> it applies to, which is what lets a
+            fourth kind of machine inherit every existing rule with no code change at all.
+            <br />
+            <br />
+            One failure mode here has no indicator expression: a loaded filter is measured
+            by the pressure drop across it and neither source dataset publishes one. Its
+            threshold is recorded anyway, because 250 Pa is the real change-out criterion,
+            and its rationale opens by saying it is not computable in this building.
+            Showing it rather than hiding it is the point — the alternative is a screen
+            that implies full coverage.
+          </>
+        }
+      >
+        Every number in this system, and why it is that number
+      </ScreenHead>
 
       <div className={styles.tabs}>
         {(["modes", "rules", "interventions"] as Tab[]).map((t) => (

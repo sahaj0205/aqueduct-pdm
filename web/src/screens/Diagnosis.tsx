@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { api } from "../api.ts";
 import { ClassTimeline } from "../components/ClassTimeline.tsx";
 import { Reconciliation } from "../components/Reconciliation.tsx";
+import { ScreenHead } from "../design/ScreenHead.tsx";
+import { Term } from "../design/Term.tsx";
 import type { DiagnosisPair } from "../types.ts";
 
 /**
@@ -18,6 +20,46 @@ import type { DiagnosisPair } from "../types.ts";
  * is what separates them, and what separating them is worth — which is a number, and
  * not a small one.
  */
+
+/**
+ * The headline, with the ratio live rather than typed in.
+ *
+ * Defined once and used in both the loading and the loaded state, so the screen has a
+ * title before it has data. The number is whatever the API computed for this pair — it
+ * was 3.16× the last time anybody looked, and writing that into the string would leave
+ * the screen asserting a figure the tables below it had stopped agreeing with.
+ */
+function Head({ ratio }: { ratio: number | null }) {
+  return (
+    <ScreenHead
+      sub={
+        <>
+          Air coming out too warm is produced by a cooling coil that cannot cool
+          <em> and</em> by a thermometer reading high. From the symptom alone the two are
+          identical — and sending the wrong van costs the difference above.
+        </>
+      }
+      why={
+        <>
+          What separates them is <Term id="isolation">isolation</Term>: asking whether
+          assuming <strong>one single reading</strong> is wrong would make every violated
+          relation hold true again. A bad measurement is wrong by a consistent amount
+          everywhere it appears, and a failing machine is not — so if one correction fixes
+          everything, the instrument is at fault, and if it does not, the machine is.
+          <br />
+          <br />
+          The two faults here are from different <Term id="era">runs</Term> two years
+          apart and no position of the clock holds both. The screen says so rather than
+          implying they were seen side by side.
+        </>
+      }
+    >
+      {ratio === null
+        ? "One symptom, two causes"
+        : `One symptom. Two causes. ${ratio}× apart.`}
+    </ScreenHead>
+  );
+}
 
 export function Diagnosis() {
   const [pair, setPair] = useState<DiagnosisPair | null>(null);
@@ -48,26 +90,20 @@ export function Diagnosis() {
       </div>
     );
   }
-  if (!pair) return <div className="muted">Loading the pair…</div>;
+  if (!pair) {
+    return (
+      <section>
+        <Head ratio={null} />
+        <div className="muted">Loading the pair…</div>
+      </section>
+    );
+  }
 
   const withAlternative = [pair.left, pair.right].find((c) => c?.alternative);
 
   return (
     <section>
-      <div className="masthead" style={{ marginBottom: 10 }}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>Sensor or equipment</h2>
-        <span className="sub">
-          the same symptom, two causes, and what telling them apart is worth
-        </span>
-      </div>
-
-      <p className="muted" style={{ maxWidth: "84ch", lineHeight: 1.55, marginTop: 0 }}>
-        Supply air above its setpoint is produced by a coil that cannot cool and by a
-        thermometer reading high. From the symptom alone the two are identical. What
-        separates them is asking whether assuming ONE reading is wrong would make every
-        violated relation hold again: a bad measurement is wrong by a consistent amount
-        everywhere it appears, and a failing machine is not.
-      </p>
+      <Head ratio={pair.cost_ratio} />
 
       {pair.composed && (
         <div className="notice" style={{ marginBottom: 14 }}>

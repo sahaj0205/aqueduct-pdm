@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { AdvisoryQueue } from "../components/AdvisoryQueue.tsx";
 import { DigitalTwin } from "../components/DigitalTwin.tsx";
 import { SummaryStrip } from "../components/SummaryStrip.tsx";
+import { ScreenHead } from "../design/ScreenHead.tsx";
+import { Term } from "../design/Term.tsx";
 import type {
   AdvisorySummary,
   SiteSummary,
@@ -29,8 +31,39 @@ interface Props {
 export function Operations({ summary, advisories, topology, twinState }: Props) {
   const navigate = useNavigate();
 
+  // Live, never written into the string. The clock moves and this number moves with it;
+  // a headline reading "six" above a queue showing two is worse than no headline.
+  const open = summary?.advisories ?? null;
+
   return (
     <>
+      <ScreenHead
+        sub={
+          <>
+            Ranked by what each job saves against what it costs. Nothing computed after
+            the date on the clock appears anywhere on this page — see{" "}
+            <Term id="as-of">as-of</Term>.
+          </>
+        }
+        why={
+          <>
+            The order is decided upstream and is <strong>not</strong> re-sorted here. It
+            is two tiers: everything that could be priced comes first, ranked on expected
+            dollars saved per dollar spent; everything that could not be priced follows,
+            ranked on severity. An unpriced job is not a cheap one — it is one nobody can
+            put a number on yet, and hiding that distinction would be the easiest lie on
+            this screen. A <Term id="consequential">consequential</Term> job is forced
+            below whatever caused it, so fixing the cause makes it disappear on its own.
+          </>
+        }
+      >
+        {open === null
+          ? "What needs doing"
+          : open === 0
+            ? "Nothing needs attention right now."
+            : `${open} thing${open === 1 ? "" : "s"} need${open === 1 ? "s" : ""} attention.`}
+      </ScreenHead>
+
       {summary && <SummaryStrip summary={summary} />}
       {topology && advisories && (
         <DigitalTwin

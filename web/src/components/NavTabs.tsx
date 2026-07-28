@@ -3,53 +3,100 @@ import { NavLink } from "react-router-dom";
 import styles from "./NavTabs.module.css";
 
 /**
- * The screen switcher.
+ * The screen switcher, in the order of the argument.
  *
- * Real links, not buttons, because they are real URLs now — a demonstration can be
- * paused mid-flow and the address pasted to somebody else, and a reviewer can open the
- * screen you told them about instead of being told how to click to it.
+ * WHAT CHANGED AND WHY. These tabs used to be named after the parts of the system that
+ * produce them — Operations, Twin, Engine, Diagnosis, Prediction, Reveal, Configuration.
+ * Six of those seven are internal architecture words promoted to the top of the screen,
+ * and only one of them names something a person who does not already know this codebase
+ * could act on. A viewer arriving cold had to open tabs to find out what they were.
  *
- * Screens not yet built were listed and disabled rather than hidden, so the shape of
- * Phase 1 was visible from the first screen and no tab moved sideways as the next one
- * landed. As of checkpoint 1.12 every one of them is built, so `ready` is true
- * throughout — the flag stays because Phase 2 adds more.
+ * Every label is now a plain-language claim or question. "Engine" became "How we know",
+ * which is not a rename so much as an admission of what that screen was always for.
+ *
+ * THE ORDER IS THE ARGUMENT, not the architecture. Something is wrong → here is where it
+ * is → here is how we know → here is which kind of fault it is → here is how long it has
+ * → here are the rules we judged it by → and only then, here is what was actually
+ * broken. Read left to right it is a case being made. The old order was roughly the
+ * layering of the codebase, which is useful to nobody but the person who wrote it.
+ *
+ * THE ANSWER IS SET APART. It is served by a different process on a different credential
+ * and it is the one screen that gives the game away, so it sits after a divider rather
+ * than in the run of operator screens. The separation is the honest signal that it is a
+ * different kind of thing, not decoration.
  */
 
 interface Tab {
   to: string;
   label: string;
-  ready: boolean;
+  /** A one-line hint on hover. Never required reading — the label has to stand alone. */
+  hint: string;
 }
 
 const TABS: Tab[] = [
-  { to: "/", label: "Operations", ready: true },
-  { to: "/twin", label: "Twin", ready: true },
-  { to: "/engine", label: "Engine", ready: true },
-  { to: "/diagnosis", label: "Diagnosis", ready: true },
-  { to: "/prediction", label: "Prediction", ready: true },
-  { to: "/reveal", label: "Reveal", ready: true },
-  { to: "/config", label: "Configuration", ready: true },
+  {
+    to: "/",
+    label: "Needs doing",
+    hint: "What is wrong with the building, in the order it should be fixed",
+  },
+  {
+    to: "/building",
+    label: "The building",
+    hint: "Where each fault sits in the plant, and what is connected to what",
+  },
+  {
+    to: "/how-we-know",
+    label: "How we know",
+    hint: "Every reading the system threw away on the way to a finding, and why",
+  },
+  {
+    to: "/sensor-or-machine",
+    label: "Sensor or machine",
+    hint: "Telling a broken instrument from broken equipment, and what it is worth",
+  },
+  {
+    to: "/time-left",
+    label: "Time left",
+    hint: "How long a machine has, how sure we are, and how wrong we were",
+  },
+  {
+    to: "/rules",
+    label: "The rules",
+    hint: "Every threshold in the system and the physical reason for it",
+  },
 ];
+
+/** Served by a separate process on the admin credential. Kept visibly apart. */
+const ANSWER: Tab = {
+  to: "/answer",
+  label: "The answer",
+  hint: "What was actually broken — the ground truth, hidden behind a click",
+};
 
 export function NavTabs() {
   return (
-    <nav className={styles.tabs}>
-      {TABS.map((tab) =>
-        tab.ready ? (
-          <NavLink
-            key={tab.to}
-            to={tab.to}
-            end={tab.to === "/"}
-            className={({ isActive }) => (isActive ? styles.on : styles.tab)}
-          >
-            {tab.label}
-          </NavLink>
-        ) : (
-          <span key={tab.to} className={styles.pending} title="not built yet">
-            {tab.label}
-          </span>
-        ),
-      )}
+    <nav className={styles.tabs} aria-label="screens">
+      {TABS.map((tab) => (
+        <NavLink
+          key={tab.to}
+          to={tab.to}
+          end={tab.to === "/"}
+          title={tab.hint}
+          className={({ isActive }) => (isActive ? styles.on : styles.tab)}
+        >
+          {tab.label}
+        </NavLink>
+      ))}
+
+      <span className={styles.spacer} />
+
+      <NavLink
+        to={ANSWER.to}
+        title={ANSWER.hint}
+        className={({ isActive }) => (isActive ? styles.answerOn : styles.answer)}
+      >
+        {ANSWER.label}
+      </NavLink>
     </nav>
   );
 }

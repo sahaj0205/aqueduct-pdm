@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { api } from "../api.ts";
 import { Funnel } from "../components/Funnel.tsx";
 import { StageDetail } from "../components/StageDetail.tsx";
+import { ScreenHead } from "../design/ScreenHead.tsx";
+import { Term } from "../design/Term.tsx";
 import type { MachineTrace, TwinState } from "../types.ts";
 
 /**
@@ -57,21 +59,33 @@ export function Engine({ at }: Props) {
 
   return (
     <section>
-      <div className={"masthead"} style={{ marginBottom: 10 }}>
-        <h2 style={{ fontSize: 15, margin: 0 }}>The engine</h2>
-        <span className="sub">
-          what the pipeline did on one machine on one day, stage by stage
-        </span>
-      </div>
-
-      <p className="muted" style={{ maxWidth: "80ch", lineHeight: 1.55, marginTop: 0 }}>
-        Read this downwards. Each row is a stage that could have raised something and
-        mostly did not, with the reason underneath in the engine&rsquo;s own words. The
-        right-hand column is the same machine on the same day of the year with nothing
-        wrong — same weather, same occupancy, because every run in this database reads
-        the same source year shifted by whole years. Where that column reads zero and
-        this one does not, the difference is the fault.
-      </p>
+      <ScreenHead
+        sub={
+          <>
+            Read downwards. Each row is a stage that could have raised an alarm and
+            mostly did not, with the reason in the engine&rsquo;s own words.
+          </>
+        }
+        why={
+          <>
+            The point of this screen is that the low{" "}
+            <Term id="false-alarm-rate">false alarm rate</Term> is not the product of a
+            cleverer detector. It is the product of ten successive refusals to judge,
+            none of which were visible anywhere before this table existed.
+            <br />
+            <br />
+            The right-hand column is the same machine on the same day of the year with
+            nothing wrong with it — same weather, same occupancy, because every{" "}
+            <Term id="era">run</Term> in this database reads the same source year shifted
+            by whole years. Where that column reads zero and this one does not, the
+            difference is the fault and nothing else. Rules still fire on healthy
+            equipment; every one of those firings dies at the{" "}
+            <Term id="persistence">persistence</Term> requirement.
+          </>
+        }
+      >
+        Everything the system threw away, and why
+      </ScreenHead>
 
       <div style={{ display: "flex", gap: 8, margin: "12px 0 14px", flexWrap: "wrap" }}>
         {MACHINES.map((id) => (

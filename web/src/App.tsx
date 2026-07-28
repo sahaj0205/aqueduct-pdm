@@ -39,6 +39,28 @@ import type {
  * thing this dashboard could imply.
  */
 
+/**
+ * Where each screen used to live, and where it lives now.
+ *
+ * The paths were renamed alongside the tabs, because a URL is read aloud in a
+ * demonstration and shown in the address bar of a shared screen, and "/engine" tells a
+ * viewer as little there as it did on the tab. Old paths redirect rather than 404: this
+ * build is already deployed, and a link somebody saved last week should still land.
+ *
+ * THE COMPONENT FILES WERE NOT RENAMED. `screens/Engine.tsx` still renders "How we
+ * know". Renaming seven files and their imports would be a large diff with no visible
+ * effect whatever, so the correspondence is written down here instead — this table is
+ * the one place that maps the internal name to the name a viewer sees.
+ */
+const MOVED: Record<string, string> = {
+  "/twin": "/building", //            Twin.tsx          → The building
+  "/engine": "/how-we-know", //       Engine.tsx        → How we know
+  "/diagnosis": "/sensor-or-machine", // Diagnosis.tsx  → Sensor or machine
+  "/prediction": "/time-left", //     Prediction.tsx    → Time left
+  "/config": "/rules", //             Configuration.tsx → The rules
+  "/reveal": "/answer", //            Reveal.tsx        → The answer
+};
+
 /** The advisory detail, reading its id from the URL rather than from a state flag. */
 function AdvisoryRoute() {
   const { advisoryId } = useParams<{ advisoryId: string }>();
@@ -181,27 +203,33 @@ export function App() {
           />
           <Route path="/advisory/:advisoryId" element={<AdvisoryRoute />} />
           <Route
-            path="/twin"
+            path="/building"
             element={
               <Twin at={clock ? toIso(clock.at) : null} advisories={advisories} />
             }
           />
           <Route
-            path="/engine"
+            path="/how-we-know"
             element={
               <Engine at={clock ? toIso(clock.at) : null} twinState={twinState} />
             }
           />
+          <Route path="/sensor-or-machine" element={<Diagnosis />} />
           <Route
-            path="/prediction"
+            path="/time-left"
             element={<Prediction at={clock ? toIso(clock.at) : null} />}
           />
-          <Route path="/diagnosis" element={<Diagnosis />} />
+          <Route path="/rules" element={<Configuration />} />
           <Route
-            path="/reveal"
+            path="/answer"
             element={<Reveal at={clock ? toIso(clock.at) : null} />}
           />
-          <Route path="/config" element={<Configuration />} />
+
+          {/* Anything that used to be a tab still lands where it moved to. */}
+          {Object.entries(MOVED).map(([from, to]) => (
+            <Route key={from} path={from} element={<Navigate to={to} replace />} />
+          ))}
+
           {/* An unknown path goes to the queue rather than to a blank screen. */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
