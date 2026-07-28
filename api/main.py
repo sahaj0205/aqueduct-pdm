@@ -48,8 +48,11 @@ from api.models import (
     HealthPoint,
     HealthSeries,
     Intervention,
+    InterventionConfig,
     MachineTrace,
+    ModeConfig,
     PointSummary,
+    RuleConfig,
     RulExplanation,
     RulHistory,
     RulPoint,
@@ -1348,3 +1351,88 @@ def prediction_explain(
         threshold_rationale=rationale, degradation_process=process,
         steps=steps, refused=estimate is not None and p50 is None,
     )
+
+
+# ---------------------------------------------------------------------------
+# the configuration: every rule, every threshold, every response
+# ---------------------------------------------------------------------------
+
+
+@app.get("/config/rules", response_model=list[RuleConfig], tags=["configuration"])
+def config_rules() -> list[RuleConfig]:
+    """Every rule the engine will run, and what has to be true before it runs.
+
+    These live in Python decorators rather than in a table, unlike the failure modes and
+    the interventions, and the difference is honest rather than accidental: a rule is an
+    expression over readings and cannot be a row without inventing a small language to
+    put in it. What IS data is which machine each applies to -- a Brick class, so adding
+    a fourth kind of equipment dispatches the existing rules at it with no code change.
+    """
+    from analytics.rules import apar, chiller  # noqa: F401 - importing registers them
+    from analytics.rules.registry import registered_rules
+
+    return [
+        RuleConfig(
+            rule_id=rule.rule_id,
+            description=rule.description,
+            applies_to=rule.applies_to,
+            modes=list(rule.modes),
+            min_input_quality=rule.min_input_quality,
+            persistence_minutes=rule.persistence_minutes,
+            staleness_is_evidence=list(rule.staleness_is_evidence),
+        )
+        for rule in sorted(registered_rules(), key=lambda r: r.rule_id)
+    ]
+
+
+@app.get("/config/modes", response_model=list[ModeConfig], tags=["configuration"])
+def config_modes(conn: Conn) -> list[ModeConfig]:
+    """Every failure mode, its threshold, and the physical reason for that threshold.
+
+    A table rather than code, so adding a failure mode is a row. The rationale column is
+    NOT NULL with a length check, which is the point: a threshold cannot be entered
+    without a written justification, and the shortest one in this database is over five
+    hundred characters.
+    """
+    rows = conn.execute(
+        "SELECT mode_id, mode_name, brick_class, indicator_expression, indicator_unit, "
+        "       failure_threshold, threshold_rationale, degradation_process, applies_when "
+        "  FROM app.failure_modes ORDER BY brick_class, mode_id"
+    ).fetchall()
+    return [
+        ModeConfig(
+            mode_id=r[0], mode_name=r[1], brick_class=r[2], indicator_expression=r[3],
+            indicator_unit=r[4], failure_threshold=float(r[5]), threshold_rationale=r[6],
+            degradation_process=r[7], applies_when=r[8],
+        )
+        for r in rows
+    ]
+
+
+@app.get(
+    "/config/interventions",
+    response_model=list[InterventionConfig],
+    tags=["configuration"],
+)
+def config_interventions(conn: Conn) -> list[InterventionConfig]:
+    """What to do about each fault, what it costs, and why that cost.
+
+    This is the denominator of the priority ranking -- priority is the cost of doing
+    nothing over the cost of acting -- so every figure here moves the order of the
+    operator's queue. `applies_to_class` is what makes the sensor-versus-equipment
+    discrimination worth money: the same fault id resolves to a different row, and a
+    different cost, depending on what the classifier decided.
+    """
+    rows = conn.execute(
+        "SELECT intervention_id, applies_to_fault, applies_to_class, description, "
+        "       duration_hours, skills, parts, cost_usd, basis "
+        "  FROM app.intervention_library ORDER BY applies_to_fault, applies_to_class"
+    ).fetchall()
+    return [
+        InterventionConfig(
+            intervention_id=r[0], applies_to_fault=r[1], applies_to_class=r[2],
+            description=r[3], duration_hours=float(r[4]), skills=list(r[5]),
+            parts=list(r[6]), parts_cost_usd=float(r[7]), basis=r[8],
+        )
+        for r in rows
+    ]

@@ -10,7 +10,9 @@ import { clampToEra, toIso } from "./lib/clock.ts";
 import { Diagnosis } from "./screens/Diagnosis.tsx";
 import { Engine } from "./screens/Engine.tsx";
 import { Operations } from "./screens/Operations.tsx";
+import { Configuration } from "./screens/Configuration.tsx";
 import { Prediction } from "./screens/Prediction.tsx";
+import { Reveal } from "./screens/Reveal.tsx";
 import { Twin } from "./screens/Twin.tsx";
 import type {
   AdvisorySummary,
@@ -42,18 +44,6 @@ function AdvisoryRoute() {
   const navigate = useNavigate();
   if (!advisoryId) return <Navigate to="/" replace />;
   return <AdvisoryDetail advisoryId={advisoryId} onBack={() => navigate("/")} />;
-}
-
-function NotBuilt({ name }: { name: string }) {
-  return (
-    <div className="notice">
-      <strong>{name} is not built yet.</strong>
-      <div className="muted" style={{ marginTop: 6 }}>
-        The route exists so the shape of the dashboard is visible from the first
-        screen. See ROADMAP.md for the order these arrive in.
-      </div>
-    </div>
-  );
 }
 
 export function App() {
@@ -202,8 +192,11 @@ export function App() {
             element={<Prediction at={clock ? toIso(clock.at) : null} />}
           />
           <Route path="/diagnosis" element={<Diagnosis />} />
-          <Route path="/reveal" element={<NotBuilt name="The reveal" />} />
-          <Route path="/config" element={<NotBuilt name="Configuration" />} />
+          <Route
+            path="/reveal"
+            element={<Reveal at={clock ? toIso(clock.at) : null} />}
+          />
+          <Route path="/config" element={<Configuration />} />
           {/* An unknown path goes to the queue rather than to a blank screen. */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -611,3 +611,62 @@ class RulExplanation(BaseModel):
     refused: bool = Field(
         description="True when the model declines to bound the crossing. A refusal is an answer."
     )
+
+
+class RuleConfig(BaseModel):
+    """One physics-derived rule and the conditions under which it may run."""
+
+    rule_id: str
+    description: str
+    applies_to: str = Field(description="Brick class, so a rule is dispatched by what a machine IS")
+    modes: list[str] = Field(
+        description=(
+            "Operating modes the rule may run in. An empty list means any mode. This is "
+            "why a rule about economizer performance does not fire in the middle of "
+            "winter -- it is not suppressed afterwards, it is never evaluated."
+        )
+    )
+    min_input_quality: int = Field(description="Readings below this are not believed")
+    persistence_minutes: int = Field(
+        description="How long a firing must hold before it counts as a fault rather than a gust"
+    )
+    staleness_is_evidence: list[str] = Field(
+        description=(
+            "Points this rule may read even where the quality layer marked them down "
+            "for not moving. Declared per rule and per point, never globally, because a "
+            "motionless reading is sometimes the finding."
+        )
+    )
+
+
+class ModeConfig(BaseModel):
+    """One failure mode: how it is measured, when it counts as failed, and why."""
+
+    mode_id: str
+    mode_name: str
+    brick_class: str
+    indicator_expression: str | None
+    indicator_unit: str
+    failure_threshold: float
+    threshold_rationale: str = Field(
+        description=(
+            "Why that number and not another. A required column with a length check, so "
+            "no threshold can enter this system without a physical justification beside it."
+        )
+    )
+    degradation_process: str
+    applies_when: str | None
+
+
+class InterventionConfig(BaseModel):
+    """What to actually do about a fault, and what it costs."""
+
+    intervention_id: str
+    applies_to_fault: str
+    applies_to_class: str | None
+    description: str
+    duration_hours: float
+    skills: list[str]
+    parts: list[str]
+    parts_cost_usd: float
+    basis: str

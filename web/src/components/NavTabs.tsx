@@ -9,10 +9,10 @@ import styles from "./NavTabs.module.css";
  * paused mid-flow and the address pasted to somebody else, and a reviewer can open the
  * screen you told them about instead of being told how to click to it.
  *
- * Screens not yet built are listed and disabled rather than hidden. Two reasons: the
- * shape of Phase 1 is visible from the first screen, and a tab appearing later moves
- * every other tab sideways, which is exactly the sort of thing that makes a live demo
- * look unrehearsed.
+ * Screens not yet built were listed and disabled rather than hidden, so the shape of
+ * Phase 1 was visible from the first screen and no tab moved sideways as the next one
+ * landed. As of checkpoint 1.12 every one of them is built, so `ready` is true
+ * throughout — the flag stays because Phase 2 adds more.
  */
 
 interface Tab {
@@ -27,8 +27,8 @@ const TABS: Tab[] = [
   { to: "/engine", label: "Engine", ready: true },
   { to: "/diagnosis", label: "Diagnosis", ready: true },
   { to: "/prediction", label: "Prediction", ready: true },
-  { to: "/reveal", label: "Reveal", ready: false },
-  { to: "/config", label: "Configuration", ready: false },
+  { to: "/reveal", label: "Reveal", ready: true },
+  { to: "/config", label: "Configuration", ready: true },
 ];
 
 export function NavTabs() {

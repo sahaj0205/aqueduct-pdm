@@ -135,7 +135,26 @@ still there, still carrying the SENSOR badge and the evidence that contradicts t
 attribution. Had it been suppressed, a real fault would have left the queue on the strength of
 a wrong inference, and nothing on the screen would have said so.
 
-**7:00 — [`VALIDATION.md`](VALIDATION.md).** Every number recomputed from the database on
+**7:00 — The Reveal, then the numbers.** Open the **Reveal** tab. It does not show you
+anything until you ask it to — that is deliberate, because everything on every other
+screen was worked out from readings alone and the moment is worth keeping. Click through
+and it says what was actually injected at the clock's position, split three ways into
+running now, already past failure, and not injected yet. Ask any active fault which
+instrument moved first and it measures the cascade against the fault-free twin: on the
+fouled chiller, power departs fifty days before the water temperatures do, which is the
+physics rather than a claim about it. Say plainly that this screen is served by a
+*different process on a different credential*, and that the API every other screen reads
+fails with `permission denied` if it asks for a label.
+
+The **Configuration** tab is the answer to "what is this thing actually configured
+with": nine rules, six failure modes, sixteen interventions. Open any failure mode and
+the threshold's physical justification is underneath it — the column is `NOT NULL` with
+a length check, so no threshold can enter without a reason, and the shortest one here is
+518 characters. One mode is marked *not computable in this building*, because a loaded
+filter is measured by pressure drop and neither dataset publishes one. It is shown
+rather than hidden.
+
+**Then [`VALIDATION.md`](VALIDATION.md).** Every number recomputed from the database on
 every run. Lead with the false-alarm rate, because that is what kills fault detection
 programmes in the field: **0.0017 findings per healthy asset-day**, and **zero** across 778
 asset-days of the LBNL fault-free reference year. Then detection at the mildest measured

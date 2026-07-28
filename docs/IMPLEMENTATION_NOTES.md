@@ -10054,3 +10054,130 @@ document states it as a summary statistic; this screen shows where it comes from
 START HERE: `web/src/components/PredictedVsActual.tsx` — the docstring says why the
 chart plots dates rather than a countdown, and why the caveat beside it has to name
 both causes of the gap rather than the flattering one or the damning one alone.
+
+
+## Demo Phase 1, Checkpoint 1.12 — Reveal and configuration
+
+### What we did
+
+Phase 1 is complete. Two screens close it: one showing what was actually wrong with the
+building, and one showing what the system was configured with and why. The first is the
+demonstration's reveal and shows nothing until asked, because everything on every other
+screen was worked out from readings alone and that moment is worth keeping. The second
+answers the question a sceptical reviewer asks after being shown accuracy figures --
+what are the thresholds, and who decided them -- with nine rules, six failure modes and
+sixteen interventions, each carrying the physical reason for its own numbers.
+
+### How it works
+
+    api/main.py :: GET /config/rules
+      WHY IT EXISTS: The nine rules live in Python decorators, not in a table, so there
+        is no other way to serve them.
+      WHAT IT DOES: Each rule's id, one-line description, the Brick class it applies to,
+        which operating modes it may run in, the quality bar below which its inputs are
+        not believed, and how long a firing must hold before it counts as a fault.
+      CHOICES: The docstring says why rules are code while modes and interventions are
+        rows, rather than leaving that looking like an oversight: a rule is an expression
+        over readings, and making it a row would mean inventing a small language to put
+        in the row. What IS data about a rule is the class it dispatches on.
+
+    api/main.py :: GET /config/modes and /config/interventions
+      WHAT THEY DO: Straight reads of the two configuration tables, rationale columns
+        included.
+      CHOICES: These are the two tables that make the extensibility claim true -- adding
+        a failure mode or a response is a row, not a code change -- so the screen showing
+        them is also the evidence for that claim.
+
+    web/src/screens/Configuration.tsx
+      CHOICES: The reason is hidden until a row is clicked. Six rationales at 518
+        characters each shown at once is a wall of text nobody reads; behind a click,
+        each one is read by somebody who wanted that specific number explained.
+      CHOICES: A mode with no indicator expression is marked "not computable in this
+        building" in orange rather than left blank. An empty cell reads as missing data
+        and this is a decision.
+
+    web/src/screens/Reveal.tsx
+      ⚠ JUDGEMENT CALL: The screen shows nothing until an explicit click. A reveal that
+        has already told you the answer before you asked has spent the moment it exists
+        for, and the tab being visible while the content is one action away is the
+        difference between a demonstration and a reference page. The cost is one extra
+        click for anybody using it as reference.
+      WHAT IT DOES: Splits the answer key three ways at the clock's moment -- running
+        now, already past failure, not injected yet -- and offers each active fault a
+        cascade measurement on demand.
+      CHOICES: It states, on the screen, that it is served by a separate process on a
+        separate credential and that the detection API cannot read this data. That
+        sentence is the whole basis of every accuracy figure in the project and it
+        belongs where somebody is looking at the answer key, not only in a document.
+
+    web/src/components/CascadeList.tsx
+      WHAT IT DOES: Which instrument on the faulted machine departed from its fault-free
+        twin first, when, and how far it eventually got, with the measurement's own
+        caveats printed rather than smoothed.
+      CHOICES: Fetched per fault on demand. Each takes about three seconds on first call
+        and is cached in the reveal process afterwards; fetching all six on load would
+        make the screen slow for a viewer who wanted one.
+
+    web/src/App.tsx :: NotBuilt, deleted
+      CHANGED FROM BEFORE: The placeholder component that stood in for unbuilt screens is
+        gone, because nothing is unbuilt. Every route in the tab strip now resolves to a
+        real screen.
+
+### Verification
+
+    9 rules · 6 failure modes · 16 interventions
+
+    every threshold has a physical reason
+      ok  every failure mode carries a threshold rationale     shortest is 518 characters
+      ok  every threshold is a real positive number
+      ok  every failure mode names the unit its threshold is in
+      ok  every failure mode is either measurable or says why it is not
+          1 declared but not computable here: filter-loading
+
+    every cost has a basis
+      ok  every intervention carries a basis                   shortest is 42 characters
+      ok  every intervention names at least one skill
+      ok  every intervention takes a positive amount of time
+
+    the discrimination is worth money because the library says so
+      ok  at least one fault resolves to a different response depending on its class
+          apar-20: equipment 6h vs sensor 1.5h  (4.0x in hours)
+
+    every rule declares when it may run
+      ok  every rule has a description
+      ok  every rule is dispatched by a Brick class, not by an asset id
+          brick:Air_Handling_Unit, brick:Chiller
+      ok  every rule sets a quality bar and a persistence requirement
+
+`npx tsc --noEmit` clean, `npm run build` clean, `uv run ruff check .` clean.
+
+### A verification that failed, and was the wrong verification
+
+The first version of the configuration check asserted that every failure mode has an
+indicator expression. It failed, on `filter-loading`, and the data turned out to be
+right. A loaded filter is measured by the pressure drop across it; neither LBNL dataset
+publishes one, and there is no filter in the simulation to load. The threshold is
+recorded anyway because 250 Pa is the real change-out criterion, and the rationale opens
+with the words NOT COMPUTABLE IN THIS BUILDING.
+
+So the property worth asserting is not "everything is measurable". It is that anything
+unmeasurable SAYS SO in the row rather than sitting there looking configured. The check
+now asserts that, and the screen marks the mode in orange rather than leaving the cell
+blank -- an empty cell reads as missing data, and this is a decision somebody made and
+wrote down.
+
+Worth separating from the times this project has loosened a check to make it pass: the
+check here was testing the wrong property, the data was correct, and the corrected check
+is stricter about the thing that actually matters.
+
+### One more thing the tables say
+
+`chiller-refrigerant-loss` is measurable, configured, and has produced zero health rows,
+zero estimates and zero advisories across all four runs. It is gated on the compressor
+running at or above 95 percent of full load, which does not happen often enough in this
+data. That is visible on the screen -- the gate is printed under the rationale -- and it
+is a fair thing for a reviewer to notice.
+
+START HERE: `web/src/screens/Reveal.tsx` — the gate at the top, and the paragraph
+explaining why the answer key is served by a different process, which is the sentence
+every accuracy figure in this project rests on.

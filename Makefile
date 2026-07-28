@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-twin web-verify-clock web-verify-funnel web-verify-diagnosis web-verify-prediction web-build validate
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-twin web-verify-clock web-verify-funnel web-verify-diagnosis web-verify-prediction web-verify-config web-build validate
 
 # Resolve and install the Python environment into .venv
 install:
@@ -239,6 +239,13 @@ web-verify-diagnosis:
 # the late-bias half needs `make reveal` and is skipped without it.
 web-verify-prediction:
 	cd web && npm run verify:prediction
+
+# Check that every configured number carries a reason. The configuration screen claims a
+# threshold cannot enter this database without a written physical justification beside it.
+# CHECK constraints enforce that, which is exactly why it is worth asserting from outside:
+# a constraint quietly dropped would leave the screen making a claim nothing upholds.
+web-verify-config:
+	cd web && npm run verify:config
 
 # Typecheck and production-build the frontend.
 web-build:

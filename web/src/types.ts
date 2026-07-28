@@ -457,3 +457,79 @@ export interface RulExplanation {
   /** True when the model declines to bound the crossing. A refusal is an answer. */
   refused: boolean;
 }
+
+/* --------------------------------------------------------------------------
+ * the configuration
+ * ------------------------------------------------------------------------ */
+
+export interface RuleConfig {
+  rule_id: string;
+  description: string;
+  applies_to: string;
+  /** Empty means any mode. A rule not evaluated is not the same as one suppressed. */
+  modes: string[];
+  min_input_quality: number;
+  persistence_minutes: number;
+  staleness_is_evidence: string[];
+}
+
+export interface ModeConfig {
+  mode_id: string;
+  mode_name: string;
+  brick_class: string;
+  indicator_expression: string | null;
+  indicator_unit: string;
+  failure_threshold: number;
+  /** Required with a length check: no threshold enters without a physical reason. */
+  threshold_rationale: string;
+  degradation_process: string;
+  applies_when: string | null;
+}
+
+export interface InterventionConfig {
+  intervention_id: string;
+  applies_to_fault: string;
+  applies_to_class: string | null;
+  description: string;
+  duration_hours: number;
+  skills: string[];
+  parts: string[];
+  parts_cost_usd: number;
+  basis: string;
+}
+
+/* --------------------------------------------------------------------------
+ * the reveal
+ * ------------------------------------------------------------------------ */
+
+export interface AtMoment {
+  as_of: string;
+  active: InjectedFault[];
+  not_yet_injected: InjectedFault[];
+  already_failed: InjectedFault[];
+  clean_runs_covering: CleanRun[];
+}
+
+export interface Departure {
+  point_id: string;
+  diverged_on: string | null;
+  days_after_onset: number | null;
+  peak_departure: number;
+  compared_days: number;
+}
+
+export interface Cascade {
+  scenario_id: string;
+  asset_id: string;
+  onset: string;
+  twin_scenario: string;
+  year_shift: number;
+  covered_from: string | null;
+  covered_to: string | null;
+  days_compared: number;
+  points_considered: number;
+  departure_threshold: number;
+  held_days: number;
+  caveats: string[];
+  departures: Departure[];
+}

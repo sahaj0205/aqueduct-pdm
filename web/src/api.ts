@@ -10,12 +10,17 @@ import type {
   AdvisorySummary,
   AnswerKey,
   AssetSummary,
+  AtMoment,
+  Cascade,
   ClockRange,
   DiagnosisPair,
   GraphResult,
   HealthSeries,
+  InterventionConfig,
   MachineTrace,
+  ModeConfig,
   RulExplanation,
+  RuleConfig,
   RulHistory,
   SiteSummary,
   TwinState,
@@ -69,6 +74,10 @@ export const api = {
   summary: (at: string | null = null) =>
     get<SiteSummary>(`/advisories/summary${asOf(at, true)}`),
   eras: () => get<ClockRange>("/clock/eras"),
+  // The configuration: every rule, every threshold, every response. Read-only.
+  configRules: () => get<RuleConfig[]>("/config/rules"),
+  configModes: () => get<ModeConfig[]>("/config/modes"),
+  configInterventions: () => get<InterventionConfig[]>("/config/interventions"),
   // The building's shape, fetched once -- it cannot change while the API runs.
   twinTopology: () => get<TwinTopology>("/twin/topology"),
   // Every live number for one moment, in one call, so a running clock costs one
@@ -111,14 +120,20 @@ export const api = {
  * Nothing that decides what the operator sees may call these; the control bar uses
  * them for labels and degrades to dates alone when the service is not running.
  */
+async function fromReveal<T>(path: string): Promise<T | null> {
+  try {
+    const response = await fetch(`${REVEAL}${path}`);
+    if (!response.ok) return null;
+    return (await response.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 export const reveal = {
-  scenarios: async (): Promise<AnswerKey | null> => {
-    try {
-      const response = await fetch(`${REVEAL}/reveal/scenarios`);
-      if (!response.ok) return null;
-      return (await response.json()) as AnswerKey;
-    } catch {
-      return null;
-    }
-  },
+  scenarios: () => fromReveal<AnswerKey>("/reveal/scenarios"),
+  at: (moment: string) =>
+    fromReveal<AtMoment>(`/reveal/at?as_of=${encodeURIComponent(moment)}`),
+  cascade: (scenarioId: string) =>
+    fromReveal<Cascade>(`/reveal/cascade/${encodeURIComponent(scenarioId)}`),
 };

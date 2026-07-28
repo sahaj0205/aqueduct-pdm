@@ -1,0 +1,76 @@
+.wrap {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 11px 13px 13px;
+  margin-top: 10px;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.title {
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.muted {
+  font-size: 11px;
+  color: var(--faint);
+  line-height: 1.5;
+}
+
+.caveat {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--warn);
+  margin: 0 0 8px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.table th {
+  text-align: left;
+  font-size: 9.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--faint);
+  font-weight: 500;
+  padding: 0 8px 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.table td {
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.point {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.r {
+  text-align: right;
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+.note {
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--faint);
+  margin: 9px 0 0;
+  max-width: 84ch;
+}
