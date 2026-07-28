@@ -42,11 +42,12 @@ back up.
                                                   │
   9  advisories          app.advisories            (what a human is asked to read)
                                                   │
-  10 API                 nine FastAPI endpoints
+  10 API                 read-only FastAPI over everything above
                                                   │
-  11 UI                  React dashboard, advisory detail, plant schematic
+  11 UI                  six screens on one shared clock
 
   validation/            runs 1-9 end to end and scores them against groundtruth.*
+  reveal/                the answer key, separate process, separate credential
 ```
 
 Two databases' worth of tables in one database, under two credentials. Schema `app` is
@@ -347,7 +348,10 @@ When they contradict, the advisory now withholds the prediction and says so.
 
 ### 10. API — `api/`
 
-Nine endpoints, Pydantic v2 response models, one connection per request.
+Nineteen endpoints in eight groups, Pydantic v2 response models, one connection per
+request. All of them read; none computes. The eight groups are assets and their
+instruments, timeseries, the advisory queue, graph traversal, the clock's range, the
+digital twin, the engine trace, and the read-only configuration.
 
 **Rejected: serving `app.measurements`.** Timeseries come from the hourly rollup, always.
 A year of one point at five minutes is over a hundred thousand rows and no chart can draw
@@ -366,20 +370,43 @@ not be computed. Both travel next to a text field carrying the reason.
 
 ### 11. UI — `web/`
 
-React, TypeScript, Vite, Recharts, plain CSS modules. An advisory queue sorted by
-priority; a detail view with the evidence table, the health trend, the **RUL fan chart**,
-the graph trace, the occupant impact and the intervention; and a hand-drawn plant
-schematic bound to live data.
+React, TypeScript, Vite, Recharts, plain CSS modules, react-router. **Six screens on one
+shared clock**, plus the advisory detail:
 
-**Rejected: a component library.** Explicitly out of scope, and the schematic would have
+| screen | what it answers |
+|:---|:---|
+| **Operations** | what is wrong now, ranked by expected dollars saved per dollar spent |
+| **Twin** | the building as its semantic model — thirty-one nodes from cooling tower to occupied room, live values on each, click for the instruments |
+| **Engine** | what the pipeline DECLINED to judge, as a ten-stage funnel, beside the same machine on the same day of the year with nothing wrong |
+| **Diagnosis** | two faults that present identically, the reconciliation that separates them, and the 3.16× it is worth |
+| **Prediction** | the eight steps from a raw reading to a remaining-life interval, and how far the answer was from the truth |
+| **Configuration** | every rule, every threshold, and the written physical reason for each |
+| **Reveal** | the answer key, gated behind a click, served by a different process |
+
+**The clock is the spine.** It lives in the shell, not in a screen, so every screen shows
+the same moment and navigation does not reset it. Every endpoint it drives truncates
+strictly: at `as_of = T` nothing after T is visible anywhere. That single rule is what
+makes a replay of stored results indistinguishable from a live system — the interval
+narrows while you watch, an advisory appears rather than having always been there —
+without any of it being faked.
+
+**Rejected: a component library.** Explicitly out of scope, and the drawings would have
 needed hand-drawn SVG regardless.
 
-**Rejected: putting display logic in components.** Every formatting and charting decision
-lives in a pure module — `format.ts`, `chart.ts`, `schematic.ts` — which is what makes the
-frontend verifiable without a browser: Node scripts drive the same functions the
-components call, check the properties the queue must have, and render the schematic with
-`renderToStaticMarkup` into a committed SVG. An SVG is text, so that file is a
-reproducible screenshot rather than a description of one.
+**Rejected: putting display logic in components.** Every formatting, charting and layout
+decision lives in a pure module — `format.ts`, `chart.ts`, `clock.ts`, `twin-layout.ts` —
+which is what makes the frontend verifiable without a browser. Seven Node scripts drive
+the same functions the components call: they check the queue's ordering properties, the
+fan chart's narrowing, the clock's era arithmetic, the twin's geometry, the funnel's
+accounting, the diagnosis screen's cost claim and the configuration's justifications.
+`verify-twin.ts` renders the real component with `renderToStaticMarkup` into a committed
+SVG — text, so that file is a reproducible screenshot rather than a description of one.
+
+**Rejected: no router.** Held until checkpoint 1.7a and then reversed. With two views a
+state flag was right and the cost — an advisory that could not be linked to — was worth
+naming and accepting. With seven it was not: five more screens reachable only by clicking
+in the right order, and a demonstration that could not be paused and resumed anywhere but
+the top.
 
 **Rejected: re-sorting in the view.** `buildRows` deliberately does not re-sort. The
 queue's order is the API's answer, and a view that re-sorts can silently disagree with the
@@ -484,7 +511,7 @@ when coverage drifts, and a property test asserting the health series never incr
 | **MQTT and Modbus ingestion** | This building is a set of CSVs. A live protocol adapter would have been written against no live device and tested against nothing. |
 | **A physics simulator** | Rejected at the start, [D-02](AI_LOG.md): a self-built simulator would mean every accuracy number was scored against labels this project also created. Third-party labelled data is the whole basis of the validation claim. |
 | **Work order lifecycle** | `app.advisories.status` has three values and nothing moves a row off `open`. An operator can see and rank, but cannot acknowledge, assign or close. This is the largest functional gap in the product. |
-| **Additional dashboards** | Energy, water, and per-zone comfort views. The one dashboard that exists is the one the prediction needs. |
+| **Additional dashboards** | Energy, water, and per-zone comfort views. The screens that exist are the ones the prediction needs and the ones that let it be checked. |
 | **Natural-language query** | Interesting and not on the critical path to predicting a failure. |
 | **Floorplan and 3D** | Same. The plant drawing covers the one spatial question the cross-asset story needs: which machine feeds which. |
 | **Authentication** | There are no users. Adding a login to a single-operator prototype would have been theatre. |

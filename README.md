@@ -16,7 +16,7 @@ cost of doing nothing, and which technician to send.
 | [`VALIDATION.md`](VALIDATION.md) | How well it works. Regenerated from the database on every run; no hand-written numbers |
 | [`DOMAIN_NOTES.md`](DOMAIN_NOTES.md) | The building physics, for a reader who knows software. Every fault signature traced to its published source |
 | [`ROADMAP.md`](ROADMAP.md) | Shipped, next in priority order, and what will not be done |
-| [`AI_LOG.md`](AI_LOG.md) | The nine decisions the system rests on, each with the options considered and what happened afterwards |
+| [`AI_LOG.md`](AI_LOG.md) | The eleven decisions the system rests on, each with the options considered and what happened afterwards |
 
 ---
 
@@ -29,24 +29,46 @@ first — the loader names the files it wants and exits if they are absent.
 cp .env.example .env    # then set the two passwords
 make db-up              # docker compose up, wait for it, apply the schema
 make load               # LBNL datasets into the hypertable, then the semantic graph
-make demo               # everything computed: scenarios, quality, baselines, health, RUL, advisories
+make demo               # everything computed — a couple of hours, see below
 make api                # http://localhost:8000/docs   (leave running)
-make web                # http://localhost:5173        (in a second terminal)
+make reveal             # http://localhost:8002/docs   (second terminal)
+make web                # http://localhost:5173        (third terminal)
 ```
 
-Two of those need a word.
+Three of those need a word.
 
 **`make db-up` rather than `docker compose up`.** Starting the container is not enough:
 `db-up` also waits for the server to accept connections and then applies
 `scripts/schema.sql`, which creates the tables, the hypertable, the continuous aggregate and
 the two roles. The schema file is idempotent, so re-running it is safe.
 
-**`make demo` is what makes the dashboard non-empty.** `make load` places the raw
-measurements; the health scores, the remaining-life history and the advisory queue are all
-computed artefacts that do not exist until the pipeline has run. `demo` runs it in dependency
-order and takes a while — the two rule sweeps and the daily remaining-life replay are the
-expensive parts. It is also the only path that writes `app.advisories`, which is what the API
-serves.
+**`make demo` is what makes the dashboard non-empty**, and it takes a couple of hours. The
+raw measurements come from `make load`; everything else — quality scores, baselines, health,
+the remaining-life history, one advisory queue per day and the engine trace — is computed and
+does not exist until the pipeline has run. It ends with three long batches in a fixed order:
+
+| step | produces | why the order matters |
+|:---|:---|:---|
+| `advisories-write` | one snapshot queue, including the **cross-asset demotion** | it DELETES the table first |
+| `advisory-replay` | one queue per day, 1,657 rows across 577 days | upserts, so it adds around the snapshot |
+| `engine-trace` | 18,920 rows of what the pipeline declined to judge | its last stage reads the queue |
+
+⚠ **`advisories-write` must never run after `advisory-replay`.** It empties `app.advisories`
+and rewrites it, because it owns the single snapshot it produces. Run it afterwards and 577
+days of per-day queues disappear silently — the clock keeps moving and every screen goes
+blank. `make demo` runs them the safe way round; the hazard only exists if you invoke the
+targets by hand.
+
+Both are needed, and the reason is worth knowing. The replay is what makes the queue change
+as the clock moves. The snapshot is the **only** source of the demoted cross-asset advisory,
+because it composes that situation by era-shifting the chiller fault into the air handler's
+window — the replay builds every day from unmodified data, where the plausibility map
+correctly declines to link anything, so the demotion does not occur naturally anywhere in
+this dataset.
+
+**`make reveal` is a second process on a second credential.** It serves the answer key, and
+the detection API cannot read that data at all. Every screen except the Reveal tab works
+without it.
 
 ```bash
 make validate           # regenerate VALIDATION.md from the database and the answer key
@@ -64,7 +86,14 @@ what it needs.
 
 Seven minutes, in front of the running dashboard. Each step is a real screen, not a slide.
 
-**0:00 — The dashboard.** Seven advisories across three machines, ranked by expected dollars
+Six screens share one clock, pinned to the top of every page: **Operations**, **Twin**,
+**Engine**, **Diagnosis**, **Prediction**, **Configuration**, and the gated **Reveal**. The
+clock can be dragged, stepped a day at a time, played forward at up to ten simulated days a
+second, or sent straight to a chosen fault. Whatever it says, every screen answers about that
+same moment and nothing after it is visible anywhere — which is why the walkthrough below can
+show a prediction interval closing while somebody watches.
+
+**0:00 — Operations.** Seven advisories across three machines, ranked by expected dollars
 saved per dollar spent. The strip along the top gives the site: how many advisories, how many
 are consequential on something else, how many could not be priced, the worst health score and
 which machine has it, and the total cost of doing nothing over a quarter. Point out that the

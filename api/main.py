@@ -3,8 +3,9 @@
     uv run uvicorn api.main:app --reload --port 8000
     open http://localhost:8000/docs
 
-Nine endpoints in four groups: assets and their instruments, time series, the
-advisory queue, and graph traversal. All of them read; none computes. See
+Nineteen endpoints in eight groups: assets and their instruments, time series, the
+advisory queue, graph traversal, the clock's range, the digital twin, the engine
+trace, and the read-only configuration. All of them read; none computes. See
 api/__init__.py for why that boundary is where it is.
 
 TWO RULES ENFORCED HERE RATHER THAN TRUSTED

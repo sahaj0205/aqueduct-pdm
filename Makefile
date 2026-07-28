@@ -58,7 +58,7 @@ plots:
 # --from/--to to score any other window. Uses APP_RW_DATABASE_URL, like every
 # other part of the detection path.
 quality:
-	uv run python -m analytics.quality.scoring
+	uv run python -u -m analytics.quality.scoring
 
 # Show the rule registry resolving rules to assets purely by Brick class, and
 # the quality gate refusing to let a rule fire on an untrusted reading. Registers
@@ -120,7 +120,7 @@ degradation:
 # and score the median prediction against the answer key. Like `health`, the only
 # ground-truth read happens after every number it scores has been written.
 rul:
-	uv run python scripts/run_rul.py
+	uv run python -u scripts/run_rul.py
 
 # Show the refusal layer declining to predict and giving the specific reason: the
 # first two weeks of every progressive scenario, the whole of both fault-free runs,
@@ -149,21 +149,49 @@ advisories:
 	uv run python scripts/run_advisories.py
 
 # The same queue, stored in app.advisories, which is what the API serves. Kept separate
-# from `advisories` because that target is a report and this one writes: nothing else in
-# the project puts rows in that table, so without this the API has an empty queue and the
-# dashboard comes up blank on a freshly built database.
+# from `advisories` because that target is a report and this one writes.
+#
+# ⚠ THIS DELETES THE TABLE FIRST. It owns the single snapshot it produces, so it empties
+# app.advisories and rewrites it. Run it AFTER `advisory-replay` and you destroy 577 days
+# of per-day queues without a warning -- the clock keeps moving and every screen goes
+# empty. Run it BEFORE, which is what `demo` does, and the replay adds its days around it.
+#
+# It is still needed despite the replay covering far more days: this is the only thing
+# that produces the CROSS-ASSET DEMOTION, because it composes a situation by era-shifting
+# the chiller's condenser fouling into the air handler's window. The replay builds every
+# day from unmodified data, where the plausibility map correctly declines to link
+# anything, so the demoted advisory does not occur naturally anywhere in this dataset.
 advisories-write:
 	uv run python scripts/run_advisories.py --write
 
-# Empty database to demo-ready, in dependency order. Each step needs the one before it:
-# the loader has to place measurements before the graph can resolve nodes to assets, the
-# quality scores gate what the baselines may fit on, health needs the residuals, the
-# remaining-life replay needs health, and the advisory queue needs both plus the
-# cross-asset pass. Takes a while -- the two rule sweeps and the daily replay are the
-# expensive parts -- and is the sequence the README's setup section documents.
-demo: db-up load scenarios quality residuals baselines health rul advisories-write
+# Empty database to every screen working, in dependency order. Each step needs the one
+# before it: the loader has to place measurements before the graph can resolve nodes to
+# assets, the quality scores gate what the baselines may fit on, health needs the
+# residuals, the remaining-life replay needs health, the advisory queue needs both plus
+# the cross-asset pass, and the engine trace needs the queue because its last stage
+# reports which findings reached an operator.
+#
+# ORDERING FOOTGUN, and it is a real one. `advisories-write` DELETES app.advisories and
+# rewrites it, because it owns the single snapshot it produces. `advisory-replay` UPSERTS
+# one queue per day and leaves the rest alone. So advisories-write must come BEFORE the
+# replay and can never come after it: run the other way round, it silently destroys 577
+# days of history and the dashboard's clock stops moving. The order below is the safe one.
+#
+# Both are kept because they produce different things and the demo needs both. The replay
+# is what makes the queue change as the clock moves -- 1,657 rows across 577 days. The
+# snapshot is the only source of the CROSS-ASSET DEMOTION: it composes a situation by
+# era-shifting the chiller's condenser fouling into the air handler's window, which the
+# replay deliberately does not do because it builds every day from unmodified data. On
+# unmodified data the plausibility map declines to link anything, which is the correct
+# answer and also means the demoted advisory would not exist at all without this step.
+#
+# Takes a couple of hours. The two rule sweeps, the daily advisory replay and the engine
+# trace are the expensive parts; everything before them is minutes.
+demo: db-up load scenarios quality residuals baselines health rul \
+      advisories-write advisory-replay engine-trace
 	@echo ""
-	@echo "demo data ready. now run 'make api' and 'make web' in two terminals."
+	@echo "demo data ready — all six screens have what they need."
+	@echo "now run 'make api', 'make reveal' and 'make web' in three terminals."
 
 # Serve the API on :8000
 api:
@@ -258,7 +286,7 @@ web-build:
 # `advisories-write`, never before, or the snapshot delete takes the history with it.
 # Takes about three hours over 619 days; --resume picks up where a killed run stopped.
 advisory-replay:
-	uv run python scripts/run_advisory_replay.py --resume
+	uv run python -u scripts/run_advisory_replay.py --resume
 
 # Record what the detection pipeline did on every machine on every day as a ten-stage
 # funnel, into app.engine_trace. This is what the engine screen reads: not what the

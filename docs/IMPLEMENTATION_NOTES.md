@@ -10181,3 +10181,105 @@ is a fair thing for a reviewer to notice.
 START HERE: `web/src/screens/Reveal.tsx` — the gate at the top, and the paragraph
 explaining why the answer key is served by a different process, which is the sentence
 every accuracy figure in this project rests on.
+
+
+## Demo Phase 1 — Consolidation pass
+
+### What we did
+
+A fresh database now becomes a working demonstration in one command, and the two
+documents that describe the system describe the one that exists. Before this, `make demo`
+stopped after the remaining-life replay, so somebody who followed the README got four of
+the six screens showing nothing and no indication why. The documentation had drifted
+further: it described a dashboard with one screen, an API with nine endpoints, and a log
+with nine entries, against a system that now has six screens, nineteen endpoints and
+eleven entries.
+
+### How it works
+
+    Makefile :: demo
+      CHANGED FROM BEFORE: The chain ended at `advisories-write`. It now continues
+        through `advisory-replay` and `engine-trace`, which is what the clock and the
+        engine screen read. A fresh database ran the old target and produced a dashboard
+        where four screens were empty.
+      ⚠ JUDGEMENT CALL: `advisories-write` is KEPT, and kept BEFORE the replay. Dropping
+        it was the tidier option and would have been wrong: it is the only thing in this
+        project that produces the cross-asset demotion. It composes that situation by
+        era-shifting the chiller's condenser fouling into the air handler's window,
+        whereas the replay builds every day from unmodified data -- where the
+        plausibility map correctly declines to link anything. Checked rather than
+        assumed: across all 1,657 rows there is exactly one consequential advisory, and
+        it belongs to the snapshot. Drop the step and the demotion does not exist
+        anywhere in the database, and the walkthrough's 6:30 has nothing to show.
+      CHOICES: The ordering hazard is documented in three places -- on the `demo` target,
+        on `advisories-write` itself, and in the README quickstart -- because it is
+        silent and destructive. `advisories-write` DELETES app.advisories before writing,
+        since it owns the single snapshot it produces. Run after the replay it removes
+        577 days of per-day queues with no error; the clock keeps moving and every screen
+        goes blank.
+      CHOICES: `python -u` on the four long-running targets. The advisory replay's first
+        run wrote its progress into a pipe buffer and reported nothing for eighty
+        minutes, which is indistinguishable from a hang.
+
+    README.md :: Quickstart
+      CHANGED FROM BEFORE: It said `make demo` "is the only path that writes
+        app.advisories", which stopped being true when the replay arrived and would have
+        led a reader to believe one step was sufficient. It now names the three long
+        batches in a table with what each produces and why the order matters, carries the
+        ordering warning, and adds `make reveal` as a third terminal.
+
+    README.md :: Timed walkthrough
+      CHANGED FROM BEFORE: It opened "0:00 — The dashboard", describing a single screen.
+        It now opens by naming the six screens and the shared clock, and explains the
+        property that makes the replay convincing: at any moment nothing after that
+        moment is visible anywhere, which is why an interval can be watched closing.
+
+    ARCHITECTURE.md :: layer 11
+      CHANGED FROM BEFORE: Three sentences about a queue, a detail view and a plant
+        schematic -- a component that no longer exists. Replaced with the six screens as
+        a table, the clock as the spine of all of them, and the strict as-of rule stated
+        as the thing that makes a replay indistinguishable from a live system without
+        anything being faked.
+      CHANGED FROM BEFORE: A new rejected alternative recording that the no-router
+        decision was reversed. It was right with two views and wrong with seven, and the
+        cost it accepted at the time -- an advisory that could not be linked to -- is
+        exactly what changed.
+      CHANGED FROM BEFORE: The verification paragraph said "Node scripts" render the
+        schematic. There are now seven of them and they check the queue's ordering, the
+        fan chart's narrowing, the clock's era arithmetic, the twin's geometry, the
+        funnel's accounting, the diagnosis screen's cost claim and the configuration's
+        justifications.
+
+### Verification
+
+    demo: db-up load scenarios quality residuals baselines health rul \
+          advisories-write advisory-replay engine-trace
+
+Resolved order, from `make -n demo`:
+
+    uv run python    scripts/run_advisories.py --write
+    uv run python -u scripts/run_advisory_replay.py --resume
+    uv run python -u scripts/run_engine_trace.py --resume
+
+Stale claims, counted before and after:
+
+    "nine decisions"            0 occurrences   (AI_LOG.md has 11 entries)
+    "Nine endpoints"            0 occurrences   (the API serves 19)
+    "one dashboard that exists" 0 occurrences
+    "only path that writes"     0 occurrences
+    plant schematic references  0 occurrences   (the component was deleted in 1.7b)
+
+Every `make` target named in README.md or ARCHITECTURE.md exists in `.PHONY`: twelve
+checked, twelve present. `.PHONY` itself covers every target defined in the file.
+
+`npx tsc --noEmit` clean, `uv run ruff check .` clean.
+
+### What this pass did not do
+
+No Phase 2. No live injection, no feed process, no change to how anything is computed.
+The two documents now describe the system as built; ROADMAP.md's Next section is
+untouched and still describes work that has not started.
+
+START HERE: `Makefile` — the comment above `advisories-write`, which is the one place in
+this project where running two targets in the wrong order destroys hours of work without
+producing an error.
