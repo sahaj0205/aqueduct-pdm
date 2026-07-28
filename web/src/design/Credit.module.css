@@ -1,0 +1,34 @@
+.credit {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s4);
+  flex-wrap: wrap;
+  font-size: var(--t-caption);
+  letter-spacing: var(--track-caption);
+  color: var(--ink-faint);
+}
+
+.by strong {
+  font-weight: var(--w-medium);
+  color: var(--ink-muted);
+}
+
+.links {
+  display: inline-flex;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+
+/* Indigo, which is this language's link colour. Underlined only on hover — the rule is
+   that the accent appears sparingly, and three permanently underlined links in a footer
+   is not sparing. */
+.link {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

@@ -206,3 +206,11 @@ code,
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* The credit line at the bottom of the working application. Separated by a hairline and
+   set well below the content, so it closes the page without competing with it. */
+.appFoot {
+  margin-top: var(--s8);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--hairline);
+}

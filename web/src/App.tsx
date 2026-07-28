@@ -12,6 +12,7 @@ import {
 import { api, reveal } from "./api.ts";
 import { AdvisoryDetail } from "./components/AdvisoryDetail.tsx";
 import { ControlBar } from "./components/ControlBar.tsx";
+import { Credit } from "./design/Credit.tsx";
 import { Mark } from "./design/Mark.tsx";
 import { BRAND } from "./lib/brand.ts";
 import { Term } from "./design/Term.tsx";
@@ -425,6 +426,9 @@ export function App() {
             <Route path="*" element={<Navigate to="/console" replace />} />
           </Routes>
       )}
+      <footer className="appFoot">
+        <Credit />
+      </footer>
     </div>
     </div>
   );

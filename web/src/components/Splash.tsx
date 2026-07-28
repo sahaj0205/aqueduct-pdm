@@ -1,3 +1,4 @@
+import { Credit } from "../design/Credit.tsx";
 import { Mark } from "../design/Mark.tsx";
 import { BRAND } from "../lib/brand.ts";
 import type { ClockRange, TwinTopology } from "../types.ts";
@@ -182,6 +183,7 @@ export function Splash({ onStart, onSkip, range, topology }: Props) {
       </main>
 
       <footer className={styles.foot}>
+        <Credit />
         <span>
           Source data: LBNL fault-detection datasets for a single-duct air handler and a
           water-cooled chiller plant.

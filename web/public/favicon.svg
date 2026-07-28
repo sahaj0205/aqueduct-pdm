@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Augur. The same mark the header carries: a threshold, three bars below it, and one
+       through it. Filled navy with white marks rather than the header's currentColor
+       stroke, because a favicon is drawn at sixteen pixels against a tab bar that may be
+       light or dark, and an outline mark disappears in both. -->
+  <rect width="32" height="32" rx="6" fill="#0d253d"/>
+  <path d="M4 12.5h24" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+  <rect x="5"  y="21" width="4.5" height="6"  fill="#ffffff" opacity="0.5"/>
+  <rect x="11.5" y="17.5" width="4.5" height="9.5" fill="#ffffff" opacity="0.7"/>
+  <rect x="18" y="15" width="4.5" height="12" fill="#ffffff" opacity="0.85"/>
+  <rect x="24.5" y="6" width="3.5" height="21" fill="#ffffff"/>
+</svg>
