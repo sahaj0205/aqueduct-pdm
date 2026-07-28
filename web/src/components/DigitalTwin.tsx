@@ -64,7 +64,7 @@ export function DigitalTwin({ topology, state, advisories, selected, onSelect }:
                 key={edge.id}
                 points={edge.points}
                 fill="none"
-                stroke={edge.lit ? "#d9a13b" : "#2b3644"}
+                stroke={edge.lit ? "#b45309" : "#e4e0d9"}
                 strokeWidth={edge.lit ? 2.2 : 1.2}
                 strokeDasharray={edge.lit ? "5 3" : undefined}
               />
@@ -101,7 +101,7 @@ export function DigitalTwin({ topology, state, advisories, selected, onSelect }:
                     height={box.h + 6}
                     rx={5}
                     fill="none"
-                    stroke="#4f9ad8"
+                    stroke="#1d4ed8"
                     strokeWidth={1.4}
                   />
                 )}
@@ -115,13 +115,13 @@ export function DigitalTwin({ topology, state, advisories, selected, onSelect }:
                   {box.label.length > 20 ? `${box.label.slice(0, 19)}…` : box.label}
                 </text>
                 {box.kind !== "loop" && (
-                  <text x={box.x + 8} y={box.y + 30} fill="#8d9bad" fontSize={9.5}>
+                  <text x={box.x + 8} y={box.y + 30} fill="#57534e" fontSize={9.5}>
                     {box.health !== null ? `health ${box.health}` : "not scored"}
                     {box.rulDays !== null && ` · ${Math.round(box.rulDays)}d left`}
                   </text>
                 )}
                 {box.kind !== "loop" && (
-                  <text x={box.x + 8} y={box.y + 41} fill="#63707f" fontSize={9}>
+                  <text x={box.x + 8} y={box.y + 41} fill="#78716c" fontSize={9}>
                     {box.reporting}/{box.pointCount} reading
                     {box.pointCount === 1 ? "" : "s"}
                     {box.peakSigma !== null && ` · ${box.peakSigma.toFixed(1)}σ`}
@@ -170,7 +170,7 @@ export function DigitalTwin({ topology, state, advisories, selected, onSelect }:
               height={12}
               rx={2}
               fill="none"
-              stroke="#d95757"
+              stroke="#b91c1c"
               strokeWidth={2.4}
             />
           </svg>

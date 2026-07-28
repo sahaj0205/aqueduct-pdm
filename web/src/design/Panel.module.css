@@ -1,0 +1,166 @@
+.panel {
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  box-shadow: var(--lift-1);
+  margin-bottom: var(--s5);
+  overflow: hidden;
+}
+
+.bare {
+  margin-bottom: var(--s5);
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s4) var(--s5) 0;
+}
+
+.bare .head {
+  padding-inline: 0;
+}
+
+.heading {
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--t-title);
+  font-weight: var(--w-semi);
+  line-height: var(--lh-title);
+  letter-spacing: -0.011em;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.sub {
+  margin: var(--s1) 0 0;
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+  text-wrap: pretty;
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-shrink: 0;
+}
+
+.body {
+  padding: var(--s4) var(--s5) var(--s5);
+}
+
+.bare .body {
+  padding-inline: 0;
+}
+
+/* Content that runs to the panel edge — tables, drawings, anything with its own rules
+   about where its margin is. */
+.flush {
+  padding: var(--s4) 0 0;
+}
+
+/* ------------------------------------------------------------------------ why */
+
+.why {
+  font-size: var(--t-micro);
+}
+
+.summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: var(--s1) var(--s2) var(--s1) var(--s1);
+  border-radius: 999px;
+  color: var(--ink-faint);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  white-space: nowrap;
+  transition: color 110ms ease, background 110ms ease;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary:hover {
+  color: var(--info);
+  background: var(--info-wash);
+}
+
+.summary:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* The affordance: a small circled question mark, so the control reads as "there is an
+   explanation" rather than as an unlabelled toggle. */
+.marker {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  /* The floor applies to the one glyph in here too. Sized at 10px first, which is
+     exactly the kind of sub-floor value this checkpoint exists to remove — the circle
+     grew by two pixels instead. */
+  font-size: var(--t-micro);
+  font-weight: var(--w-semi);
+  line-height: 1;
+}
+
+.why[open] .summary {
+  color: var(--info);
+}
+
+.explanation {
+  max-width: 68ch;
+  margin-top: var(--s2);
+  padding: var(--s3) var(--s4);
+  background: var(--sunken);
+  border-radius: var(--r1);
+  border-left: 2px solid var(--hairline-strong);
+
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+  text-wrap: pretty;
+  white-space: normal;
+}
+
+.explanation :global(strong) {
+  color: var(--ink);
+  font-weight: var(--w-semi);
+}
+
+.explanation :global(code) {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  color: var(--caution);
+}
+
+/* In a panel header the explanation must not stretch the header row — it drops out
+   underneath the title instead of pushing the tools around. */
+.head .why[open] {
+  position: relative;
+}
+
+.head .explanation {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--s1));
+  z-index: 10;
+  width: max(38ch, 100%);
+  background: var(--raised);
+  border: 1px solid var(--hairline-strong);
+  border-left-width: 2px;
+  box-shadow: var(--lift-2);
+}

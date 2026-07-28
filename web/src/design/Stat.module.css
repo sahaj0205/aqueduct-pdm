@@ -1,0 +1,98 @@
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+  text-align: left;
+}
+
+.clickable {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: var(--s2);
+  margin: calc(var(--s2) * -1);
+  border-radius: var(--r1);
+  cursor: pointer;
+  font: inherit;
+  transition: background 110ms ease;
+}
+
+.clickable:hover {
+  background: var(--sunken);
+}
+
+.clickable:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.label {
+  font-size: var(--t-label);
+  font-weight: var(--w-semi);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  line-height: var(--lh-tight);
+}
+
+.value {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--w-semi);
+  line-height: var(--lh-display);
+  letter-spacing: var(--track-display);
+  color: var(--ink);
+}
+
+/* At most one per screen. This is the size that decides what the screen is about. */
+.hero {
+  font-size: var(--t-display);
+}
+
+.normal {
+  font-size: var(--t-title);
+  letter-spacing: 0;
+}
+
+/* Tone is a claim about the number, so it is only ever set deliberately. */
+.neutral {
+  color: var(--ink);
+}
+.good {
+  color: var(--good);
+}
+.caution {
+  color: var(--caution);
+}
+.alarm {
+  color: var(--alarm);
+}
+.info {
+  color: var(--info);
+}
+
+.unit {
+  /* Proportional to the value it rides on, but never below the floor: 0.52em of a
+     32px hero is 16.6px and reads fine, while 0.52em of an 18px normal stat would be
+     9.4px, which is one of the sizes this checkpoint exists to abolish. */
+  font-size: max(var(--t-micro), 0.52em);
+  font-weight: var(--w-medium);
+  letter-spacing: 0;
+  color: var(--ink-faint);
+  margin-left: 0.28em;
+}
+
+/* Rule two lives here: the plain-English restatement of the number above it. */
+.caption {
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+  text-wrap: pretty;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s5) var(--s7);
+  align-items: flex-start;
+}

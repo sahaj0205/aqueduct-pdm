@@ -115,19 +115,19 @@ export function RulFanChart({
       <div className={styles.panel}>
         <ResponsiveContainer width="100%" height={190}>
           <ComposedChart data={indicator} margin={{ top: 4, right: 18, bottom: 0, left: 4 }}>
-            <CartesianGrid stroke="#243040" strokeDasharray="2 4" />
+            <CartesianGrid stroke="#f2f0ec" strokeDasharray="2 4" />
             <XAxis
               dataKey="t"
               type="number"
               domain={[left, right]}
               scale="time"
               tickFormatter={shortDay}
-              tick={{ fill: "#8d9bad", fontSize: 11 }}
-              stroke="#2b3644"
+              tick={{ fill: "#57534e", fontSize: 11 }}
+              stroke="#e4e0d9"
             />
             <YAxis
-              tick={{ fill: "#8d9bad", fontSize: 11 }}
-              stroke="#2b3644"
+              tick={{ fill: "#57534e", fontSize: 11 }}
+              stroke="#e4e0d9"
               width={52}
             />
             <Tooltip
@@ -158,9 +158,9 @@ export function RulFanChart({
               <ReferenceArea
                 x1={crossing.p10}
                 x2={crossing.p90 ?? right}
-                fill="#d95757"
+                fill="#b91c1c"
                 fillOpacity={0.13}
-                stroke="#d95757"
+                stroke="#b91c1c"
                 strokeOpacity={0.32}
                 strokeDasharray="3 3"
               />
@@ -168,11 +168,11 @@ export function RulFanChart({
             {crossing && (
               <ReferenceLine
                 x={crossing.p50}
-                stroke="#d95757"
+                stroke="#b91c1c"
                 strokeOpacity={0.8}
                 label={{
                   value: `P50 ${day(crossing.p50)}`,
-                  fill: "#d95757",
+                  fill: "#b91c1c",
                   fontSize: 10,
                   position: "insideTopRight",
                 }}
@@ -185,11 +185,11 @@ export function RulFanChart({
             {threshold !== undefined && (
               <ReferenceLine
                 y={threshold}
-                stroke="#d9a13b"
+                stroke="#b45309"
                 strokeDasharray="6 3"
                 label={{
                   value: `failure threshold ${threshold} ${unit}`,
-                  fill: "#d9a13b",
+                  fill: "#b45309",
                   fontSize: 10,
                   position: "insideTopLeft",
                 }}
@@ -199,7 +199,7 @@ export function RulFanChart({
             <Line
               type="monotone"
               dataKey="raw"
-              stroke="#63707f"
+              stroke="#78716c"
               strokeWidth={1}
               dot={false}
               connectNulls
@@ -208,7 +208,7 @@ export function RulFanChart({
             <Line
               type="monotone"
               dataKey="clamped"
-              stroke="#4f9ad8"
+              stroke="#1d4ed8"
               strokeWidth={2}
               dot={false}
               connectNulls
@@ -235,25 +235,25 @@ export function RulFanChart({
                 data={band}
                 margin={{ top: 4, right: 18, bottom: 0, left: 4 }}
               >
-                <CartesianGrid stroke="#243040" strokeDasharray="2 4" />
+                <CartesianGrid stroke="#f2f0ec" strokeDasharray="2 4" />
                 <XAxis
                   dataKey="t"
                   type="number"
                   domain={[left, right]}
                   scale="time"
                   tickFormatter={shortDay}
-                  tick={{ fill: "#8d9bad", fontSize: 11 }}
-                  stroke="#2b3644"
+                  tick={{ fill: "#57534e", fontSize: 11 }}
+                  stroke="#e4e0d9"
                 />
                 <YAxis
-                  tick={{ fill: "#8d9bad", fontSize: 11 }}
-                  stroke="#2b3644"
+                  tick={{ fill: "#57534e", fontSize: 11 }}
+                  stroke="#e4e0d9"
                   width={52}
                   label={{
                     value: "days",
                     angle: -90,
                     position: "insideLeft",
-                    fill: "#63707f",
+                    fill: "#78716c",
                     fontSize: 10,
                   }}
                 />
@@ -311,9 +311,9 @@ export function RulFanChart({
                     row.p90 === null || row.p10 === null ? null : row.p90 - row.p10
                   }
                   stackId="band"
-                  stroke="#4f9ad8"
+                  stroke="#1d4ed8"
                   strokeOpacity={0.5}
-                  fill="#4f9ad8"
+                  fill="#1d4ed8"
                   fillOpacity={0.22}
                   isAnimationActive={false}
                   name="P10–P90"
@@ -321,7 +321,7 @@ export function RulFanChart({
                 <Line
                   type="monotone"
                   dataKey="p50"
-                  stroke="#4f9ad8"
+                  stroke="#1d4ed8"
                   strokeWidth={2}
                   dot={false}
                   connectNulls

@@ -55,7 +55,7 @@ export function ClassTimeline({ history, faultId }: Props) {
             className={entry === shown ? styles.blockOn : styles.block}
             style={{
               background:
-                CLASS_COLOUR[entry.fault_class as keyof typeof CLASS_COLOUR] ?? "#7d8794",
+                CLASS_COLOUR[entry.fault_class as keyof typeof CLASS_COLOUR] ?? "#57534e",
             }}
             title={`${entry.day.slice(0, 10)} — ${entry.fault_class}`}
             onMouseEnter={() => setOpen(entry)}
@@ -72,7 +72,7 @@ export function ClassTimeline({ history, faultId }: Props) {
               className={styles.dot}
               style={{
                 background:
-                  CLASS_COLOUR[run.fault_class as keyof typeof CLASS_COLOUR] ?? "#7d8794",
+                  CLASS_COLOUR[run.fault_class as keyof typeof CLASS_COLOUR] ?? "#57534e",
               }}
             />
             {run.fault_class} · {run.days.length} day

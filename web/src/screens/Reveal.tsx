@@ -108,7 +108,7 @@ export function Reveal({ at }: Props) {
               cursor: "pointer",
               border: "none",
               background: "var(--warn)",
-              color: "#0d141c",
+              color: "#ffffff",
               fontWeight: 600,
             }}
           >

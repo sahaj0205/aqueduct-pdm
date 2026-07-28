@@ -31,9 +31,13 @@ const BASE = "/api";
 
 // The reveal service, on its own path because it is its own process on its own
 // credential. Kept separate here rather than folded into BASE so that a reader of
-// this file can see which calls reach the answer key -- there are exactly two, both
-// below, and neither is used by anything that decides what the operator sees.
-const REVEAL = "/reveal";
+// this file can see which calls reach the answer key, and neither is used by anything
+// that decides what the operator sees.
+//
+// "/reveal-api" and not "/reveal": the dashboard has a /reveal SCREEN, and a reverse
+// proxy cannot tell a page request from an API call when both live on one prefix.
+// Deployed on the same prefix, opening the Reveal tab returned JSON.
+const REVEAL = "/reveal-api";
 
 /**
  * One fetch, with the failure path treated as seriously as the success path.
@@ -131,9 +135,9 @@ async function fromReveal<T>(path: string): Promise<T | null> {
 }
 
 export const reveal = {
-  scenarios: () => fromReveal<AnswerKey>("/reveal/scenarios"),
+  scenarios: () => fromReveal<AnswerKey>("/scenarios"),
   at: (moment: string) =>
-    fromReveal<AtMoment>(`/reveal/at?as_of=${encodeURIComponent(moment)}`),
+    fromReveal<AtMoment>(`/at?as_of=${encodeURIComponent(moment)}`),
   cascade: (scenarioId: string) =>
-    fromReveal<Cascade>(`/reveal/cascade/${encodeURIComponent(scenarioId)}`),
+    fromReveal<Cascade>(`/cascade/${encodeURIComponent(scenarioId)}`),
 };

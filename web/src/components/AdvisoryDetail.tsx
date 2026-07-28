@@ -135,7 +135,7 @@ export function AdvisoryDetail({
               ) : (
                 <ResponsiveContainer width="100%" height={150}>
                   <LineChart data={trend} margin={{ top: 4, right: 18, left: 4 }}>
-                    <CartesianGrid stroke="#243040" strokeDasharray="2 4" />
+                    <CartesianGrid stroke="#f2f0ec" strokeDasharray="2 4" />
                     <XAxis
                       dataKey="t"
                       type="number"
@@ -144,13 +144,13 @@ export function AdvisoryDetail({
                       tickFormatter={(v: number) =>
                         new Date(v).toISOString().slice(2, 10)
                       }
-                      tick={{ fill: "#8d9bad", fontSize: 11 }}
-                      stroke="#2b3644"
+                      tick={{ fill: "#57534e", fontSize: 11 }}
+                      stroke="#e4e0d9"
                     />
                     <YAxis
                       domain={[0, 100]}
-                      tick={{ fill: "#8d9bad", fontSize: 11 }}
-                      stroke="#2b3644"
+                      tick={{ fill: "#57534e", fontSize: 11 }}
+                      stroke="#e4e0d9"
                       width={40}
                     />
                     <Tooltip
@@ -158,18 +158,18 @@ export function AdvisoryDetail({
                         new Date(v as number).toISOString().slice(0, 10)
                       }
                       contentStyle={{
-                        background: "#0d1218",
-                        border: "1px solid #2b3644",
+                        background: "#faf9f7",
+                        border: "1px solid #e4e0d9",
                         fontSize: 12,
                       }}
                     />
                     {/* 100 is the commissioned condition, 0 the failure threshold, so
                         these two lines are the whole scale rather than decoration. */}
-                    <ReferenceLine y={0} stroke="#d95757" strokeOpacity={0.5} />
+                    <ReferenceLine y={0} stroke="#b91c1c" strokeOpacity={0.5} />
                     <Line
                       type="monotone"
                       dataKey="health"
-                      stroke="#4f9ad8"
+                      stroke="#1d4ed8"
                       strokeWidth={2}
                       dot={false}
                       connectNulls
@@ -178,7 +178,7 @@ export function AdvisoryDetail({
                     <Line
                       type="monotone"
                       dataKey="rollup"
-                      stroke="#63707f"
+                      stroke="#78716c"
                       strokeWidth={1}
                       strokeDasharray="4 3"
                       dot={false}

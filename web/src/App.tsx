@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-do
 import { api, reveal } from "./api.ts";
 import { AdvisoryDetail } from "./components/AdvisoryDetail.tsx";
 import { ControlBar } from "./components/ControlBar.tsx";
+import { Term } from "./design/Term.tsx";
 import type { ClockState } from "./components/ControlBar.tsx";
 import { NavTabs } from "./components/NavTabs.tsx";
 import { clampToEra, toIso } from "./lib/clock.ts";
@@ -135,23 +136,27 @@ export function App() {
 
   return (
     <div className="page">
+      {/* The vocabulary layer, working. Three domain words in the one line that
+          describes the building, each carrying its own definition — where before this
+          checkpoint a reader who did not know what a cooling tower was had nowhere to
+          find out without leaving the page. */}
       <header className="masthead">
         <h1>Aqueduct PDM</h1>
         <span className="sub">
-          one air handler, three chillers, three cooling towers
+          one <Term id="air-handler">air handler</Term>, three{" "}
+          <Term id="chiller">chillers</Term>, three{" "}
+          <Term id="cooling-tower">cooling towers</Term>
         </span>
       </header>
 
       {error && (
         <div className="notice">
           <strong>The API did not answer.</strong>
-          <div className="muted" style={{ marginTop: 6 }}>
-            {error}
-          </div>
-          <div className="muted" style={{ marginTop: 8 }}>
+          <p className="muted">{error}</p>
+          <p className="muted">
             Start it with <code>make api</code>, then reload. The queue itself is
             written by <code>make advisory-replay</code>.
-          </div>
+          </p>
         </div>
       )}
 

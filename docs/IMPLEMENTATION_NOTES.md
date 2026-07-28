@@ -10283,3 +10283,170 @@ untouched and still describes work that has not started.
 START HERE: `Makefile` — the comment above `advisories-write`, which is the one place in
 this project where running two targets in the wrong order destroys hours of work without
 producing an error.
+
+## Demo Phase R, Checkpoint R1 — Design system and vocabulary layer
+
+### What we did
+
+The dashboard gained a single, shared definition of how everything in it should look,
+and a way for a technical word to carry its own meaning.
+
+Before this the interface had been styled by hand, one screen at a time, on the day each
+screen was written. That left sixteen different text sizes in use, a hundred and
+twenty-three of the hundred and eighty size settings at twelve pixels or smaller, and
+eighty-one places where a screen set its own colours and spacing inline instead of
+sharing them. Seventy-one colours were written out as raw codes scattered across eight
+files, with no two files agreeing on which grey meant "less important". The practical
+effect was that nothing on any screen looked more important than anything else, so a
+reader had to work out the priority for themselves every single time.
+
+The second and larger problem was that the system explains itself in paragraphs. Because
+this project requires every piece of industry jargon to be defined where it is first
+used, and the only tool available for that was a block of text, every screen opened with
+one — forty-six runs of prose over a hundred characters, and three screens where the
+very first thing on the page is an essay. The definition of a term sat inches away from
+the number it explained, and the reader had to carry it across that gap unaided.
+
+The system can now attach a definition to the word itself. Hovering or tapping any
+technical term shows one or two plain sentences explaining it, which means a screen can
+open with its finding rather than with a lesson. Forty-two terms are defined this way.
+The colour scheme also moved from dark navy to warm paper, which reads considerably
+better on a projector and in a screen share, and colour is now reserved for meaning:
+four colours, one job each.
+
+None of this changes a single number the system produces. It changes only how they are
+presented.
+
+### How it works
+
+`web/src/design/tokens.css` :: the token set
+  WHY IT EXISTS: One place that decides every size, colour and spacing value in the
+    interface. Without it each screen invents its own, which is exactly how the build
+    arrived at sixteen text sizes and four different greys for the same idea.
+  WHAT IT DOES: Declares five text sizes where there were sixteen, an eight-step spacing
+    scale, three weights of ink, four meaning-colours with a pale tint of each, and three
+    shadow depths. It then re-declares every OLD variable name — `--panel`, `--line`,
+    `--muted` and the rest — as an alias pointing at the new light values.
+  CHOICES: The aliases are the reason this checkpoint is one file rather than a rewrite
+    of twenty stylesheets. Sixty-three references to `--line` exist across the build; had
+    the name been deleted, every one of those files would have had to change in the same
+    commit and there would be no way to show that only presentation moved. Each alias
+    disappears as its screen is rebuilt.
+  CHOICES: The smallest permitted size is 11.5px. Everything below that — 9, 9.5, 10 and
+    10.5px, a hundred and twenty-three declarations in total — is unreadable at arm's
+    length and invisible projected. Those are removed screen by screen, not here.
+  CHOICES: Warm neutrals rather than blue-grey. The same lightness with a blue cast reads
+    as an unlit screen, which is what the old palette was; warm reads as paper.
+  ⚠ JUDGEMENT CALL: The three ink weights were picked to specific contrast ratios against
+    the page — 16.1:1, 7.4:1 and 4.8:1 — so that even the faintest one clears the 4.5:1
+    accessibility floor. The alternative was a lighter, prettier tertiary grey. Rejected
+    because the faintest ink is the colour most of the small text in this build is set
+    in, so it is the one that must not fail.
+
+`web/src/design/palette.ts` :: the same palette as literal strings
+  WHY IT EXISTS: Six components draw SVG and set colour as a `fill` or `stroke` attribute
+    rather than through a stylesheet. That is load-bearing, not sloppiness: the twin
+    verification script writes the building drawing out to a standalone file and opens it
+    on its own, where a stylesheet variable resolves against nothing and the drawing
+    arrives with no colour at all.
+  WHAT IT DOES: Exports every colour a second time as a plain string, grouped into
+    surfaces, ink, meaning, the four states a drawn machine can be in, the four fault
+    classes, and chart furniture. Each entry names the stylesheet token it mirrors.
+  CHOICES: Duplication between this and the token file is accepted deliberately, because
+    the alternative — a build step that generates one from the other — is machinery for
+    two dozen values. The two files name each other at the top so the pairing is visible.
+  ⚠ JUDGEMENT CALL: A drawn machine is now a pale tint with a saturated border, not a
+    saturated fill. On a dark page a solid red box was readable; on paper it is a shout,
+    and a plant diagram where six nodes shout at once is the state the old theme was in.
+
+`web/src/lib/glossary.ts` :: GLOSSARY and TermId
+  WHY IT EXISTS: The single change that lets the opening paragraph be deleted from every
+    screen. The project requires jargon to be defined inline and is right to; this makes
+    that possible without a wall of text.
+  WHAT IT DOES: Holds forty-two entries across six groups — the plant itself, how it
+    degrades, how it is measured, how a judgement is reached, how a prediction is made,
+    and how the replay works. Each is one or two plain sentences with no identifiers and
+    no second undefined term hiding inside the definition.
+  CHOICES: `TermId` is derived from the object's own keys, so a misspelled term is a
+    compile error rather than a tooltip that silently shows nothing. There is therefore
+    no runtime fallback anywhere for a missing definition, because there cannot be one.
+  CHOICES: Entries are capped at two sentences. If a word needs three, the word is doing
+    too much work and the screen should say less rather than the tooltip saying more.
+
+`web/src/design/Term.tsx` :: Term
+  WHY IT EXISTS: Puts a glossary entry onto the word it defines, which is what lets a
+    screen lead with its finding instead of with an explanation.
+  WHAT IT DOES: Renders the word as a real button with a dotted underline. On hover or
+    keyboard focus it measures its own position on screen, works out whether there is
+    room for the bubble above, flips it below if not, centres it on the word and then
+    pulls it back inside the window edge. The bubble is rendered out to the end of the
+    document rather than next to the word.
+  CHOICES: Rendered elsewhere in the document because terms appear inside tables that
+    scroll sideways and panels that clip their contents, and a bubble positioned inside
+    the flow gets sliced off by both.
+  CHOICES: Position is measured before the browser paints, so the bubble never appears in
+    the wrong place for one frame and then visibly corrects itself.
+  CHOICES: Scrolling closes it rather than repositioning it. A bubble measured against a
+    page that has since moved is pointing at the wrong word, and closing is more honest
+    than chasing.
+  ⚠ JUDGEMENT CALL: It is a `<button>`, so it opens on focus and on tap, not on hover
+    alone. Hover alone is simpler and was rejected: it would put all forty-two
+    definitions out of reach of anyone using a keyboard or a touchscreen.
+  ⚠ JUDGEMENT CALL: A click inside it stops the event travelling further up. Terms will
+    sit inside clickable table rows, and defining a word should never also open the row.
+
+`web/src/design/Stat.tsx` :: Stat, Unit, StatRow
+  WHY IT EXISTS: The most important figure in the product — how long a machine has left,
+    what ignoring it costs — was set at twelve pixels in a table cell, the same size as
+    the column heading above it and the footnote below it.
+  WHAT IT DOES: Stacks a small tracked capital label, a large tabular number, and a
+    caption underneath. Two sizes: "hero", meaning the one number a screen is about, and
+    "normal". An optional click handler turns the whole block into a button for numbers
+    that open their own evidence.
+  CHOICES: The caption is where a number gets restated in plain English — "one per 604
+    machine-days" is a quantity the reader has to convert before they can feel it, and
+    "cried wolf once in 604 days of watching a healthy machine" is one they cannot help
+    feeling. A Stat with no caption is usually a Stat nobody thought about.
+  CHOICES: Colour is opt-in. A number is only tinted when the tint is a claim about it;
+    counts and horizons stay plain, because colouring them spends the reader's attention
+    on something that does not need it.
+
+`web/src/design/Panel.tsx` :: Panel and Why
+  WHY IT EXISTS: Every section in the build wrote its own heading by hand, and most of
+    the eighty-one inline style blocks are that heading written out again slightly
+    differently. One component means one answer to how far a title sits from its content.
+  WHAT IT DOES: Draws a titled white surface with an optional short subtitle, optional
+    controls on the right, and an optional folded-shut explanation. `Why` is that
+    disclosure on its own: a small circled question mark that opens a block of
+    explanation, and inside a panel heading it drops out as an overlay so opening it does
+    not shove the title around.
+  CHOICES: Built on the browser's native disclosure element rather than a state flag.
+    That element is reachable by keyboard, announced properly to a screen reader, and —
+    the reason that matters here — findable by the browser's own page search even while
+    it is closed. What gets folded away is the justification for a number somebody may be
+    trying to check, so it must stay findable.
+
+`web/src/styles.css` :: base layer
+  CHANGED FROM BEFORE: Held the entire colour scheme as raw values. Now imports the token
+    file and defines only the reset, the base elements, and the three shared classes the
+    build still uses. One keyboard focus ring is defined here for everything.
+
+`web/src/lib/format.ts` :: COLOURS and CLASS_COLOUR
+  CHANGED FROM BEFORE: Declared the drawn-machine colours and the fault-class colours as
+    raw values. Now re-exports them from the palette file under the same names, so the
+    five components importing them did not have to change.
+
+`web/src/App.tsx` :: the masthead
+  CHANGED FROM BEFORE: The line under the title read "one air handler, three chillers,
+    three cooling towers" as flat text. All three are now defined terms. This is the
+    checkpoint's own proof that the vocabulary layer works — a reader who does not know
+    what a cooling tower is can now find out without leaving the page.
+
+Supporting work, not detailed individually: a scripted pass re-pointed fifty-four literal
+colour values across nine files at the light palette, verified afterwards by confirming
+that every colour code still present anywhere in the source appears in the palette file.
+The call sites still hold literal strings rather than importing the named constants;
+those convert as each file is rebuilt in R5 to R8.
+
+START HERE: `web/src/design/tokens.css` — every other file in this checkpoint either
+defines a value that belongs there or consumes one.

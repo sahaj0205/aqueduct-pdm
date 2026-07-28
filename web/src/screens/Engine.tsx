@@ -88,7 +88,7 @@ export function Engine({ at }: Props) {
               cursor: "pointer",
               border: "1px solid var(--line)",
               background: id === assetId ? "var(--accent)" : "var(--panel-2)",
-              color: id === assetId ? "#0d141c" : "var(--muted)",
+              color: id === assetId ? "#ffffff" : "var(--muted)",
             }}
           >
             {id}

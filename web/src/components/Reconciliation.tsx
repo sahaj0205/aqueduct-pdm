@@ -18,7 +18,7 @@ interface Props {
 }
 
 export function Reconciliation({ side }: Props) {
-  const colour = CLASS_COLOUR[side.fault_class as keyof typeof CLASS_COLOUR] ?? "#7d8794";
+  const colour = CLASS_COLOUR[side.fault_class as keyof typeof CLASS_COLOUR] ?? "#57534e";
   return (
     <section className={styles.card}>
       <div className={styles.head}>

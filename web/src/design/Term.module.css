@@ -1,0 +1,96 @@
+/* A defined word, and the bubble that defines it. */
+
+.term,
+.quiet {
+  /* A button that has to sit inside a sentence without looking like a control or
+     breaking the line box it is in. */
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: help;
+
+  /* The affordance. A dotted rule under the word is the long-standing convention for
+     "there is a definition here" and, unlike a colour change, it does not compete with
+     the four colours in this build that mean something. */
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--hairline-strong);
+
+  transition: text-decoration-color 100ms ease, color 100ms ease;
+}
+
+.term:hover,
+.term:focus-visible,
+.quiet:hover,
+.quiet:focus-visible {
+  color: var(--info);
+  text-decoration-color: var(--info);
+}
+
+.term:focus-visible,
+.quiet:focus-visible {
+  outline: none;
+  border-radius: 2px;
+  box-shadow: var(--ring);
+}
+
+/* Inside small print already — inherits the smaller size rather than setting one. */
+.quiet {
+  text-decoration-color: var(--hairline);
+}
+
+.bubble {
+  position: fixed;
+  z-index: 90;
+  max-width: 34ch;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+
+  padding: var(--s3) var(--s3) calc(var(--s3) + 1px);
+  background: var(--raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r2);
+  box-shadow: var(--lift-3);
+
+  /* The bubble is a passenger. Pointer events on it would let the cursor travel from
+     the word into the bubble and back, flickering it open and shut. */
+  pointer-events: none;
+
+  animation: rise 110ms ease-out;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
+.word {
+  font-size: var(--t-micro);
+  font-weight: var(--w-semi);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.definition {
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble {
+    animation: none;
+  }
+}

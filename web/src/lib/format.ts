@@ -12,7 +12,7 @@
  * read. None of them invents a number.
  */
 
-import type { AdvisorySummary, FaultClass } from "../types.ts";
+import type { AdvisorySummary } from "../types.ts";
 
 /** USD, no decimals. Cents on a five-figure estimate are false precision. */
 export function usd(value: number): string {
@@ -136,31 +136,23 @@ export function buildRows(advisories: AdvisorySummary[]): QueueRow[] {
  * ------------------------------------------------------------------------ */
 
 /**
- * The four states a drawn component can be in.
+ * The four states a drawn component can be in, and the colour of a fault class.
  *
- * Moved here from lib/schematic.ts when the twin replaced it, for the reason that
- * module already gave for putting the health thresholds here: two pictures of the same
- * building that disagreed about what amber means would be worse than one picture.
+ * THE VALUES MOVED OUT of this file into design/palette.ts. They used to be written
+ * here as literal hex codes, and so were sixty-eight others scattered across seven more
+ * components, with no two files agreeing on which grey was the muted one. Colour is now
+ * declared in exactly two places that name each other — design/tokens.css for anything
+ * styled by CSS, design/palette.ts for anything that has to be a literal string.
  *
- * Held as fill and stroke values rather than CSS classes so a rendered SVG stands on
- * its own — scripts/verify-twin.ts writes one to a file, and a class-styled drawing
- * would arrive there colourless.
+ * WHY THEY STILL HAVE TO BE LITERAL STRINGS rather than var(--x): scripts/verify-twin.ts
+ * writes the building drawing out to a standalone .svg and opens it on its own, where a
+ * custom property resolves against nothing and the drawing arrives colourless.
+ *
+ * Re-exported under the old names because five components import them from here.
  */
-export const COLOURS = {
-  unknown: { fill: "#1e2833", stroke: "#3a4655", text: "#8d9bad" },
-  healthy: { fill: "#16302a", stroke: "#3fb27f", text: "#8fd9bb" },
-  degrading: { fill: "#332a17", stroke: "#d9a13b", text: "#e8c583" },
-  critical: { fill: "#33191c", stroke: "#d95757", text: "#f0a0a0" },
-} as const;
+export { NODE as COLOURS, CLASS as CLASS_COLOUR } from "../design/palette.ts";
 
-export type NodeState = keyof typeof COLOURS;
-
-export const CLASS_COLOUR: Record<FaultClass, string> = {
-  sensor: "#4f9ad8",
-  equipment: "#d97a3b",
-  control: "#9b6fd4",
-  ambiguous: "#7d8794",
-};
+export type NodeState = "unknown" | "healthy" | "degrading" | "critical";
 
 /**
  * How a node is filled: by remaining life if there is one, otherwise by health.

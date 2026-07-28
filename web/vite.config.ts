@@ -21,10 +21,10 @@ export default defineConfig({
       // second proxy path rather than being merged behind /api. Keeping the split
       // visible in the URL is the point: a request to /reveal is a request for the
       // answer key, and that should be obvious in a browser's network tab.
-      "/reveal": {
+      "/reveal-api": {
         target: "http://127.0.0.1:8002",
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/reveal/, ""),
+        rewrite: (path) => path.replace(/^\/reveal-api/, "/reveal"),
       },
     },
   },
