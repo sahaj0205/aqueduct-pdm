@@ -373,7 +373,12 @@ export interface TwinState {
 export interface TraceStage {
   ordinal: number;
   stage: string;
-  /** Changes three times down the funnel. Bars must break where it does. */
+  /**
+   * What is being counted. Seven distinct kinds down ten stages, so this changes SIX
+   * times, not the three this comment used to claim — counted from a live trace:
+   * readings, instants, evaluations, firings, points, failure modes, findings. The bars
+   * must break wherever it changes, and at one of those breaks the count goes up.
+   */
   unit: string;
   entered: number;
   passed: number;

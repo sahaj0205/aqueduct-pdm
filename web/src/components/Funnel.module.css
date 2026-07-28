@@ -1,72 +1,133 @@
 .funnel {
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  box-shadow: var(--lift-1);
   overflow: hidden;
+}
+
+/* What the ten rows below add up to, before the reader meets them. */
+.claim {
+  padding: var(--s4) var(--s5);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--ink);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--sunken);
+}
+
+.claim strong {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--w-semi);
+}
+
+.scaleNote {
+  display: block;
+  margin-top: var(--s1);
+  font-size: var(--t-micro);
+  color: var(--ink-muted);
 }
 
 .header,
 .row,
 .rowOn {
   display: grid;
-  grid-template-columns: 220px 90px 90px 1fr 92px;
-  gap: 10px;
+  grid-template-columns: minmax(220px, 1.6fr) 84px 84px minmax(120px, 1fr) 96px;
+  gap: var(--s3);
   align-items: center;
   width: 100%;
   text-align: left;
-  padding: 7px 12px;
-  font-size: 12px;
+  padding: var(--s2) var(--s5);
+  font-size: var(--t-micro);
   border: none;
-  border-bottom: 1px solid var(--line);
+  background: none;
 }
 
 .header {
-  background: var(--panel-2);
-  color: var(--faint);
-  font-size: 10px;
-  letter-spacing: 0.07em;
+  background: var(--raised);
+  color: var(--ink-faint);
+  font-size: var(--t-label);
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
+  font-weight: var(--w-semi);
+  border-bottom: 1px solid var(--hairline);
+  padding-block: var(--s2);
 }
 
 .row,
 .rowOn {
-  background: var(--panel);
-  color: var(--text);
   cursor: pointer;
+  padding-top: var(--s3);
+  padding-bottom: var(--s1);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  transition: background 90ms ease;
 }
 
 .row:hover {
-  background: var(--panel-2);
+  background: var(--info-wash);
 }
 
 .rowOn {
-  background: var(--panel-2);
-  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--sunken);
 }
 
 .name {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
 }
 
 .ord {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 19px;
+  height: 19px;
+  border-radius: 999px;
+  background: var(--sunken);
+  border: 1px solid var(--hairline-strong);
+  color: var(--ink-faint);
+  font-size: var(--t-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.rowOn .ord {
+  background: var(--info);
+  border-color: var(--info);
+  color: var(--on-fill);
+}
+
+/* The question the stage answers. What the reader is meant to read. */
+.plain {
+  display: block;
+  font-size: var(--t-body);
+  font-weight: var(--w-medium);
+  line-height: var(--lh-tight);
+  color: var(--ink);
+  text-wrap: pretty;
+}
+
+/* The name the trace table actually stores, kept for anybody checking the database. */
+.code {
+  display: block;
   font-family: var(--mono);
-  font-size: 10px;
-  color: var(--faint);
-  min-width: 14px;
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  margin-top: 1px;
 }
 
 .r {
   text-align: right;
   font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
 }
 
-/* Two bars per row, the second inside the first: what arrived, and what got through.
-   Logarithmic, because the first stage is six orders of magnitude above the last. */
 .barCell {
   position: relative;
-  height: 15px;
-  display: block;
+  height: 16px;
 }
 
 .bar,
@@ -74,63 +135,95 @@
 .barOutNone {
   position: absolute;
   left: 0;
-  border-radius: 2px;
+  height: 6px;
+  border-radius: 999px;
 }
 
+/* What arrived. */
 .bar {
-  top: 0;
-  height: 15px;
-  background: #2b3644;
+  top: 1px;
+  background: var(--hairline-strong);
 }
 
+/* What left. */
 .barOut {
-  top: 3px;
-  height: 9px;
-  background: var(--accent);
+  top: 9px;
+  background: var(--info);
 }
 
-/* Nothing got through. Drawn in the same place and a different colour rather than
-   omitted, because an absent bar reads as a rendering bug and this is a result. */
+/* Nothing left. Drawn at the floor width in alarm colour rather than not drawn, so a
+   stage that stopped everything is a mark you can point at instead of a blank. */
 .barOutNone {
-  top: 3px;
-  height: 9px;
-  background: var(--ok);
-  opacity: 0.55;
+  top: 9px;
+  background: var(--alarm);
 }
 
-/* Where the funnel stops counting one kind of thing and starts counting another. */
-.break {
-  background: #131922;
-  border-bottom: 1px solid var(--line);
-  padding: 3px 12px 4px 232px;
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  color: var(--faint);
-  font-style: italic;
-}
-
-.reasons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
-  padding: 5px 12px 8px 232px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-}
-
-.reason {
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.reason strong {
-  font-family: var(--mono);
-  color: var(--warn);
-}
-
-/* The clean run got nothing through where the faulted one did. This is the number the
-   whole screen exists to put on a page, so it is the one thing that is coloured. */
+/* The healthy machine passed nothing where this one passed something. */
 .cleanZero {
-  color: var(--ok);
-  font-weight: 600;
+  color: var(--good);
+  font-weight: var(--w-semi);
+}
+
+/* ------------------------------------------------------------- what the stage says */
+
+.says {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: 0 var(--s5) var(--s3) calc(var(--s5) + 27px);
+  border-bottom: 1px solid var(--hairline);
+  max-width: 108ch;
+}
+
+.what {
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+}
+
+/* The stage's justification, as a sentence rather than a strip of fragments. */
+.refusal {
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: var(--ink-faint);
+  font-family: var(--mono);
+}
+
+/* The row that carries the whole argument. */
+.culprit {
+  font-size: var(--t-micro);
+  line-height: var(--lh-body);
+  color: var(--good);
+  background: var(--good-wash);
+  border-left: 2px solid var(--good);
+  border-radius: var(--r1);
+  padding: var(--s2) var(--s3);
+  margin-top: var(--s1);
+}
+
+/* Where the thing being counted changes, with the arithmetic of the change on it. */
+.break {
+  padding: var(--s2) var(--s5) var(--s2) calc(var(--s5) + 27px);
+  background: var(--caution-wash);
+  border-top: 1px solid color-mix(in srgb, var(--caution) 25%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--caution) 25%, transparent);
+  font-size: var(--t-micro);
+  font-family: var(--mono);
+  color: #7c2d12;
+}
+
+@media (max-width: 900px) {
+  .header,
+  .row,
+  .rowOn {
+    grid-template-columns: minmax(0, 1fr) 72px 72px 80px;
+  }
+
+  /* The bar is the first thing to go: it is a restatement of the two numbers beside it,
+     and those stay. Its column heading has to go with it, or the header keeps five
+     children against the rows' four and every column below drifts one place left. */
+  .barCell,
+  .barHead {
+    display: none;
+  }
 }

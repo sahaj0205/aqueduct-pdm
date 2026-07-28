@@ -1,0 +1,75 @@
+.wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  margin-bottom: var(--s4);
+}
+
+.label {
+  font-size: var(--t-label);
+  font-weight: var(--w-semi);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.group {
+  display: flex;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r1);
+  overflow: hidden;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.group::-webkit-scrollbar {
+  display: none;
+}
+
+.option,
+.optionOn {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--s2) var(--s3);
+  border: none;
+  border-right: 1px solid var(--hairline);
+  background: var(--raised);
+  color: var(--ink-muted);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  transition: background 90ms ease, color 90ms ease;
+}
+
+.option:last-child,
+.optionOn:last-child {
+  border-right: none;
+}
+
+.option:hover {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.optionOn {
+  background: var(--info);
+  color: var(--on-fill);
+}
+
+.text {
+  font-size: var(--t-body);
+  font-weight: var(--w-medium);
+  line-height: var(--lh-tight);
+}
+
+/* The identifier, under the human name. Inherits the selected colour rather than being
+   set to a fixed grey, which would go invisible against the selected fill. */
+.sub {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  opacity: 0.72;
+  line-height: var(--lh-tight);
+}

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api.ts";
 import { Funnel } from "../components/Funnel.tsx";
 import { StageDetail } from "../components/StageDetail.tsx";
+import { Picker } from "../design/Picker.tsx";
 import { ScreenHead } from "../design/ScreenHead.tsx";
 import { Term } from "../design/Term.tsx";
 import type { MachineTrace, TwinState } from "../types.ts";
@@ -29,6 +30,26 @@ export function Engine({ at }: Props) {
   const [trace, setTrace] = useState<MachineTrace | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
+  // Identifier to human name, fetched once. The picker used to be labelled with raw
+  // identifiers, which is the thing R4 stopped doing everywhere else.
+  const [names, setNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const assets = await api.assets();
+        if (cancelled) return;
+        setNames(Object.fromEntries(assets.map((a) => [a.asset_id, a.name])));
+      } catch {
+        // A missing name list is not an error worth showing: the picker falls back to
+        // identifiers, which is exactly what it displayed before this existed.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!at) return;
@@ -87,40 +108,31 @@ export function Engine({ at }: Props) {
         Everything the system threw away, and why
       </ScreenHead>
 
-      <div style={{ display: "flex", gap: 8, margin: "12px 0 14px", flexWrap: "wrap" }}>
-        {MACHINES.map((id) => (
-          <button
-            key={id}
-            onClick={() => {
-              setAssetId(id);
-              setSelected(null);
-            }}
-            style={{
-              fontSize: 12,
-              padding: "5px 11px",
-              borderRadius: 3,
-              cursor: "pointer",
-              border: "1px solid var(--line)",
-              background: id === assetId ? "var(--accent)" : "var(--panel-2)",
-              color: id === assetId ? "#ffffff" : "var(--muted)",
-            }}
-          >
-            {id}
-          </button>
-        ))}
-      </div>
+      <Picker
+        label="machine"
+        value={assetId}
+        onChange={(id) => {
+          setAssetId(id);
+          setSelected(null);
+        }}
+        options={MACHINES.map((id) => ({
+          id,
+          // The human name where the asset list has one, falling back to the identifier
+          // rather than to a blank while that list is still loading.
+          label: names[id] ?? id,
+          sub: id,
+        }))}
+      />
 
       {error && (
         <div className="notice">
-          <strong>No trace for {assetId} on this day.</strong>
-          <div className="muted" style={{ marginTop: 6 }}>
-            {error}
-          </div>
-          <div className="muted" style={{ marginTop: 8 }}>
-            A machine with no readings that day has no row, which is a fact about the
-            run rather than a gap. Move the clock into a run this machine is part of, or
+          <strong>No trace for {names[assetId] ?? assetId} on this day.</strong>
+          <p className="muted">{error}</p>
+          <p className="muted">
+            A machine with no readings that day has no row, which is a fact about the run
+            rather than a gap. Move the clock into a run this machine is part of, or
             populate the table with <code>make engine-trace</code>.
-          </div>
+          </p>
         </div>
       )}
 

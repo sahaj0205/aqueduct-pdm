@@ -1,4 +1,8 @@
 import type { TraceStage } from "../types.ts";
+// One source for the plain-language names, shared with the funnel above it. Two copies
+// would be free to drift, and a stage called one thing in the table and another in the
+// panel it opens is worse than no plain name at all.
+import { PLAIN } from "./Funnel.tsx";
 import styles from "./StageDetail.module.css";
 
 /**
@@ -35,7 +39,8 @@ export function StageDetail({ stage, clean }: Props) {
       <div className={styles.head}>
         <h3>
           <span className={styles.ord}>{stage.ordinal}</span>
-          {stage.stage}
+          {PLAIN[stage.stage]?.name ?? stage.stage}
+          <span className={styles.code}>{stage.stage}</span>
         </h3>
         <span className={styles.muted}>
           counting {stage.unit} · {stage.entered.toLocaleString()} in ·{" "}
@@ -72,17 +77,21 @@ export function StageDetail({ stage, clean }: Props) {
 
       {evidence.length > 0 && (
         <>
-          <h4>What this layer recorded</h4>
-          <table className={styles.table}>
-            <tbody>
-              {evidence.map(([key, value]) => (
-                <tr key={key}>
-                  <td className={styles.k}>{key}</td>
-                  <td>{renderValue(value)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <h4>What this layer recorded while it ran</h4>
+          {/* Lists of rule ids and maps of counts by rule get long. They scroll inside
+              the panel rather than widening the page under them. */}
+          <div className={styles.scroll}>
+            <table className={styles.table}>
+              <tbody>
+                {evidence.map(([key, value]) => (
+                  <tr key={key}>
+                    <td className={styles.k}>{key}</td>
+                    <td className={styles.v}>{renderValue(value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
 

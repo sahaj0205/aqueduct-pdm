@@ -10915,3 +10915,109 @@ time the picture is drawn.
 
 START HERE: `web/src/lib/twin-layout.ts` — the three small functions near the top decide
 what the picture says, and the component below them only draws what they return.
+
+## Demo Phase R, Checkpoint R6 — How we know
+
+### What we did
+
+The ten-stage table showing what the detection pipeline refused is the strongest thing in
+this project and was the hardest to read. Every stage now leads with a plain question and
+carries one sentence saying what happened inside it.
+
+The stages were named after the code that produces them — "evaluable instants", "inputs
+trusted", "sustained" — so a reader who did not already know the pipeline could not tell
+what any row had done. Underneath each row sat a strip of fragments reading "3,704 machine
+idle · 5,047 settling", which is a list rather than a justification. Each stage now asks
+its question in words anybody can follow: was the machine even running, is the reading
+behind it trustworthy, did anything actually look wrong, did it keep looking wrong. The
+internal name is kept beside it in small monospace, because that is what the database
+actually stores and somebody checking it needs the real name.
+
+The single most important pair of rows was buried in the narrowest column on the right.
+The rules DO fire on healthy equipment — on the day this was written, eighty-nine times on
+a machine with provably nothing wrong with it — and every one of those firings dies one
+stage later at the requirement that a complaint must hold for an hour before it counts.
+That is the entire false-alarm argument, and it was two numbers in a column somebody had
+to think about. Where the healthy machine passed nothing and the faulted one passed
+something, the row now says so in a sentence.
+
+Two things were also found and corrected while building it, both of them cases of a
+sentence asserting something the data did not support.
+
+### How it works
+
+`web/src/components/Funnel.tsx` :: PLAIN
+  WHY IT EXISTS: Plain-language name and a one-sentence description for each of the ten
+    stages, keyed by the name the trace table stores.
+  WHAT IT DOES: Turns "inputs trusted" into "Is the reading behind it trustworthy?" and
+    adds the sentence explaining that an evaluation is refused outright when a reading it
+    depends on is frozen, stale, out of range or missing.
+  CHOICES: Every description was written against a live trace rather than from the code —
+    the counts, the reasons and the recorded evidence were read off a real machine on a
+    real day first, so no sentence describes a stage doing something it does not do.
+  CHOICES: A stage renamed on the server falls through to its stored name rather than to a
+    blank, so the table degrades to what it used to be instead of losing a row.
+  CHOICES: Exported and shared with the panel that opens below it. Two copies of these
+    names would be free to drift, and a stage called one thing in the table and another in
+    the panel it opens is worse than having no plain name at all.
+
+`web/src/components/Funnel.tsx` :: refusalSentence(dropped)
+  WHY IT EXISTS: What a stage threw away is its justification, and it was being printed as
+    a strip of fragments.
+  WHAT IT DOES: Joins the reasons into one sentence beginning "Refused:", with the count
+    against each reason. Returns nothing where a stage dropped nothing, so a stage that
+    passed everything says nothing rather than printing an empty label.
+
+`web/src/components/Funnel.tsx` :: breakNote(previous, next)
+  WHY IT EXISTS: Seven kinds of thing are counted down ten stages, so what is being
+    counted changes six times, and at one of those changes the number goes UP.
+  WHAT IT DOES: At the break from moments in time to rule evaluations it spells the
+    arithmetic out — twenty-two thousand moments times three rules is sixty-six thousand
+    evaluations — because that is the break a reader is most likely to misread as the
+    funnel inexplicably growing. Every other break just names the new unit and its count.
+  ⚠ JUDGEMENT CALL: The multiplier is claimed ONLY at that one break, not wherever the
+    count happens to grow by a whole number. The first version generalised it, and against
+    real data it printed "2 failure modes × 2 rules = 4 findings" at the last break —
+    arithmetically tidy and completely untrue. Those four findings are the union of the
+    faults the rules reported and the modes confirmed as degrading, and the two differing
+    by a factor of two on that particular day is a coincidence. A sentence that is only
+    true when the numbers cooperate is worse than a plain one.
+
+`web/src/components/Funnel.tsx` :: the culprit row
+  WHY IT EXISTS: The comparison against the healthy machine is the argument the screen
+    exists to make, and it was the narrowest column on the far right.
+  WHAT IT DOES: Where the healthy twin passed nothing at a stage and this machine passed
+    something, the row gains a green note saying so in words and naming the persistence
+    requirement as the reason. On the machine under test that is stage six: 1,967 firings
+    survived here against none at all on the healthy machine.
+  CHOICES: Green rather than red. The healthy machine stopping everything is the system
+    working, not a fault, and the colour should say which.
+
+`web/src/components/Funnel.tsx` :: the claim above the table
+  WHAT IT DOES: States what the ten rows add up to before the reader meets them — so many
+    readings in, so many findings out, ten places this could have raised an alarm. It also
+    says the bars are logarithmic, which the previous version knew and did not mention.
+
+`web/src/types.ts` :: TraceStage.unit
+  CHANGED FROM BEFORE: The comment claimed the unit "changes three times down the funnel".
+    Counted from a live trace it changes six times across seven distinct units, and the
+    verification script has been asserting six all along. The comment was simply wrong and
+    contradicted by a check running in the same repository.
+
+`web/src/design/Picker.tsx` :: Picker
+  WHY IT EXISTS: Three screens had each grown their own row of mutually exclusive buttons,
+    with the size, padding, radius, border and both colours written inline, slightly
+    differently each time. One control appearing three times is one component.
+  WHAT IT DOES: A segmented group with a label, taking an option list where each entry can
+    carry a human name and the identifier underneath it.
+  CHOICES: Segmented rather than spaced apart, because these are one choice with several
+    answers and gaps between buttons read as several independent switches.
+
+`web/src/screens/Engine.tsx` :: the machine picker
+  CHANGED FROM BEFORE: Labelled its buttons with raw identifiers, which is the thing the
+    landing screen stopped doing in R4. It now fetches the asset list once and shows the
+    real name with the identifier underneath, falling back to the identifier alone if that
+    list cannot be reached — which is exactly what it displayed before.
+
+START HERE: `web/src/components/Funnel.tsx` — the PLAIN map at the top is the checkpoint;
+everything below it is the same table it always was, saying what it means.
