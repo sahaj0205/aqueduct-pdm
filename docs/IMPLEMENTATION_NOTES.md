@@ -11451,3 +11451,297 @@ today, because each sits inside a panel that is already opaque; they are stated 
 START HERE: `web/src/design/tokens.css` — the comment above the three gradient tokens is
 the rule about where they may appear, and it is a correctness rule rather than a taste
 one.
+
+## The walkthrough, Checkpoint 1 — The camera and the beat machine
+
+### What we did
+
+There is a new address in the application, `/story`, which will hold a presented
+walkthrough of what happens to a single sensor reading between arriving and becoming a job
+on somebody's screen. It is aimed at a facility manager watching over somebody's shoulder,
+not at an engineer reading a document.
+
+The thing built at this checkpoint is not any of the nineteen scenes. It is the machinery
+underneath all of them, and it rests on one decision: this is not a slide deck. Every scene
+occupies a fixed position on one very large canvas, all of them exist at all times, and
+moving through the walkthrough moves a camera across that canvas rather than swapping one
+screen for another. Nothing is ever built or thrown away as the presentation runs.
+
+That decision is worth a checkpoint of its own because three of the effects the
+walkthrough depends on are free if it holds and near-impossible if it does not: taking a
+machine out of the building drawing and blowing it apart into its parts; standing at a
+late stage and pointing back at an earlier one to show where a number came from; and
+letting work on other machines stay visible at the edges of the frame so the viewer can
+see that several things happen at once. Each of those is a camera move here. In a deck each
+would have to be faked separately.
+
+Alongside the camera there is a two-level notion of position — which scene, and how far
+into it — so that a press of the space bar reveals the next fact without moving the camera,
+and only moves it once a scene has said everything it has to say. A presenter can stop
+between any two facts and answer a question. Before this there was no walkthrough at all.
+
+### How it works
+
+`web/src/story/camera.ts` :: Rig, and why zoom is stored as a logarithm
+  WHY IT EXISTS: Everything the walkthrough does visually is a camera move, so the
+    definition of where the camera is has to come first. A rig is where it points, how
+    close it is, and how fast it is currently travelling in each of those.
+  WHAT IT DOES: Holds the world point sitting at the centre of the screen, the natural
+    logarithm of the zoom, and a velocity for each. Centre-based rather than corner-based
+    because every camera instruction in this walkthrough is "look at this thing", and a
+    thing has a centre rather than a corner.
+  CHOICES: The zoom is kept as its logarithm, which is the one non-obvious decision in the
+    file. What the eye reads as "how fast it is zooming" is the ratio between one frame and
+    the next, not the difference, so interpolating the zoom itself would spend the first
+    half of a long pull-out barely changing the apparent size and the second half
+    collapsing everything at once. In log space a constant rate is a constant apparent
+    zoom, and the halfway point of a move from full size down to a quarter size lands at
+    half size rather than at five eighths.
+
+`web/src/story/camera.ts` :: fit(box, viewport)
+  WHY IT EXISTS: Turns "this scene is 3080 by 1680 units and sits at these coordinates"
+    into an actual camera position. Every framing in the walkthrough comes from here, so
+    there is no per-scene camera code anywhere and no scene can be framed inconsistently.
+  WHAT IT DOES: Takes the tighter of the two axes so the whole scene is visible rather
+    than filling the screen and cropping — a cropped scene is a scene with a fact off the
+    edge. Guards against a viewport of zero size, which happens for exactly one frame
+    before the window has been measured and would otherwise produce an infinite zoom and a
+    blank screen.
+  CHOICES: Twelve per cent of the viewport is left empty around the scene, six per cent
+    each side. Below about eight per cent content touches the screen edge and reads as
+    cropped; above about twenty every scene looks timid and the type gets small on a
+    projector.
+  CHOICES: The zoom is capped at 1.6 however small the scene. Without a ceiling a single
+    small card would be magnified to fill the screen, turning fifteen-pixel type into
+    sixty-eight-pixel type, which looks like a rendering fault rather than a design.
+  ⚠ JUDGEMENT CALL: How close the camera gets is derived from how much a scene contains
+    rather than written down per scene. The alternative was an explicit zoom on each scene,
+    which is more direct but lets the stated zoom and the actual content disagree — a scene
+    that grows a ninth card would keep its old framing and start cropping. Deriving it
+    means the sense of moving in and out through the walkthrough can never contradict what
+    is on the screen, at the cost that changing a framing means changing a rectangle.
+
+`web/src/story/camera.ts` :: stepRig(rig, target, dt)
+  WHY IT EXISTS: Advances the camera one frame toward where it should be. This is the
+    single piece of arithmetic responsible for whether the walkthrough feels expensive or
+    cheap.
+  WHAT IT DOES: Applies the exact solution of a critically damped spring over the
+    interval, to the two position values and to the log of the zoom, all with the same
+    stiffness. Critically damped means it approaches from one side and stops, never
+    passing the target and coming back.
+  CHOICES: A spring rather than a timed animation. A timed animation has to know its
+    duration and its starting point before it begins, so interrupting one — which is
+    exactly what a presenter does by pressing space again mid-move — means either finishing
+    the old move first, jumping, or restarting with a visible change of direction. A spring
+    has no duration and no start; it reads only where it is, how fast it is going, and
+    where it wants to be, so being retargeted mid-flight simply curves the path.
+  CHOICES: The closed form rather than adding force to velocity and velocity to position.
+    The naive version diverges when a frame takes far longer than usual, and frame times
+    spike for a very ordinary reason: a laptop lid closes mid-talk. On return the frame
+    interval is measured in seconds, and the naive version throws the camera into empty
+    space where nothing is drawn. The exact form is stable at any interval and simply
+    arrives, which is what an audience returning to the screen should see.
+  CHOICES: Stiffness of 9 radians per second. Measured rather than asserted: a move is 87
+    per cent done at a quarter second and 97 per cent at four tenths, and the two largest
+    moves in the walkthrough become indistinguishable from arrived at 0.90 and 1.07
+    seconds. Doubling it makes the walkthrough feel like switching browser tabs; halving it
+    makes every press feel like a page load.
+
+`web/src/story/camera.ts` :: settled(rig, target)
+  WHY IT EXISTS: Decides when to stop drawing frames. Without it the walkthrough would
+    animate continuously while the presenter talks, which on a laptop driving a projector
+    is the difference between a quiet room and an audible fan.
+  WHAT IT DOES: Reports arrival only when the camera is both close to its target and
+    barely moving. Both halves are needed: position alone would report arrival at the
+    instant the camera passes through the target at speed, and stillness alone would report
+    it while momentarily stopped somewhere else.
+  CHOICES: The tolerance is in SCREEN pixels and is divided by the zoom, not in world
+    units. This was wrong in the first version and the verification caught it. At the
+    widest framing one screen pixel is three and a half world units and at the closest it
+    is two thirds of one, so a single tolerance in world units means two different visible
+    errors at the two ends of the walkthrough — either the loop runs on long after the
+    picture stopped changing, or it quits while a scene is still visibly drifting. Half a
+    pixel of position and two pixels a second of drift are both below what a display can
+    show.
+
+`web/src/story/camera.ts` :: transformOf and worldToScreen
+  WHY IT EXISTS: One turns a camera into the CSS that positions the canvas; the other
+    answers where a given point on the canvas has ended up on the screen.
+  WHAT IT DOES: The transform moves the canvas so the camera's target sits on the origin,
+    scales about that origin, then pushes the origin to the middle of the window. It
+    requires the transformed element to declare its origin at its top-left corner, which
+    the stylesheet does — with the browser default of the element's centre, the zoom would
+    happen about the middle of the canvas's bounding box, which moves every time a scene is
+    added, so every camera position would shift the moment the script grew.
+  CHOICES: One transform on one element rather than one per scene, so the browser
+    composites the whole canvas as a single layer. A camera move then costs work
+    proportional to the size of the screen rather than to how much is drawn on the canvas,
+    and stays smooth at nineteen scenes.
+  CHOICES: worldToScreen exists for the callback mechanic in a later checkpoint and for
+    checking the transform without a browser. Note that anything drawn INSIDE the canvas in
+    canvas coordinates — the line from a late scene back to an early one, the travelling
+    reading — needs none of this, because the camera transform carries it along already.
+
+`web/src/story/camera.ts` :: union(boxes)
+  WHY IT EXISTS: The two moves that have to hold more than one thing on screen at once:
+    pointing at an earlier scene while standing at a later one, and the final pull-out that
+    frames the whole walkthrough.
+  WHAT IT DOES: Returns the smallest rectangle containing all the given rectangles, and a
+    zero rectangle for an empty list rather than failing — a callback with nothing to point
+    at should be a camera that does not move, not a crash mid-presentation.
+
+`web/src/story/show.ts` :: forward, back, and the two-level position
+  WHY IT EXISTS: A scene is a place the camera stands; a beat is one thing revealed while
+    standing there. Collapsing the two into a flat list of steps would work for the reveals
+    but would leave the camera unable to tell which of them share a vantage point, so it
+    would move on every press.
+  WHAT IT DOES: Forward reveals the next fact, and only when a scene has run out of facts
+    does it move to the next scene. Back does the exact inverse. At either end it returns
+    the position unchanged rather than wrapping — wrapping would send a presenter who
+    pressed once too often back to the opening with no obvious way to recover.
+  CHOICES: Going back into a previous scene lands on its LAST beat, not its first. Back has
+    to undo exactly what forward did, and what forward did on leaving that scene was leave
+    it fully revealed; dropping the presenter at the top of it would silently re-hide three
+    or four facts they had already talked through.
+  CHOICES: Takes a plain list of beat counts rather than the scenes themselves. Nothing
+    here needs to know what a scene contains, and keeping it to numbers means it cannot
+    grow an opinion about scene content later.
+
+`web/src/story/scenes.ts` :: SCENES
+  WHY IT EXISTS: This is the script. The order of the list is the order of the
+    walkthrough, each entry's rectangle is its permanent address on the canvas, and each
+    entry's reveals are the presses it takes to get through it. There is no routing table
+    and no separate ordering anywhere else.
+  WHAT IT DOES: Holds, per scene, an identifier that will become its deep link, which of
+    the three acts it belongs to, its title, optionally the module of the platform it is
+    about and how often that stage would run in a live deployment, its rectangle, and one
+    label per press.
+  CHOICES: Where a scene sits relative to the others is meaningful and permanent. The
+    building sits at the origin; the chosen machine's record sits to its right because
+    that is the direction the camera travels to reach it; later checkpoints put the
+    thirteen pipeline stages on a long run beneath both, so the final pull-out shows the
+    whole journey as one shape.
+  CHOICES: Three scenes at this checkpoint, and what draws inside them is a placeholder.
+    Their titles, rectangles and press counts are the real ones. The three were chosen to
+    exercise the camera in every direction it will ever move: one near full size, one small
+    enough to hit the zoom ceiling, and one large enough to pull back past half size.
+  CHOICES: The list of press counts the machine walks is derived from the reveals rather
+    than written down, so a scene cannot claim a different number of presses than it has
+    things to say.
+
+`web/src/story/useCamera.ts` :: useCamera(target)
+  WHY IT EXISTS: Runs the animation loop and is the only part of the walkthrough that
+    touches the page every frame.
+  WHAT IT DOES: Measures the window, holds the rig, and on each frame steps it toward the
+    rectangle it has been asked to frame and writes the resulting transform straight onto
+    the canvas element. Stops itself the moment the camera has arrived. Starts already
+    framed on the opening scene rather than flying in from the origin, which would read as
+    the page still loading.
+  CHOICES: It does not go through React. The obvious version holds the camera in component
+    state, which at sixty frames a second re-runs the entire scene tree — nineteen scenes,
+    the building drawing, every chart — for a change that is one CSS property on one
+    element. Scene content is rendered when a fact is revealed, a few times a minute, and
+    never for camera movement. The consequence is that the camera position cannot be read
+    while rendering, and nothing needs to, because anything positioned relative to the
+    canvas is drawn inside the canvas.
+  CHOICES: The target rectangle is read from a mutable reference rather than captured, so
+    changing it retargets the running loop instead of tearing it down and rebuilding it.
+    That is what makes a press during a move curve the path rather than queue behind it.
+  CHOICES: The window is measured by observation, never assumed. A projector connected
+    mid-presentation changes it and every framing depends on it, so a resize re-frames
+    rather than leaving scenes cropped at the old shape.
+  CHOICES: The canvas is transparent in the stylesheet until the first painted frame
+    raises it. Without that there is one frame where it sits untransformed in the top-left
+    corner, which on a projector reads as a page that failed to load.
+  CHOICES: Reduced motion is read from a live media query on every frame, so the camera
+    jumps rather than eases — and a viewer who changes the setting mid-walkthrough gets the
+    new behaviour from the next press.
+
+`web/src/story/useShow.ts` :: useShow(beats)
+  WHY IT EXISTS: The presenter's hands. Holds the current position and maps every input
+    onto it.
+  WHAT IT DOES: Listens for keys on the window and advances or retreats one beat. Space,
+    right, down, page down and enter all go forward; left, up, page up and backspace go
+    back; home returns to the start.
+  CHOICES: Deliberately generous about which key means next, because a presenter should not
+    have to remember what this particular thing wants. Page up and page down are on the
+    list specifically because that is what a physical presentation clicker sends.
+  CHOICES: The listener is on the window rather than on a focused element. A presentation
+    gets clicked on and dragged over and shown after switching windows, and a key handler
+    attached to something focusable stops working the moment focus moves — which in front
+    of an audience looks like the machine has frozen.
+  CHOICES: Presses with a modifier held are ignored so the browser keeps its own
+    shortcuts. Command-left means "go back a page" to everyone who has used a browser, and
+    stealing it to rewind a beat would trap somebody inside the walkthrough.
+
+`web/src/story/Story.tsx` :: Story
+  WHY IT EXISTS: The component at `/story`. Puts every scene on the canvas at its own
+    coordinates and asks the camera to frame the current one.
+  WHAT IT DOES: Renders all scenes, all the time, inside the single transformed element,
+    positioning each one absolutely at its rectangle. Advancing changes only which
+    rectangle the camera is asked for. Along the bottom sits the presenter's readout.
+  CHOICES: Everything is mounted at once rather than on demand. It is nineteen scenes, not
+    nineteen thousand, and mounting on demand would cost the two effects the walkthrough is
+    built on — scenes visible at the edges of a wide shot, and a callback pointing at
+    something already drawn — while buying nothing.
+  CHOICES: The rectangle handed to the camera comes straight out of the script and is
+    therefore the same object across renders. This matters: a fresh object each render
+    would restart the camera move on every beat.
+  CHOICES: The readout says what the NEXT press will reveal, reaching into the following
+    scene when the current one is exhausted, and says whether that press will move the
+    camera. What is coming next is the one thing a presenter cannot get from the screen.
+  CHOICES: The whole stage is one large button, so clicking anywhere advances. Given a role
+    and a label rather than left as a bare element, because somebody driving this through a
+    screen reader still has to be able to tell that pressing it does something. What has
+    just been revealed is announced in a clipped live region, since the visual signal is a
+    dot lighting up inside a scene and announces nothing on its own.
+
+`web/src/story/Placeholder.tsx` and `.module.css` :: the stand-in scene
+  WHY IT EXISTS: Something has to occupy a scene's rectangle until the scene is built, and
+    the useful thing for it to do is draw the rectangle it was given.
+  WHAT IT DOES: Fills its scene's rectangle at full canvas size, states the scene's number,
+    act and title, and lists its reveals with the ones already shown lit. Seeing the actual
+    rectangle framed with an even margin is how the camera gets judged by eye before there
+    is any content to judge it against, and the lit dots make the beat machine visible too.
+  CHOICES: Scenes the camera is not standing at are dimmed rather than removed. They are
+    still on the canvas at their own coordinates and still visible at the edges of a wide
+    shot, which is how the walkthrough says "this came from somewhere" without narration.
+    Opacity rather than removal from the layout, because a scene with no position has
+    nowhere to fly from.
+  CHOICES: A revealed beat gets a filled marker and an unrevealed one a hollow marker, so
+    the state is never carried by colour alone.
+  CHOICES: Labelled "placeholder" in the corner on purpose. A neutral frame with real type
+    in it is exactly the sort of thing that gets mistaken for finished work in a
+    screenshot.
+
+`web/src/App.tsx` :: the `/story` branch
+  CHANGED FROM BEFORE: There were two handoffs before the console's own rendering, for the
+    facility-manager platform at `/fm` and nothing else. There are now three. The
+    walkthrough is handed off the same way and for the same reason: it owns the entire
+    window, has no masthead, no clock and no tabs, and is presented rather than worked in.
+    It shares the design tokens with the rest of the build and nothing else.
+
+`web/scripts/verify-story.ts` :: the verification
+  WHY IT EXISTS: The camera and the beat machine decide everything about how the
+    walkthrough behaves and neither is visible in a screenshot. A camera that overshoots,
+    or zooms unevenly, or diverges after a laptop sleeps, and a beat machine that can
+    strand somebody at a dead end, all look fine in a still image and all fail in front of
+    an audience.
+  WHAT IT DOES: Frames every scene and checks each one is centred and uncropped; flies the
+    two largest camera moves frame by frame and reports when each stops looking like it is
+    moving and when the loop shuts off; checks no move ever passes its target; checks
+    panning and zooming complete the same fraction of their journey on every frame, which
+    is what makes the zoom rate even; feeds the spring a two-second frame to stand in for a
+    sleeping laptop; retargets a move mid-flight; walks the whole walkthrough forward and
+    back and checks the two are exact inverses; and renders the component to markup to
+    confirm all the scenes really are on one canvas together.
+  CHOICES: It measures two different arrival times, because they are not the same thing —
+    when the picture stops changing to the eye, and when the loop stops. Confusing them
+    would mean either tuning the camera against a number nobody can see or believing a move
+    is slower than it looks. The first version asserted a single arrival inside one second
+    and failed at 1.42 seconds, which is what exposed both the wrong measurement and the
+    world-unit tolerance described under `settled` above.
+
+START HERE: `web/src/story/camera.ts` — the comment at the top is the argument for why the
+walkthrough is one canvas and a camera rather than nineteen slides, and every other file in
+this checkpoint is downstream of that.
