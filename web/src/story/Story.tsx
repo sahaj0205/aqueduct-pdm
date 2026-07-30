@@ -19,13 +19,13 @@
  * will reveal, which is the one thing they cannot get from the screen, and how far through
  * the show they are, which is what tells them whether to slow down.
  *
- * AT THIS CHECKPOINT the three scenes are placeholder frames. The camera, the beat machine
- * and the keyboard are real.
+ * EVERY SCENE IS DRIVEN BY THE SCRIPT in scenes.ts and every number on them comes from the
+ * frozen snapshot, which came out of the database.
  */
 
 import { useMemo } from "react";
 
-import { Placeholder } from "./Placeholder.tsx";
+import { Station } from "./Station.tsx";
 import { BEAT_COUNTS, SCENES } from "./scenes.ts";
 import { stepIndex, totalSteps } from "./show.ts";
 import { useCamera } from "./useCamera.ts";
@@ -76,7 +76,7 @@ export function Story() {
               height: `${each.box.h}px`,
             }}
           >
-            <Placeholder
+            <Station
               scene={each}
               index={index}
               beat={spot.beat}

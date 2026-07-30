@@ -1,0 +1,224 @@
+/* Every scene, in one layout. Colours and sizes are tokens; nothing here is a literal. */
+
+.station {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  padding: var(--s6) var(--s6) var(--s5);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--paper);
+  box-shadow: var(--lift-1);
+  overflow: hidden;
+  transition: opacity 240ms ease, border-color 240ms ease, box-shadow 240ms ease;
+}
+
+/*
+ * OFF-CAMERA SCENES ARE DIMMED, NOT UNMOUNTED. They stay at their own coordinates and stay
+ * visible at the edges of a wide shot, which is how the walkthrough says "this came from
+ * somewhere" without a word of narration. Opacity rather than display, because a scene
+ * removed from the layout has no position to be pointed at later.
+ */
+.away {
+  opacity: 0.3;
+}
+
+.current {
+  opacity: 1;
+  border-color: var(--hairline-strong);
+  box-shadow: var(--lift-2);
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+
+.num,
+.module {
+  font-family: var(--mono);
+  font-size: var(--t-micro-cap);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.num {
+  color: var(--ink-faint);
+  font-feature-settings: "tnum" 1;
+}
+
+.module {
+  color: var(--primary);
+}
+
+/* How often the stage runs. The walkthrough deliberately slows when this changes from
+   minutes to days, so the badge has to be legible at a glance. */
+.cadence {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: var(--t-micro-cap);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--hairline-strong);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.cadenceFast {
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+  color: var(--primary);
+  background: var(--info-wash);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--t-display-lg);
+  font-weight: var(--w-light);
+  line-height: var(--lh-title);
+  letter-spacing: var(--track-lg);
+  color: var(--ink);
+  max-width: 26ch;
+}
+
+/* The question the stage answers, in the operator's words rather than the engineer's. */
+.asks {
+  margin: 0;
+  padding-left: var(--s4);
+  border-left: 2px solid var(--primary);
+  font-size: var(--t-body-lg);
+  line-height: var(--lh-body);
+  color: var(--ink);
+  max-width: 60ch;
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+  max-height: 320px;
+  overflow: visible;
+}
+
+.reveals {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.reveals li {
+  position: relative;
+  padding-left: var(--s5);
+  font-size: var(--t-body-lg);
+  line-height: var(--lh-body);
+  max-width: 68ch;
+  transition: color 220ms ease, opacity 220ms ease;
+}
+
+/* Filled for a beat that has landed, hollow for one still to come — the state is carried by
+   shape as well as by colour. */
+.reveals li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 9px;
+  height: 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--hairline-strong);
+}
+
+.lit {
+  color: var(--ink);
+}
+
+.lit::before {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.unlit {
+  color: var(--ink-disabled);
+  opacity: 0.5;
+}
+
+/* ------------------------------------------------------------------------- figures */
+
+.figures {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--s3) var(--s5);
+}
+
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s3) var(--s4);
+  background: var(--sunken);
+  border-radius: var(--r-md);
+  min-width: 0;
+}
+
+.figure dt {
+  font-family: var(--mono);
+  font-size: var(--t-micro-cap);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.figure dd {
+  margin: 0;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.from {
+  display: block;
+  margin-top: 3px;
+  font-size: var(--t-caption);
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------------- what it wrote */
+
+.writes {
+  margin-top: auto;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--hairline);
+  flex-wrap: wrap;
+}
+
+.writesLabel {
+  font-family: var(--mono);
+  font-size: var(--t-micro-cap);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.writesVal {
+  font-family: var(--mono);
+  font-size: var(--t-caption);
+  color: var(--ink);
+}

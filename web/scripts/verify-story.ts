@@ -364,10 +364,19 @@ function main() {
   );
 
   console.log("\nevery scene is mounted at once, in one world");
-  const markup = renderToStaticMarkup(createElement(Story));
+  // Entities are decoded before comparing. React escapes apostrophes and ampersands on the
+  // way into markup, so a scene titled "someone else's fever" appears as "else&#x27;s" and a
+  // naive substring test would report it missing when it is present and correct.
+  const raw = renderToStaticMarkup(createElement(Story));
+  const markup = raw
+    .replace(/&#x27;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&");
+  const absent = SCENES.filter((scene) => !markup.includes(scene.title));
   check(
-    "all three scenes are in the rendered tree together",
-    SCENES.every((scene) => markup.includes(scene.title)),
+    `all ${SCENES.length} scenes are in the rendered tree together`,
+    absent.length === 0,
+    absent.length ? `missing: ${absent.map((s) => s.id).join(", ")}` : `${SCENES.length} scenes`,
   );
   check(
     "each is positioned at its own world coordinates",
