@@ -16,7 +16,8 @@
     "verify:diagnosis": "node scripts/run-ts.mjs scripts/verify-diagnosis.ts",
     "verify:prediction": "node scripts/run-ts.mjs scripts/verify-prediction.ts",
     "verify:config": "node scripts/run-ts.mjs scripts/verify-config.ts",
-    "verify:story": "node scripts/run-ts.mjs scripts/verify-story.ts"
+    "verify:story": "node scripts/run-ts.mjs scripts/verify-story.ts",
+    "snapshot": "node scripts/run-ts.mjs scripts/make-snapshot.ts"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

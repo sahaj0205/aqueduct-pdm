@@ -38,6 +38,7 @@ import {
   stepIndex,
   totalSteps,
 } from "../src/story/show.ts";
+import { SNAPSHOT } from "../src/story/snapshot.ts";
 import { Story } from "../src/story/Story.tsx";
 
 const VIEWPORT: Viewport = { w: 1440, h: 900 };
@@ -375,6 +376,103 @@ function main() {
   check(
     "the readout says what the next press will do",
     markup.includes(SCENES[0]!.reveals[1]!),
+  );
+
+  console.log("\nthe frozen moment holds together");
+  const s = SNAPSHOT;
+  console.log(
+    `  ${s.asset.name} · ${s.mode.mode_name} · ${s.at} · health ${s.health.value}`,
+  );
+  check("the history is not empty", s.series.length > 0, `${s.series.length} hourly points`);
+  check(
+    "the history runs oldest to newest",
+    s.series.every((p, i) => i === 0 || p.t >= s.series[i - 1]!.t),
+  );
+  check(
+    "the reading we follow is the newest point in the history",
+    s.reading.t === s.series[s.series.length - 1]!.t &&
+      s.reading.v === s.series[s.series.length - 1]!.v,
+    `${s.reading.v} ${s.point.unit_si} at ${s.reading.t}`,
+  );
+  check(
+    "the reading falls on the moment the walkthrough stands at",
+    s.reading.t.slice(0, 10) === s.at,
+    `${s.reading.t.slice(0, 10)} vs ${s.at}`,
+  );
+  check(
+    "the health on screen is what the health formula gives",
+    Math.round(100 * (1 - s.health.excess / s.indicator.threshold)) === s.health.value,
+    s.health.arithmetic,
+  );
+  check(
+    "and the written arithmetic quotes the same two numbers",
+    s.health.arithmetic.includes(String(s.health.excess)) &&
+      s.health.arithmetic.includes(String(s.indicator.threshold)),
+  );
+  check(
+    "the excess has not yet reached the failure threshold",
+    s.health.excess < s.indicator.threshold,
+    `${s.health.excess} of ${s.indicator.threshold} ${s.indicator.unit}`,
+  );
+  check(
+    "the threshold carries its written physical justification",
+    s.indicator.rationale.length > 120,
+    `${s.indicator.rationale.length} characters`,
+  );
+  check(
+    "the fault is one that only ever accumulates",
+    s.indicator.process === "gamma",
+    s.indicator.process,
+  );
+  check(
+    "the energy penalty per unit is on file",
+    s.indicator.penaltyKwPerUnit > 0,
+    `${s.indicator.penaltyKwPerUnit} kW per ${s.indicator.unit}`,
+  );
+  check(
+    "every instrument in the building is accounted for",
+    s.instruments.total > 0 && s.instruments.unusable >= 0,
+    `${s.instruments.total} total, ${s.instruments.unusable} unusable`,
+  );
+  check(
+    "each unusable instrument carries a written reason",
+    s.instruments.reasons.length === s.instruments.unusable &&
+      s.instruments.reasons.every((r) => typeof r === "string" && r.length > 0),
+  );
+  check("decline has a recorded start", s.health.onset !== null, s.health.onset ?? "none");
+  if (s.prediction.kind === "refusal") {
+    check(
+      "the refusal carries its reason rather than an empty estimate",
+      s.prediction.reason.length > 20,
+      s.prediction.reason.slice(0, 60) + "…",
+    );
+    check(
+      "and the walkthrough can show when the answer did arrive",
+      s.prediction.arrivingEstimate !== null,
+      s.prediction.arrivingEstimate
+        ? `p10 ${s.prediction.arrivingEstimate.p10}d · p50 ${s.prediction.arrivingEstimate.p50}d · p90 ${s.prediction.arrivingEstimate.p90}d`
+        : "none",
+    );
+    check(
+      "the arriving estimate is ordered low to high",
+      !s.prediction.arrivingEstimate ||
+        (s.prediction.arrivingEstimate.p10 <= s.prediction.arrivingEstimate.p50 &&
+          s.prediction.arrivingEstimate.p50 <= s.prediction.arrivingEstimate.p90),
+    );
+  } else {
+    check("the published estimate is ordered low to high",
+      s.prediction.p10 <= s.prediction.p50 && s.prediction.p50 <= s.prediction.p90);
+  }
+  check(
+    "the baseline recorded what it expected against what it saw",
+    s.baseline.residuals.length > 0,
+    `${s.baseline.residuals.length} rows`,
+  );
+  check(
+    "and every residual really is the gap between those two",
+    s.baseline.residuals
+      .slice(0, 200)
+      .every((r) => Math.abs(r.observed - r.expected - r.residual) < 0.01),
   );
 
   console.log(failures === 0 ? "\nevery property holds\n" : `\n${failures} FAILED\n`);
