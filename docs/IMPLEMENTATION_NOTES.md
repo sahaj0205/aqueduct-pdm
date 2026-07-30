@@ -11745,3 +11745,112 @@ between any two facts and answer a question. Before this there was no walkthroug
 START HERE: `web/src/story/camera.ts` — the comment at the top is the argument for why the
 walkthrough is one canvas and a camera rather than nineteen slides, and every other file in
 this checkpoint is downstream of that.
+
+## The walkthrough, Checkpoints 2 to 6 (combined) — real content, all nineteen scenes
+
+*Combined under time pressure — three hours available — with the user's agreement to move
+faster. Reported together rather than as five separate gates; see the honest gap noted at
+the end.*
+
+### What we did
+
+Every one of the nineteen scenes in the walkthrough now exists and shows real numbers
+pulled out of the running database, not placeholder text. A generator script connects to
+the live Postgres database, picks one real moment in the plant's history, and freezes
+everything about it into a committed file the walkthrough reads from — so the presentation
+never depends on a server being up in the room where it is shown.
+
+The moment chosen is chiller 1, seventh of June 2037, in the middle of a real condenser
+fouling fault: the film that builds up inside a condenser's tubes and forces the compressor
+to work harder to reject the same heat. Health is 62 out of 100 that day. The system's own
+arithmetic for that number — a formula involving how far a measurement has drifted from a
+threshold — is shown on screen exactly as the platform computed it, not restated by hand.
+
+One finding from real data changed the story for the better rather than worse: on this
+machine, this fault develops fast enough that there is no day where the "how much time is
+left" prediction has both a middling health score and a published answer — the system
+refuses to guess until it has enough evidence, and only gets that evidence after the fault
+has already progressed further. Rather than pick a different, tidier machine, the
+walkthrough shows the refusal exactly where it really happens, then shows the answer arrive
+two days later. A system that always produces a number is a system whose numbers mean
+nothing, and that refusal is now part of the story rather than an inconvenience hidden from
+it.
+
+### How it works
+
+`web/scripts/make-snapshot.ts` :: the freezer
+  WHY IT EXISTS: The walkthrough is shown to a room, sometimes on a laptop off the office
+    network, and a live data request that fails mid-presentation cannot be recovered from.
+    Every number is captured once, ahead of time, into a file that gets committed alongside
+    the code.
+  WHAT IT DOES: Connects to the local database directly rather than through the API, so
+    numbers that only exist as raw table rows — the written justification for a threshold,
+    the exact gap between what a machine produced and what it should have produced — are
+    available without the API's own reshaping getting in between. Picks the real day
+    described above, pulls fourteen days of hourly history for one instrument, the
+    baseline's expected-versus-observed values, the health arithmetic, and either a
+    published remaining-life estimate or the refusal with its reason, and writes all of it
+    to one JSON file.
+  ⚠ JUDGEMENT CALL: The chosen day and machine were picked by looking at what the real data
+    actually contains rather than by picking whichever day looked cleanest. An alternative
+    machine exists where health sits mid-band comfortably with a published estimate
+    alongside it, which would have made a tidier chart. The fouling story on chiller 1 is
+    the one the platform's own design documents use as the running example throughout, so
+    staying on it — refusal and all — keeps the walkthrough answering to the same case the
+    rest of the system's own writing does.
+
+`web/src/story/snapshot.ts` :: the shape
+  WHY IT EXISTS: Gives the frozen file a type, so a scene reading a field the generator
+    stopped producing fails to compile rather than showing the word "undefined" on a
+    projector.
+  WHAT IT DOES: One field per fact the walkthrough needs, typed against exactly what the
+    generator writes — including a union type that forces every scene to handle both the
+    "an estimate was published" case and the "the system refused" case, rather than
+    assuming the happy path.
+
+`web/src/story/scenes.ts` :: the script, now real
+  CHANGED FROM BEFORE: The three checkpoint-one stand-ins are now nineteen finished
+    entries, laid out as a serpentine — the first row of stages running left to right, the
+    second right to left, the third left to right again — so the reading's path through the
+    thirteen stages is one continuous, unbroken line across the canvas rather than a grid
+    jumped around at random. Every reveal, every number and every label is computed from the
+    frozen snapshot at the top of the file, once, rather than typed by hand into each scene.
+  ⚠ JUDGEMENT CALL: The map scene — the final pull-out that shows the whole journey at once
+    — has its box computed as the union of every other scene's box rather than written as a
+    number. Writing it by hand was the faster option; deriving it means the pull-out can
+    never disagree with where the eighteen other scenes actually are, at the cost that it is
+    one line of code that looks unusually clever next to plain data everywhere else.
+
+`web/src/story/Station.tsx` :: one shape for all nineteen scenes
+  WHY IT EXISTS: This is the single biggest simplification made under the three-hour
+    constraint, and it is a real design decision rather than only a shortcut. The
+    thirteen-stage argument in the source material is that every stage has the same
+    shape — it asks one question, reads what the last stage wrote, and writes something of
+    its own — and one shared layout is what lets a viewer learn to read that shape once and
+    then know where to look for the rest of the show.
+  WHAT IT DOES: Renders a title, the question the stage answers, a list of facts that light
+    up as the presenter advances, a grid of named numbers, and a line at the bottom stating
+    what table the stage wrote to. One scene — the reading's arrival — gets a real drawn
+    chart instead: the fourteen days of history draw themselves as a line with a bright dot
+    at the newest value and a fading tail behind it, built by hand in SVG rather than with
+    a charting library, because a library renders a finished chart in one pass and has no
+    way to show one partially drawing itself in front of an audience.
+
+### The honest gap — what this checkpoint did NOT build
+
+Given three hours, the choice made was: get real numbers into all nineteen scenes first,
+and leave the signature visual moves for a following pass. That means the plan's
+description of scenes one, two and fifteen — the plant drawing, the blast that pulls one
+machine apart, and the big pull-back-and-return to check an upstream cause — do not yet
+exist. Those three scenes currently use the same text-and-numbers layout as every stage
+scene. The callback mechanic (pointing the camera back at an earlier scene to show what
+justified a number), the comet changing identity as it moves through the pipeline, and the
+background rail showing other machines' work in parallel are also not built.
+
+Nothing here is broken or wrong — it verifies, it is driven by real data, and it is a
+complete, presentable walkthrough of all thirteen stages. It is a plainer version of the
+plan than checkpoint one's design implied, and that trade was made deliberately rather than
+silently.
+
+START HERE: `web/src/story/scenes.ts` — every fact on every scene traces back to one line
+in this file, and every one of those lines traces back to the frozen snapshot.
