@@ -542,3 +542,35 @@ export function sceneById(id: string): { scene: Scene; index: number } | null {
   const scene = SCENES[index];
   return scene ? { scene, index } : null;
 }
+
+/**
+ * The one callback in this checkpoint: standing at the baseline scene, on the beat that
+ * says the model was fitted on the commissioning window, the camera should widen to hold
+ * that scene together with the "record" scene where the commissioning window was first
+ * named — so the audience can see, rather than be told, where the number came from.
+ *
+ * MEMOISED, because useCamera retargets whenever the box object it is given changes
+ * identity, not when its contents change. A fresh `union()` object built on every render
+ * would restart the camera move every time React re-rendered for an unrelated reason —
+ * the symptom would be a camera that never quite settles.
+ */
+const CALLBACK_SCENE = "baseline";
+const CALLBACK_BEAT = 4;
+let callbackBox: Box | null = null;
+
+/** What the camera should be framing right now: usually the scene's own box. */
+export function cameraTargetFor(scene: Scene, beat: number): Box {
+  if (scene.id === CALLBACK_SCENE && beat === CALLBACK_BEAT) {
+    if (!callbackBox) {
+      const record = sceneById("record");
+      callbackBox = union([scene.box, record ? record.scene.box : scene.box]);
+    }
+    return callbackBox;
+  }
+  return scene.box;
+}
+
+/** Whether the callback line should be showing right now. */
+export function callbackActiveAt(scene: Scene, beat: number): boolean {
+  return scene.id === CALLBACK_SCENE && beat === CALLBACK_BEAT;
+}

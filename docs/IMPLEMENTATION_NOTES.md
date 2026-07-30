@@ -11854,3 +11854,102 @@ silently.
 
 START HERE: `web/src/story/scenes.ts` — every fact on every scene traces back to one line
 in this file, and every one of those lines traces back to the frozen snapshot.
+
+## The walkthrough — the blast, and the callback
+
+### What we did
+
+Two of the "crazy transitions" from the original brief now actually happen, rather than
+being described in bullet text. First: the machine the whole walkthrough follows, chiller
+1, now physically flies out of the building drawing and comes apart into its labelled
+parts, at the same time the camera is closing in on it — not two separate effects, one
+continuous move. Second: standing at the stage that explains where the machine's healthy
+baseline came from, the camera actually widens to hold that stage and the earlier scene
+that first mentioned the twenty-one-day reference window together on screen at once, with
+a line drawn between them, before returning to where it was — so a claim about where a
+number came from is shown rather than asserted.
+
+Both effects are driven entirely by which scene and which beat the presenter is currently
+on. Nothing was added that watches the clock or times itself against the camera separately;
+advancing the presentation is the only input either mechanism reads.
+
+### How it works
+
+`web/src/story/plantLayout.ts` :: the one shared map
+  WHY IT EXISTS: Two different components need to agree on where chiller-1 sits before it
+    is picked out — the building drawing, which has to leave a gap for it among the other
+    machines, and the element that flies out of that gap into the following scene. Writing
+    the same coordinate in two places is how the two eventually disagree; this file is the
+    one place either of them is allowed to read it from.
+  WHAT IT DOES: Every other asset's position within the building drawing, plus the two
+    positions chiller-1 itself occupies — where it rests before being picked, and where it
+    lands, exploded, inside the following scene.
+
+`web/src/story/Plant.tsx` and `Chiller1.tsx` :: the blast
+  WHY THEY EXIST: The building drawing and the "one machine" scene that follows it are
+    both permanently mounted at their own fixed places in the world, the way every scene in
+    this walkthrough is, and four hundred world-units apart. The thing that visibly crosses
+    that gap cannot belong to either scene, because neither is allowed to unmount while the
+    story visits the other.
+  WHAT THEY DO: Plant draws every asset except chiller-1 — the two cooling towers, the
+    other two chillers, the loop, the coil, the five zones — plus a row of small marks
+    standing for the building's hundred and seven instruments, three of them struck through
+    for the ones already known to be broken. Chiller-1 itself is a separate element,
+    mounted once as a sibling to every scene, whose position is set from plain inline
+    style rather than from the camera. The moment the presenter reaches the "one machine"
+    scene, that inline position changes from its resting spot in the drawing to a box
+    inside the new scene, and a CSS transition on that position is what makes it fly. A
+    beat later, four labelled parts — housing, condenser, compressor, the instrument being
+    followed — fan out from its centre the same way.
+  CHOICES: The building's other assets scatter outward and fade at the same moment chiller-1
+    leaves, each toward a slightly different point away from the centre of the drawing, so
+    the effect reads as an explosion rather than eleven boxes sliding in the same direction.
+  ⚠ JUDGEMENT CALL: The camera (a physics spring) and the flying chiller-1 element (a CSS
+    transition) are two independent systems tuned to roughly the same duration rather than
+    one system driving both. The alternative — computing the chiller's position from the
+    camera's own spring state every frame — would guarantee the two could never drift apart,
+    at the cost of the flying element having to reach into the camera's internals, which
+    nothing else in the show does. Given the time available, two systems tuned to agree was
+    the faster and equally convincing route; if a future pass ever finds the two visibly out
+    of step, this is the seam to revisit.
+
+`web/src/story/scenes.ts` :: cameraTargetFor, callbackActiveAt
+  WHY THEY EXIST: On one specific beat, the camera has to frame two scenes at once instead
+    of one, and it has to do that without ever handing the animation loop a freshly built
+    object — the camera restarts its move whenever the box it is given changes identity,
+    not when the box's contents change, so a new object on every render would mean the
+    camera never actually settles.
+  WHAT THEY DO: For almost every beat of the show, the camera's target is simply the
+    current scene's own box, returned untouched. On the one beat that says the baseline was
+    fitted on the commissioning window, it instead returns the smallest box containing both
+    the current scene and the "what we already know" scene from earlier in the show — built
+    once and cached, so asking twice returns the exact same object. `callbackActiveAt`
+    answers a narrower question for anything that only needs to know whether to show
+    itself right now, such as the line and the highlighted card below.
+
+`web/src/story/Callback.tsx` :: the line back
+  WHY IT EXISTS: Says, visually, "this number came from there" at the one moment the show
+    makes that claim, rather than leaving it as a sentence to take on trust.
+  WHAT IT DOES: A single line and two dots, drawn once between the centres of two scenes'
+    boxes and mounted permanently as a sibling to every scene inside the same transformed
+    world the camera moves. It needs no screen-space math at all — both ends are already
+    expressed in the coordinate space the camera transforms, so the same transform that
+    moves the scenes carries the line with them. It is invisible except on the beat
+    `callbackActiveAt` names.
+  CHOICES: The card it points at — "what we already know about this machine" — brightens
+    at the same moment, using a highlight the record scene did not previously have any
+    reason to carry, so the audience's eye is pulled to the right place rather than only
+    told where to look by the line's endpoint.
+
+### Still not built, by choice
+
+Given the time remaining, the background rail showing other machines' work in parallel and
+the presenter's deep links and autoplay were left for a later pass in favour of finishing
+these two mechanics completely rather than starting all three. Verification could not be
+confirmed in a live browser this round — the screenshot tool was contended by what looked
+like a concurrent session — so this checkpoint is verified by the property script, a clean
+type-check, and a clean production build, and a live look is still owed.
+
+START HERE: `web/src/story/Story.tsx` — the section computing `flown`, `exploded` and
+`callbackActive` from `spot` is the one place both mechanics are switched on, and everything
+else in this note follows from those three lines.

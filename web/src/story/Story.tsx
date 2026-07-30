@@ -25,22 +25,39 @@
 
 import { useMemo } from "react";
 
+import { Callback } from "./Callback.tsx";
+import { Chiller1 } from "./Chiller1.tsx";
+import { Pick } from "./Pick.tsx";
+import { Plant } from "./Plant.tsx";
 import { Station } from "./Station.tsx";
-import { BEAT_COUNTS, SCENES } from "./scenes.ts";
+import { BEAT_COUNTS, SCENES, callbackActiveAt, cameraTargetFor, sceneById } from "./scenes.ts";
 import { stepIndex, totalSteps } from "./show.ts";
 import { useCamera } from "./useCamera.ts";
 import { useShow } from "./useShow.ts";
 import styles from "./Story.module.css";
+
+const PICK_INDEX = sceneById("pick")!.index;
+const RECORD_BOX = sceneById("record")!.scene.box;
 
 export function Story() {
   const { spot, advance } = useShow(BEAT_COUNTS);
 
   const scene = SCENES[spot.scene] ?? SCENES[0]!;
 
-  // The box object comes straight out of the scene table and is therefore referentially
-  // stable across renders. That matters: the camera retargets when this value changes, so
-  // a fresh object each render would restart the move on every beat.
-  const { stage, world } = useCamera(scene.box);
+  // Usually the scene's own box. On the one beat that points back at an earlier scene,
+  // cameraTargetFor returns a memoised union of the two, so the camera widens to hold
+  // both rather than retargeting to just the current one.
+  const target = cameraTargetFor(scene, spot.beat);
+  const { stage, world } = useCamera(target);
+
+  // Chiller-1 has left its resting place among the other assets from the moment the
+  // presenter reaches the "pick" scene onward, and stays exploded from partway through
+  // that scene onward — including on every later scene, so it does not un-explode the
+  // moment the camera moves on.
+  const flown = spot.scene >= PICK_INDEX;
+  const exploded = flown && (spot.scene > PICK_INDEX || spot.beat >= 2);
+
+  const callbackActive = callbackActiveAt(scene, spot.beat);
 
   const total = useMemo(() => totalSteps(BEAT_COUNTS), []);
   const step = stepIndex(BEAT_COUNTS, spot);
@@ -76,14 +93,28 @@ export function Story() {
               height: `${each.box.h}px`,
             }}
           >
-            <Station
-              scene={each}
-              index={index}
-              beat={spot.beat}
-              current={index === spot.scene}
-            />
+            {each.id === "plant" ? (
+              <Plant scene={each} index={index} beat={spot.beat} current={index === spot.scene} fled={flown} />
+            ) : each.id === "pick" ? (
+              <Pick scene={each} index={index} beat={spot.beat} current={index === spot.scene} />
+            ) : (
+              <Station
+                scene={each}
+                index={index}
+                beat={spot.beat}
+                current={index === spot.scene}
+                pinged={each.id === "record" && callbackActive}
+              />
+            )}
           </div>
         ))}
+
+        {/* The one element that physically travels between two scenes rather than being
+            reframed by the camera. See Chiller1.tsx for why it cannot belong to either. */}
+        <Chiller1 flown={flown} exploded={exploded} />
+
+        {/* Mounted once, permanently, and made visible only on the beat it applies to. */}
+        <Callback from={RECORD_BOX} to={scene.box} active={callbackActive} />
       </div>
 
       <div className={styles.hud}>

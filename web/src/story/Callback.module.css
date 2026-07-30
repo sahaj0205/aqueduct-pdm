@@ -1,0 +1,23 @@
+.line {
+  position: absolute;
+  pointer-events: none;
+  overflow: visible;
+  opacity: 0;
+  transition: opacity 400ms ease;
+}
+
+.active {
+  opacity: 1;
+}
+
+.line line {
+  stroke: var(--primary);
+  stroke-width: 6;
+  stroke-dasharray: 2 34;
+  stroke-linecap: round;
+}
+
+.line circle {
+  fill: var(--primary);
+  opacity: 0.5;
+}

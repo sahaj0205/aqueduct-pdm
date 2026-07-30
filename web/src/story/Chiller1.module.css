@@ -1,0 +1,61 @@
+/*
+ * The travelling chiller. Position is set inline from world coordinates; the transition
+ * on those four properties is what makes it fly rather than jump when its box changes.
+ */
+
+.chiller {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--primary);
+  background: var(--info-wash);
+  box-shadow: var(--lift-2);
+  transition:
+    left 950ms cubic-bezier(0.22, 1, 0.36, 1),
+    top 950ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 950ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 950ms cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 5;
+}
+
+.label {
+  font-size: var(--t-heading-sm);
+  font-weight: var(--w-light);
+  color: var(--ink);
+}
+
+.id {
+  font-family: var(--mono);
+  font-size: var(--t-caption);
+  color: var(--primary);
+}
+
+/* The four parts fan outward from the centre once the machine has exploded. Hidden and
+   collapsed to the centre otherwise, so they do not appear before the scene calls for
+   them and cannot be tabbed to while invisible. */
+.part {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 6px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--hairline-strong);
+  background: var(--paper);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--ink-muted);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 500ms ease;
+}
+
+.exploded .part {
+  transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy)));
+  opacity: 1;
+}

@@ -28,7 +28,13 @@ import {
   union,
   worldToScreen,
 } from "../src/story/camera.ts";
-import { BEAT_COUNTS, SCENES } from "../src/story/scenes.ts";
+import {
+  BEAT_COUNTS,
+  SCENES,
+  callbackActiveAt,
+  cameraTargetFor,
+  sceneById,
+} from "../src/story/scenes.ts";
 import {
   START,
   type Spot,
@@ -482,6 +488,68 @@ function main() {
     s.baseline.residuals
       .slice(0, 200)
       .every((r) => Math.abs(r.observed - r.expected - r.residual) < 0.01),
+  );
+
+  console.log("\nthe callback: pointing from the baseline scene back at the record scene");
+  const baseline = sceneById("baseline")!.scene;
+  const recordScene = sceneById("record")!.scene;
+
+  check(
+    "on any ordinary beat the camera target IS the scene's own box, by reference",
+    cameraTargetFor(baseline, 0) === baseline.box && cameraTargetFor(baseline, 2) === baseline.box,
+  );
+  check(
+    "callback is active on exactly one beat of the baseline scene",
+    SCENES.filter((s) => Array.from({ length: s.reveals.length }, (_, b) => callbackActiveAt(s, b)).some(Boolean))
+      .length === 1,
+  );
+  check(
+    "and it is not active on any other scene's beats",
+    SCENES.filter((s) => s.id !== "baseline").every(
+      (s) => !Array.from({ length: s.reveals.length }, (_, b) => callbackActiveAt(s, b)).some(Boolean),
+    ),
+  );
+
+  const cbTarget = cameraTargetFor(baseline, 4);
+  check(
+    "on the callback beat the camera target contains the baseline scene's own box",
+    cbTarget.x <= baseline.box.x &&
+      cbTarget.y <= baseline.box.y &&
+      cbTarget.x + cbTarget.w >= baseline.box.x + baseline.box.w &&
+      cbTarget.y + cbTarget.h >= baseline.box.y + baseline.box.h,
+  );
+  check(
+    "and it also contains the record scene's box — the thing being pointed at",
+    cbTarget.x <= recordScene.box.x &&
+      cbTarget.y <= recordScene.box.y &&
+      cbTarget.x + cbTarget.w >= recordScene.box.x + recordScene.box.w &&
+      cbTarget.y + cbTarget.h >= recordScene.box.y + recordScene.box.h,
+  );
+  check(
+    "calling it twice returns the identical object — the camera must not restart on re-render",
+    cameraTargetFor(baseline, 4) === cameraTargetFor(baseline, 4),
+  );
+  check(
+    "one beat before or after the callback, the target reverts to the scene's own box",
+    cameraTargetFor(baseline, 3) === baseline.box && cameraTargetFor(baseline, 5) === baseline.box,
+  );
+
+  console.log("\nchiller-1: where it stands relative to being picked out");
+  const pickIndex = sceneById("pick")!.index;
+  const plantIndex = sceneById("plant")!.index;
+  const recordIndex = sceneById("record")!.index;
+  check(
+    "still at rest while the plant scene has the floor",
+    plantIndex < pickIndex,
+    `plant is scene ${plantIndex + 1}, pick is scene ${pickIndex + 1}`,
+  );
+  check(
+    "and picked out by the very next scene, with nothing in between",
+    pickIndex === plantIndex + 1,
+  );
+  check(
+    "every scene after the pick keeps chiller-1 exploded",
+    recordIndex > pickIndex,
   );
 
   console.log(failures === 0 ? "\nevery property holds\n" : `\n${failures} FAILED\n`);

@@ -92,17 +92,22 @@ export function Station({
   index,
   beat,
   current,
+  pinged = false,
 }: {
   scene: Scene;
   index: number;
   beat: number;
   /** Whether the camera is standing here. Off-camera scenes are dimmed, never unmounted. */
   current: boolean;
+  /** True for the moment a later scene's callback is pointing at this one. */
+  pinged?: boolean;
 }) {
   const isArrival = scene.id === "arrival";
 
   return (
-    <section className={`${styles.station} ${current ? styles.current : styles.away}`}>
+    <section
+      className={`${styles.station} ${current ? styles.current : styles.away} ${pinged ? styles.pinged : ""}`}
+    >
       <header className={styles.head}>
         <div className={styles.meta}>
           <span className={styles.num}>{String(index + 1).padStart(2, "0")}</span>

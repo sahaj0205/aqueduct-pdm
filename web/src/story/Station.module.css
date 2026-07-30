@@ -31,6 +31,15 @@
   box-shadow: var(--lift-2);
 }
 
+/* Lit up when a later scene's callback is pointing here. A scene can be both away (dimmed
+   because the camera is elsewhere) and pinged (briefly worth looking at anyway) at once,
+   which is why this raises opacity independently rather than only recolouring the border. */
+.pinged {
+  opacity: 1;
+  border-color: var(--primary);
+  box-shadow: var(--ring), var(--lift-2);
+}
+
 .head {
   display: flex;
   flex-direction: column;
