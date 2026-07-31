@@ -165,6 +165,31 @@ export function Story() {
         </div>
       )}
 
+      {/*
+        THE PROGRESS RAIL. One mark per scene, in running order, grouped by act.
+        Filled behind the current position, hollow ahead of it.
+
+        It answers the question a listener cannot ask out loud without interrupting: how much
+        of this is there, and how much is left. Without it, a walkthrough of ninety-five
+        beats is an unbounded sequence of unrelated-looking screens, and somebody still
+        digesting stage six has no way to know that stages seven to thirteen are variations
+        on a shape they have already learned.
+
+        In screen space rather than on the canvas, so it costs no room inside any card and
+        stays in exactly the same place while the camera moves.
+      */}
+      <div className={styles.rail} aria-hidden="true">
+        {SCENES.map((each, index) => (
+          <span
+            key={each.id}
+            className={`${styles.tick} ${styles[`act${each.act}`]} ${
+              index < spot.scene ? styles.done : index === spot.scene ? styles.here : styles.ahead
+            }`}
+            title={each.title}
+          />
+        ))}
+      </div>
+
       <div className={styles.hud}>
         <div className={styles.where}>
           <span className={styles.act}>Act {scene.act}</span>

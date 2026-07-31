@@ -254,6 +254,59 @@
  * available, because the height is what sets the camera's framing and the run of stages has
  * to be framed identically to read as one repeated apparatus.
  */
+/*
+ * The handoff strip: what arrived, and what is left behind.
+ *
+ * Pinned to the bottom of the card, in the same place on every stage, so it becomes a
+ * fixed reference point a viewer can look to rather than something they have to find. The
+ * two lines are deliberately asymmetric — the input is written in plain language because it
+ * is a claim about causality, the output in monospace because it is a table name.
+ */
+.handoff {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--hairline);
+}
+
+.hand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.handLabel {
+  font-family: var(--mono);
+  font-size: var(--t-micro-cap);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  flex: none;
+  min-width: 11ch;
+}
+
+.handLabelOut {
+  color: var(--primary);
+}
+
+.handWhat {
+  font-size: var(--t-caption);
+  color: var(--ink-muted);
+  min-width: 0;
+}
+
+/* Names the stage it came from, so the chain is followable in both directions. */
+.handFrom {
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  font-style: italic;
+  flex: none;
+}
+
 .writes {
   margin-top: auto;
   display: flex;

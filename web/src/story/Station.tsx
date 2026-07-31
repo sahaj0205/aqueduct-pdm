@@ -13,7 +13,7 @@
  * the single thing in the walkthrough that cannot be said in a list.
  */
 
-import { type Figure, type Scene } from "./scenes.ts";
+import { type Figure, type Scene, sceneById } from "./scenes.ts";
 import { SNAPSHOT } from "./snapshot.ts";
 import styles from "./Station.module.css";
 
@@ -103,6 +103,9 @@ export function Station({
   pinged?: boolean;
 }) {
   const isArrival = scene.id === "arrival";
+  // The plain-language name of the stage this one's input came from. Resolved through the
+  // scene table rather than written out again, so renaming a scene renames it here too.
+  const fromTitle = scene.reads ? (sceneById(scene.reads.from)?.scene.title ?? null) : null;
 
   return (
     <section
@@ -140,10 +143,27 @@ export function Station({
           the numbers rather than competing with them from the first frame. */}
       {scene.figures && current && beat >= 1 && <Figures figures={scene.figures} />}
 
-      {scene.writes && (
-        <footer className={styles.writes}>
-          <span className={styles.writesLabel}>writes</span>
-          <span className={styles.writesVal}>{scene.writes}</span>
+      {/*
+        The handoff. This is the one part of a card that is about the SEQUENCE rather than
+        about the stage — what arrived from an earlier step, and what this step leaves behind
+        for the next. Shown on every stage so a viewer who has lost the thread can pick it up
+        from any single screen without having to have followed the previous twelve.
+      */}
+      {(scene.reads || scene.writes) && (
+        <footer className={styles.handoff}>
+          {scene.reads && (
+            <div className={styles.hand}>
+              <span className={styles.handLabel}>carried in</span>
+              <span className={styles.handWhat}>{scene.reads.what}</span>
+              {fromTitle && <span className={styles.handFrom}>from &ldquo;{fromTitle}&rdquo;</span>}
+            </div>
+          )}
+          {scene.writes && (
+            <div className={styles.hand}>
+              <span className={`${styles.handLabel} ${styles.handLabelOut}`}>leaves behind</span>
+              <span className={styles.writesVal}>{scene.writes}</span>
+            </div>
+          )}
         </footer>
       )}
     </section>

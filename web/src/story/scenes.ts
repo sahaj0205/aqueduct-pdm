@@ -53,6 +53,20 @@ export interface Scene {
   asks?: string;
   /** Where this stage's answer lands. Some stages write nothing, and say so. */
   writes?: string;
+  /**
+   * What this stage received, and which earlier stage produced it.
+   *
+   * WHY THIS IS AUTHORED RATHER THAN DERIVED. It would be easy to take the previous scene's
+   * `writes` automatically, and it would be wrong: several stages do not consume what the
+   * scene immediately before them produced. The rule engine reads what cleared the quality
+   * gate, not what the mode gate did — and the mode gate writes nothing at all. A mechanical
+   * derivation would state a causal claim that is false, which is worse than stating none.
+   *
+   * `from` is a scene id, and scripts/verify-story.ts asserts it names a scene EARLIER in
+   * the running order. That check is not bookkeeping: it is the walkthrough's own claim that
+   * nothing in this pipeline reaches back up, enforced against the script that makes it.
+   */
+  reads?: { from: string; what: string };
   /** Where the scene lives in world space. Decides the camera framing entirely. */
   box: Box;
   /** One label per press, in order. The count is what the show machine walks. */
@@ -218,6 +232,7 @@ const ACT_TWO: Scene[] = [
     box: at(0, 0),
     asks: "Is this number in the system, in the right unit, at the right time?",
     writes: "app.measurements · app.measurements_hourly",
+    reads: { from: "arrival", what: "the raw reading, straight off the instrument" },
     reveals: [
       `the reading is stamped SI on the way in — ${S.point.unit_si}, never a Fahrenheit`,
       "the unit is a property of the ingestion manifest, checked once, not of every query",
@@ -235,6 +250,7 @@ const ACT_TWO: Scene[] = [
     box: at(1, 0),
     asks: "Is the instrument telling the truth right now?",
     writes: "quality_score · quality_flags · app.sensor_advisories",
+    reads: { from: "ingest", what: "the stored reading, converted to SI" },
     reveals: [
       "five checks run: range, rate of change, flatline, staleness, cross-agreement",
       "the composite is the WORST of the five, not the average",
@@ -257,6 +273,7 @@ const ACT_TWO: Scene[] = [
     box: at(2, 0),
     asks: "Is this a moment in which anything can fairly be judged?",
     writes: "nothing — this gates every stage below it",
+    reads: { from: "ingest", what: "the machine's own status, power and flow at that instant" },
     reveals: [
       "three gates: is it running, did it start over an hour ago, is it above twenty tons",
       "if any one of them fails, no judgement is made at all — every stage below is skipped",
@@ -274,6 +291,7 @@ const ACT_TWO: Scene[] = [
     box: at(3, 0),
     asks: "Does any physics assertion about this machine fail to hold?",
     writes: "rule findings — per machine, per rule, per sustained stretch",
+    reads: { from: "quality", what: "readings that cleared the quality gate — anything below 50 is not evidence" },
     reveals: [
       "nine physics assertions are registered against classes of equipment",
       "the engine asks the building graph which machines each one applies to",
@@ -294,6 +312,7 @@ const ACT_TWO: Scene[] = [
     box: at(4, 0),
     asks: "Is this set of readings physically consistent?",
     writes: "app.constraint_residuals",
+    reads: { from: "quality", what: "the whole set of believable readings taken at the same instant" },
     reveals: [
       "balances that must hold if the instruments are telling the truth",
       "this reading appears in the chiller's own energy balance",
@@ -310,6 +329,7 @@ const ACT_TWO: Scene[] = [
     box: at(4, 1),
     asks: "Given exactly what is being asked of this machine right now, is this the number it should be producing?",
     writes: "app.residuals",
+    reads: { from: "context", what: "a reading taken while the machine was genuinely running and loaded" },
     reveals: [
       "a model of what this machine does when healthy, fitted on its own commissioning window",
       `it predicts what this reading SHOULD have been, given the load it is under`,
@@ -344,6 +364,7 @@ const ACT_TWO: Scene[] = [
     box: at(3, 1),
     asks: "For this specific way of failing, what is the one number that tracks it?",
     writes: "an indicator series, per machine, per failure mode",
+    reads: { from: "baseline", what: "the gap between what was observed and what was expected" },
     reveals: [
       `that gap IS the ${S.mode.mode_name.toLowerCase()} indicator — the same number, renamed`,
       `it fails at ${THRESHOLD} ${UNIT}, and that number has three separate justifications`,
@@ -366,6 +387,7 @@ const ACT_TWO: Scene[] = [
     box: at(2, 1),
     asks: "How much of the way to failure has this machine travelled, and did it really start?",
     writes: "app.health_state · indicator_raw · indicator_monotonic · t_onset",
+    reads: { from: "indicator", what: "the indicator series for this one failure mode" },
     reveals: [
       "the cadence changes here — from every few minutes to once a day",
       "the day's readings are reduced to one median, so a single bad hour cannot move the score",
@@ -390,6 +412,7 @@ const ACT_TWO: Scene[] = [
     box: at(1, 1),
     asks: "If it keeps worsening like this, when does it cross the threshold?",
     writes: "app.rul_estimates — or the refusal, with its reason",
+    reads: { from: "health", what: "the clamped indicator, and the date decline was judged to have begun" },
     reveals: [
       "the honest answer today is that there is no answer",
       S.prediction.kind === "refusal"
@@ -439,6 +462,7 @@ const ACT_TWO: Scene[] = [
     box: at(0, 1),
     asks: "Do we send somebody with a calibration kit, or somebody with a wrench?",
     writes: "a fault class per machine, per window",
+    reads: { from: "constraints", what: "which instruments disagreed with each other, and by how much" },
     reveals: [
       "the same symptom can be a failing machine or a failing instrument",
       "the graph is asked which other readings should agree with this one",
@@ -459,6 +483,7 @@ const ACT_TWO: Scene[] = [
     box: at(0, 2),
     asks: "Could an open fault upstream be producing this symptom?",
     writes: "a consequential link, and a demoted rank",
+    reads: { from: "diagnosis", what: "a fault class for this machine — equipment, not a bad sensor" },
     reveals: [
       "before this machine is blamed, the plant feeding it is checked",
       "this chiller is fed by a cooling tower — warm condenser water would look exactly like fouling",
@@ -484,6 +509,7 @@ const ACT_TWO: Scene[] = [
     box: at(1, 2),
     asks: "What should be done, by whom, and what does waiting cost?",
     writes: "app.advisories",
+    reads: { from: "rootcause", what: "a fault established as this machine's own, not a symptom of another's" },
     reveals: [
       "thirteen stages collapse into one card a person can act on",
       `the job: brush the condenser tubes — ${money(S.advisory?.effort_usd ?? 0)}`,
@@ -510,6 +536,7 @@ const ACT_TWO: Scene[] = [
     box: at(2, 2),
     asks: "What does the operator see, and can they trust it is only what was known at the time?",
     writes: "nothing — every endpoint reads",
+    reads: { from: "advisory", what: "the finished advisory, priced and ranked" },
     reveals: [
       "the advisory becomes a row on a worklist, with a name against it",
       "every screen answers as of a moment, never with today's knowledge backdated",
@@ -555,6 +582,7 @@ const ACT_THREE: Scene[] = [
     writes: S.validation.generatedAt
       ? `VALIDATION.md — scored ${S.validation.generatedAt}, blind to the answer key`
       : "VALIDATION.md",
+    reads: { from: "screen", what: "every finding the pipeline produced, across every run" },
     reveals: [
       "because every fault was injected, the exact day it started and the day it would have failed are both written down",
       "that answer key lives in a separate part of the database, and the credential the detectors run under is denied access to it",

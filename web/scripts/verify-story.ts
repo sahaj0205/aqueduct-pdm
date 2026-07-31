@@ -604,6 +604,36 @@ function main() {
     offenders.length ? offenders.join(" | ") : `${SCENES.length} scenes clean`,
   );
 
+  console.log("\nthe handoff between stages only ever runs forwards");
+  /*
+   * Each stage states what it received and which earlier stage produced it. The walkthrough's
+   * central claim about this pipeline is that nothing skips a layer and nothing reaches back
+   * up, so a stage citing a LATER stage as its source would be the script contradicting the
+   * thing it is arguing. That is checked here rather than trusted.
+   */
+  const withReads = SCENES.filter((s) => s.reads);
+  const badRefs: string[] = [];
+  for (const scene of withReads) {
+    const here = SCENES.findIndex((s) => s.id === scene.id);
+    const source = SCENES.findIndex((s) => s.id === scene.reads!.from);
+    if (source < 0) badRefs.push(`${scene.id} cites "${scene.reads!.from}", which is not a scene`);
+    else if (source === here) badRefs.push(`${scene.id} cites itself`);
+    else if (source > here) badRefs.push(`${scene.id} cites "${scene.reads!.from}", which comes later`);
+  }
+  check(
+    "every stage's input comes from a stage that already happened",
+    badRefs.length === 0,
+    badRefs.length ? badRefs.join(" | ") : `${withReads.length} stages declare where their input came from`,
+  );
+  check(
+    "every pipeline stage says what it received, so the chain has no silent gaps",
+    SCENES.filter((s) => s.act === 2).every((s) => s.reads !== undefined),
+    (() => {
+      const missing = SCENES.filter((s) => s.act === 2 && !s.reads).map((s) => s.id);
+      return missing.length ? `missing: ${missing.join(", ")}` : "all 13 stages";
+    })(),
+  );
+
   console.log("\nthe camera travels in an orderly path, scene to scene");
   // A walkthrough is disorienting when consecutive scenes sit far apart on the canvas: the
   // camera lurches, and the audience loses track of where the new thing came from. This

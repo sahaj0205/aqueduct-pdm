@@ -239,6 +239,59 @@
   color: var(--ink);
 }
 
+/* ------------------------------------------------------------- the progress rail
+ *
+ * Sits directly above the readout, spanning the width. Marks are sized so all twenty-one
+ * fit comfortably; the three acts are separated by a gap rather than by a colour, because
+ * colour in this project is spoken for and a fourth meaning for it would be one too many.
+ */
+
+.rail {
+  position: absolute;
+  left: var(--s6);
+  right: var(--s6);
+  bottom: 74px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  pointer-events: none;
+}
+
+.tick {
+  height: 4px;
+  flex: 1 1 auto;
+  border-radius: var(--r-pill);
+  transition: background 300ms ease, opacity 300ms ease;
+}
+
+/* An act boundary reads as a wider gap, so the three parts of the show are visible as
+   three runs rather than one undifferentiated bar. */
+.act2 + .act1,
+.act1 + .act2,
+.act2 + .act3,
+.act3 + .act2 {
+  margin-left: var(--s4);
+}
+
+/* Behind the current position: what has already been explained. */
+.done {
+  background: var(--primary);
+  opacity: 0.85;
+}
+
+/* Where we are. Taller as well as brighter, so position never depends on colour alone. */
+.here {
+  background: var(--primary);
+  height: 9px;
+  opacity: 1;
+}
+
+/* Still to come. */
+.ahead {
+  background: var(--hairline-strong);
+  opacity: 0.5;
+}
+
 /* ------------------------------------------------------------------ the readout */
 
 .hud {
