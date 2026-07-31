@@ -41,7 +41,7 @@ export interface PlantAsset {
  * below is packed tighter so the same content fits a shorter card, which brings the
  * framing back toward 1:1.
  */
-export const PLANT_BOX: Box = { x: 0, y: 0, w: 1400, h: 890 };
+export const PLANT_BOX: Box = { x: 0, y: 0, w: 1300, h: 890 };
 
 /**
  * The drawing occupies the LOWER portion of the card; the heading, the question and the

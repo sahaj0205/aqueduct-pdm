@@ -28,10 +28,18 @@ import { useMemo } from "react";
 import { Callback } from "./Callback.tsx";
 import { Chiller1 } from "./Chiller1.tsx";
 import { Inventory } from "./Inventory.tsx";
+import { Ledger } from "./Ledger.tsx";
 import { Pick } from "./Pick.tsx";
 import { Plant } from "./Plant.tsx";
 import { Station } from "./Station.tsx";
-import { BEAT_COUNTS, SCENES, callbackActiveAt, cameraTargetFor, sceneById } from "./scenes.ts";
+import {
+  BEAT_COUNTS,
+  SCENES,
+  callbackActiveAt,
+  cameraTargetFor,
+  ledgerUpTo,
+  sceneById,
+} from "./scenes.ts";
 import { stepIndex, totalSteps } from "./show.ts";
 import { useCamera } from "./useCamera.ts";
 import { useShow } from "./useShow.ts";
@@ -50,7 +58,7 @@ export function Story() {
   // cameraTargetFor returns a memoised union of the two, so the camera widens to hold
   // both rather than retargeting to just the current one.
   const target = cameraTargetFor(scene, spot.beat);
-  const { stage, world, chrome } = useCamera(target);
+  const { stage, world, chrome, side } = useCamera(target);
 
   // Chiller-1 has left its resting place among the other assets from the moment the
   // presenter reaches the "pick" scene onward, and stays exploded from partway through
@@ -63,6 +71,10 @@ export function Story() {
   const retired = spot.scene > RECORD_INDEX;
 
   const callbackActive = callbackActiveAt(scene, spot.beat);
+
+  // The running record of everything produced so far. Derived from the scenes already
+  // passed, so it cannot disagree with what those cards claimed they wrote.
+  const ledger = useMemo(() => ledgerUpTo(spot.scene), [spot.scene]);
 
   const total = useMemo(() => totalSteps(BEAT_COUNTS), []);
   const step = stepIndex(BEAT_COUNTS, spot);
@@ -178,6 +190,8 @@ export function Story() {
         In screen space rather than on the canvas, so it costs no room inside any card and
         stays in exactly the same place while the camera moves.
       */}
+      <Ledger ref={side} entries={ledger} current={spot.scene} />
+
       <div className={styles.chrome} ref={chrome}>
       <div className={styles.rail} aria-hidden="true">
         {SCENES.map((each, index) => (

@@ -76,6 +76,13 @@ export function useCamera(target: Box) {
    * wrapping to two lines, say — pushes the framing up by exactly as much as it took.
    */
   const chrome = useRef<HTMLDivElement | null>(null);
+  /**
+   * The running record down the right-hand side, measured for the same reason as the chrome
+   * below: whatever width it takes is width the camera must not frame scenes into, or the
+   * panel would sit on top of the cards it exists to annotate. It has no width at all until
+   * the first stage has produced something, and the framing widens back out accordingly.
+   */
+  const side = useRef<HTMLDivElement | null>(null);
 
   // All of this is deliberately in refs rather than state: none of it should cause a
   // render, and the animation loop has to read the newest value without being torn down
@@ -152,15 +159,24 @@ export function useCamera(target: Box) {
     const measure = () => {
       const rect = stageEl.getBoundingClientRect();
       const chromeH = chrome.current?.getBoundingClientRect().height ?? 0;
-      // A floor, so that a very short window cannot produce a zero or negative height and
+      const sideW = side.current?.getBoundingClientRect().width ?? 0;
+      // Floors, so that a very small window cannot produce a zero or negative dimension and
       // send the framing to an infinite scale.
-      viewport.current = { w: rect.width, h: Math.max(120, rect.height - chromeH) };
+      viewport.current = {
+        w: Math.max(200, rect.width - sideW),
+        h: Math.max(120, rect.height - chromeH),
+      };
+      // Published so the stylesheet can use the same measurement — the running record has to
+      // stop where the chrome starts, and hardcoding that height in CSS would be a second
+      // copy of a number that is already measured here.
+      stageEl.style.setProperty("--chrome-h", `${Math.round(chromeH)}px`);
       start();
     };
 
     const observer = new ResizeObserver(measure);
     observer.observe(stageEl);
     if (chrome.current) observer.observe(chrome.current);
+    if (side.current) observer.observe(side.current);
     measure();
 
     return () => {
@@ -177,5 +193,5 @@ export function useCamera(target: Box) {
     kick.current();
   }, [target]);
 
-  return { stage, world, chrome };
+  return { stage, world, chrome, side };
 }

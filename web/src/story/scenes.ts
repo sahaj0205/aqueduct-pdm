@@ -207,7 +207,7 @@ const ACT_ONE: Scene[] = [
     // Directly beneath the record, and directly above the first pipeline stage, so Act I
     // hands off to Act II as one continuous descent down the left of the canvas. Kept
     // within a viewport's width for the same reason as the scene above it.
-    box: { x: 0, y: 2300, w: 1400, h: 780 },
+    box: { x: 0, y: 2300, w: 1300, h: 780 },
     asks: "What does one reading actually look like?",
     reveals: [
       `${S.series.length} hourly readings from that instrument, oldest on the left`,
@@ -736,6 +736,46 @@ export function cameraTargetFor(scene: Scene, beat: number): Box {
     return callbackBox;
   }
   return scene.box;
+}
+
+/** One line of the running record: what a stage left behind, and which stage that was. */
+export interface LedgerEntry {
+  id: string;
+  /** The stage's number in the running order, as shown on its card. */
+  index: number;
+  stage: string;
+  /** What it wrote, or null for the stages that deliberately write nothing. */
+  wrote: string | null;
+}
+
+/**
+ * Everything the system has produced from the first stage up to where we are standing.
+ *
+ * WHY THIS IS DERIVED RATHER THAN AUTHORED. It is exactly the `writes` of every scene so
+ * far, in order — so deriving it means the running record cannot disagree with what the
+ * individual cards claim. Authoring it separately would create a second list to keep in
+ * step, and the first time somebody changed a stage's output without changing the record,
+ * the walkthrough would be contradicting itself in two places on the same screen.
+ *
+ * THE STAGES THAT WRITE NOTHING ARE KEPT, not filtered out. Three of the thirteen exist
+ * mainly to refuse — the mode gate judges nothing, the interface writes nothing back — and
+ * a record that quietly omitted them would make the pipeline look like an unbroken
+ * production line, which is the opposite of the argument. They appear with the reason.
+ */
+export function ledgerUpTo(sceneIndex: number): LedgerEntry[] {
+  const out: LedgerEntry[] = [];
+  for (let i = 0; i <= Math.min(sceneIndex, SCENES.length - 1); i += 1) {
+    const scene = SCENES[i]!;
+    if (!scene.writes) continue;
+    const nothing = /^nothing/i.test(scene.writes);
+    out.push({
+      id: scene.id,
+      index: i,
+      stage: scene.title,
+      wrote: nothing ? null : scene.writes,
+    });
+  }
+  return out;
 }
 
 /** Whether the callback line should be showing right now. */

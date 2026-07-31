@@ -1,0 +1,147 @@
+/*
+ * The running record, pinned down the right-hand side.
+ *
+ * Its WIDTH is load-bearing: useCamera measures this element and frames every scene into
+ * the space left over, so the panel can never cover the card it is annotating. Changing the
+ * width here changes how close the camera gets — wider means scenes are drawn smaller.
+ */
+
+/*
+ * Collapsed to nothing until the first stage has produced something, so the opening act
+ * gets the full width. The ELEMENT stays mounted either way — the camera measures it, and
+ * swapping it for a different node leaves that measurement watching a detached one.
+ */
+.empty {
+  width: 0;
+  padding: 0;
+  border-left: none;
+  opacity: 0;
+}
+
+.panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  /* Stops where the chrome begins. The height is published by useCamera from its own
+     measurement, so the two cannot disagree. */
+  bottom: var(--chrome-h, 0px);
+  width: 232px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s5) var(--s4);
+  background: var(--canvas-soft);
+  border-left: 1px solid var(--hairline);
+  overflow: hidden;
+  transition: width 320ms ease, opacity 320ms ease;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--hairline);
+  flex: none;
+}
+
+.title {
+  font-family: var(--mono);
+  font-size: var(--t-micro-cap);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.count {
+  font-size: var(--t-micro);
+  color: var(--ink-disabled);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.earlier {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--ink-disabled);
+  padding-left: 2px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: var(--s2);
+  align-items: baseline;
+  padding: var(--s2) var(--s2) var(--s2) 0;
+  border-radius: var(--r-sm);
+  transition: background 320ms ease, opacity 320ms ease;
+}
+
+.num {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  font-feature-settings: "tnum" 1;
+  color: var(--ink-disabled);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.stage {
+  font-size: var(--t-micro);
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* What the stage left behind. Monospace because these are table names, and clamped to two
+   lines so one verbose stage cannot push the rest of the record off the panel. */
+.wrote {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  line-height: 1.35;
+  color: var(--ink);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  /* Table names are long and unbroken; without this they run past the panel edge instead
+     of wrapping onto the second line the clamp allows for. */
+  overflow-wrap: anywhere;
+}
+
+/* The row added by the stage currently on screen. */
+.fresh {
+  background: var(--info-wash);
+}
+
+.fresh .num,
+.fresh .stage {
+  color: var(--primary);
+}
+
+/*
+ * A stage that wrote nothing. Kept in the record rather than filtered out — three of the
+ * thirteen exist mainly to refuse, and a record that showed only the productive ones would
+ * make the pipeline look like an unbroken production line.
+ */
+.nothing .wrote {
+  font-family: var(--sans);
+  color: var(--ink-disabled);
+  font-style: italic;
+}
