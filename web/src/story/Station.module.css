@@ -238,8 +238,10 @@
 
 /* ------------------------------------------------------------------- what it wrote */
 
+/* Sits directly beneath whatever came before it. It used to be pushed to the bottom of the
+   card with an automatic margin, which opened a band of empty space on every station whose
+   content did not happen to fill the height. */
 .writes {
-  margin-top: auto;
   display: flex;
   align-items: baseline;
   gap: var(--s3);

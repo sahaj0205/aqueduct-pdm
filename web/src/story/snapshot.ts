@@ -150,6 +150,96 @@ export interface Snapshot {
     mode_id: string;
     health: number;
   }[];
+
+  /**
+   * Everything held about this one machine before a reading ever arrives — the instruments
+   * it reports through, the ways it is known to fail and at what value, and the priced jobs
+   * that fix each one. All of it configuration rather than anything learned from data.
+   */
+  inventory: {
+    points: readonly {
+      point_id: string;
+      name: string;
+      unit_si: string;
+      usable: boolean;
+      unusable_reason: string | null;
+    }[];
+    modes: readonly {
+      mode_id: string;
+      mode_name: string;
+      failure_threshold: number;
+      indicator_unit: string;
+      penalty_kw_per_unit: number | null;
+    }[];
+    interventions: readonly {
+      fault_id: string;
+      action: string;
+      hours: number | null;
+      cost: number | null;
+    }[];
+    baselines: readonly { baseline_id: string; n: number }[];
+  };
+
+  /** Where the data came from and how much of it there is. */
+  provenance: {
+    assets: number;
+    points: number;
+    scenarios: number;
+    faultEvents: number;
+    measurements: number;
+    eras: number;
+  };
+
+  /**
+   * The scored results, or an honest statement that there are none.
+   *
+   * `available` is false when the harness has not been run against loaded ground truth. A
+   * zero in that case means "not measured" and must never be shown as though it were a
+   * measured zero.
+   */
+  validation: {
+    available: boolean;
+    reason?: string | null;
+    precision?: number | null;
+    recall?: number | null;
+    faultClassCorrect?: number | null;
+    faultClassTotal?: number | null;
+    suppressionRefusals?: number;
+    generatedAt?: string | null;
+  };
 }
 
-export const SNAPSHOT = data as unknown as Snapshot;
+/**
+ * The snapshot, with any section an older capture predates filled in as empty.
+ *
+ * WHY THIS IS NOT JUST A CAST. The generator gains sections over time — the machine's full
+ * inventory, where the data came from, the scored results — and the committed JSON is only
+ * as new as the last time somebody ran `npm run snapshot` against a loaded database. A
+ * scene reading `snapshot.inventory.points` against a capture taken before inventory
+ * existed would throw while being projected in front of a room, which is the one failure
+ * this whole frozen-file design exists to prevent.
+ *
+ * Empty is honest here, and reads correctly downstream: a scene showing an empty inventory
+ * shows nothing rather than showing something invented, and the scoring scene already
+ * distinguishes "not measured" from "measured as zero" in so many words.
+ */
+const raw = data as unknown as Partial<Snapshot>;
+
+export const SNAPSHOT: Snapshot = {
+  ...(raw as Snapshot),
+  inventory: raw.inventory ?? { points: [], modes: [], interventions: [], baselines: [] },
+  provenance:
+    raw.provenance ?? {
+      assets: 0,
+      points: raw.instruments?.total ?? 0,
+      scenarios: 0,
+      faultEvents: 0,
+      measurements: 0,
+      eras: 0,
+    },
+  validation:
+    raw.validation ?? {
+      available: false,
+      reason: "this capture predates the scoring harness — run `make validate`, then `npm run snapshot`",
+    },
+};

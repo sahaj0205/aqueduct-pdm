@@ -27,6 +27,7 @@ import { useMemo } from "react";
 
 import { Callback } from "./Callback.tsx";
 import { Chiller1 } from "./Chiller1.tsx";
+import { Inventory } from "./Inventory.tsx";
 import { Pick } from "./Pick.tsx";
 import { Plant } from "./Plant.tsx";
 import { Station } from "./Station.tsx";
@@ -106,6 +107,14 @@ export function Story() {
           >
             {each.id === "plant" ? (
               <Plant scene={each} index={index} beat={spot.beat} current={index === spot.scene} fled={flown} />
+            ) : each.id === "record" ? (
+              <Inventory
+                scene={each}
+                index={index}
+                beat={spot.beat}
+                current={index === spot.scene}
+                pinged={callbackActive}
+              />
             ) : each.id === "pick" ? (
               <Pick scene={each} index={index} beat={spot.beat} current={index === spot.scene} />
             ) : (

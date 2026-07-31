@@ -80,8 +80,14 @@ const costBasis: readonly string[] =
 
 // ------------------------------------------------------------------ the layout grid
 
-/** Every Act II station is the same size, so the run reads as one repeated apparatus. */
-const STATION = { w: 1300, h: 850 };
+/**
+ * Every Act II station is the same size, so the run reads as one repeated apparatus.
+ *
+ * Height is set to what the fullest station actually needs rather than to a round number.
+ * At 850 every card carried a band of dead space beneath its last line, which on a
+ * projector reads as content failing to load.
+ */
+const STATION = { w: 1300, h: 720 };
 /** Horizontal pitch along a row, and vertical pitch between rows. */
 const COL = 1600;
 
@@ -95,10 +101,10 @@ const COL = 1600;
  * which meant the camera lurched three and a half thousand units left to reach stage one —
  * the single most disorienting move in the show.
  */
-const ROW_Y = [3300, 4400, 5500];
+const ROW_Y = [3300, 4260, 5220, 6180];
 
 /** A station's box from its row and column. */
-const at = (col: number, row: 0 | 1 | 2): Box => ({
+const at = (col: number, row: 0 | 1 | 2 | 3): Box => ({
   x: col * COL,
   y: ROW_Y[row]!,
   ...STATION,
@@ -155,17 +161,17 @@ const ACT_ONE: Scene[] = [
     box: { x: 0, y: 1080, w: 2600, h: 1100 },
     asks: "What exists before a single reading arrives?",
     reveals: [
-      "eight things are already in the database, and none of them were learned from data",
-      `the failure mode: ${S.mode.mode_name}, with a threshold of ${THRESHOLD} ${UNIT}`,
-      "the threshold carries a written physical justification, not a round number somebody liked",
-      `and a healthy reference: ${S.commissioning.days} days somebody declared the plant was working`,
+      "all of this is already in the database, and none of it was learned from data",
+      "the instruments it reports through — and the ones already ruled out",
+      `the named ways this class of machine wears out, each with the value it counts as failed at`,
+      "and what putting each one right actually costs, in hours and in money",
+      `plus a healthy reference: ${S.commissioning.days} days somebody declared this plant was working`,
     ],
     figures: [
-      { label: "failure mode", value: S.mode.mode_name },
+      { label: "the failure we follow", value: S.mode.mode_name },
       { label: "fails at", value: `${THRESHOLD} ${UNIT}` },
       { label: "energy penalty", value: `${S.indicator.penaltyKwPerUnit} kW per ${UNIT}` },
       { label: "commissioning window", value: `${S.commissioning.days} days` },
-      { label: "degradation process", value: `${S.indicator.process} — it only ever accumulates` },
     ],
   },
   {
@@ -504,12 +510,76 @@ const ACT_TWO: Scene[] = [
 
 const ACT_THREE: Scene[] = [
   {
+    id: "provenance",
+    act: 3,
+    title: "Where this data came from",
+    // Continues the third row rightward, so the closing act stays on the same run the
+    // pipeline has been travelling rather than jumping back to the left margin.
+    box: at(3, 2),
+    asks: "Is any of what I just watched real, or was it all made up?",
+    reveals: [
+      "the measurements underneath are real: a year of a working chiller plant and air handler, published by Lawrence Berkeley National Laboratory",
+      "recorded every minute, averaged to every five, and re-timed so the day of the year and the hour of the day still line up",
+      "the faults are not real — they are injected on top of that real behaviour, one scenario at a time",
+      `${S.provenance.scenarios || "eight"} scenarios, each placed in a period of its own so two faults never write over the same instrument at the same instant`,
+      "so every reading is a real machine's response, and every fault has a start and an end somebody wrote down",
+    ],
+    figures: [
+      { label: "source", value: "LBNL chiller plant and single-duct air handler", from: "one year, 2018" },
+      { label: "sampled", value: "every 60s, averaged to 300s" },
+      { label: "measurements held", value: S.provenance.measurements.toLocaleString("en-US") },
+      { label: "machines", value: String(S.provenance.assets) },
+      { label: "instruments", value: String(S.provenance.points) },
+      { label: "injected fault runs", value: String(S.provenance.scenarios) },
+    ],
+  },
+  {
+    id: "validation",
+    act: 3,
+    title: "So was it right?",
+    box: at(4, 2),
+    asks: "The system said a machine was failing. Did it actually fail?",
+    reveals: [
+      "because every fault was injected, the exact day it started and the day it would have failed are both written down",
+      "that answer key lives in a separate part of the database, and the credential the detectors run under is denied access to it",
+      "so the pipeline is run blind over the data, and only afterwards is the key opened and the findings scored",
+      S.validation.available
+        ? `of the days something was raised, ${S.validation.precision ?? "—"}% had a real fault underneath`
+        : "at the moment there is nothing to report here, and that is stated rather than filled in",
+      S.validation.available
+        ? "and the warning arrives days before the machine reaches the state that would have stopped it"
+        : (S.validation.reason ?? "the scoring harness has not been run against loaded ground truth"),
+    ],
+    figures: S.validation.available
+      ? [
+          ...(S.validation.precision !== null && S.validation.precision !== undefined
+            ? [{ label: "precision", value: `${S.validation.precision}%`, from: "of what it raised, this share was real" }]
+            : []),
+          ...(S.validation.recall !== null && S.validation.recall !== undefined
+            ? [{ label: "recall", value: `${S.validation.recall}%`, from: "of the real faults, this share was caught" }]
+            : []),
+          ...(S.validation.faultClassTotal
+            ? [{
+                label: "sensor or machine",
+                value: `${S.validation.faultClassCorrect} of ${S.validation.faultClassTotal} correct`,
+              }]
+            : []),
+          { label: "scored on", value: S.validation.generatedAt ?? "—", from: "make validate" },
+        ]
+      : [
+          { label: "status", value: "not measured", from: S.validation.reason ?? "run `make validate`" },
+          {
+            label: "why it is blank",
+            value: "a zero here would mean nothing was found, which is not the same as nothing having been checked",
+          },
+        ],
+  },
+  {
     id: "honesty",
     act: 3,
     title: "What this is, and what it is not",
-    // The next slot along the bottom row, so the last stage hands straight over to it
-    // without the camera leaving the run it has been travelling.
-    box: at(3, 2),
+    // Directly beneath the scoring scene: the serpentine turns here for its last row.
+    box: at(4, 3),
     asks: "What should you not believe about what you just watched?",
     reveals: [
       "today this is a batch pipeline, not a live streaming service",

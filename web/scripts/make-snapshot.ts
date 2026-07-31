@@ -102,6 +102,62 @@ function q<T>(sql: string): T {
   return JSON.parse(text) as T;
 }
 
+/**
+ * Read the scored results out of VALIDATION.md.
+ *
+ * WHY IT IS PARSED RATHER THAN RECOMPUTED. That document is produced by
+ * `make validate`, which runs the detectors over a connection that is denied access to the
+ * answer key and only afterwards opens the admin credential to score what came out. That
+ * ordering is the entire basis of the claim that nothing which produced a number could have
+ * seen the answer it is judged against. Recomputing any of it here, in a script that has
+ * the key in scope, would throw that guarantee away for the sake of tidier code.
+ *
+ * IT REPORTS ABSENCE AS ABSENCE. If the harness has not been run against loaded ground
+ * truth, every figure in the document is `n/a` or zero — and a zero here means "not
+ * measured", not "measured as zero". Those two must never look the same on a screen shown
+ * to somebody deciding whether to trust the system, so `available` is false unless a real
+ * precision figure was found, and the scene says so in words.
+ */
+function readValidation() {
+  let text: string;
+  try {
+    text = readFileSync(join(ROOT, "VALIDATION.md"), "utf8");
+  } catch {
+    return { available: false, reason: "VALIDATION.md has not been generated — run `make validate`" };
+  }
+
+  const cell = (label: string): string | null => {
+    const m = new RegExp(`\\|\\s*\\*\\*${label}\\*\\*\\s*\\|\\s*\\*\\*([^|*]+)\\*\\*`, "i").exec(text);
+    return m ? m[1]!.trim() : null;
+  };
+  const numOrNull = (v: string | null): number | null => {
+    if (v === null) return null;
+    const cleaned = v.replace(/[%\s]/g, "");
+    if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return null;
+    return Number(cleaned);
+  };
+
+  const precision = numOrNull(cell("precision"));
+  const recall = numOrNull(cell("recall"));
+  const classHit = /correct on (\d+) of (\d+) injected faults/i.exec(text);
+  const refusals = (text.match(/CORRECT REFUSAL/g) ?? []).length;
+  const generated = /generated ([0-9]{4}-[0-9]{2}-[0-9]{2})/i.exec(text);
+
+  return {
+    available: precision !== null || recall !== null,
+    reason:
+      precision === null && recall === null
+        ? "the harness ran but scored nothing — no ground truth was loaded when it last ran"
+        : null,
+    precision,
+    recall,
+    faultClassCorrect: classHit ? Number(classHit[1]) : null,
+    faultClassTotal: classHit ? Number(classHit[2]) : null,
+    suppressionRefusals: refusals,
+    generatedAt: generated ? generated[1]! : null,
+  };
+}
+
 function main() {
   console.log(`\nfreezing ${ASSET} / ${MODE} at ${AT}\n`);
 
@@ -227,6 +283,48 @@ function main() {
     where asset_id='${ASSET}' and time between timestamptz '${AT}' - interval '200 days'
       and timestamptz '${AT}' + interval '200 days'`);
 
+  // ------------------------------------------------- everything held about this machine
+  // The full inventory the walkthrough shows before any reading arrives: the instruments,
+  // the ways it is known to fail, and the priced jobs that fix them. All configuration —
+  // none of it learned from data — which is the claim the scene exists to make.
+  const inventory = {
+    points: q<{ point_id: string; name: string; unit_si: string; usable: boolean; unusable_reason: string | null }[]>(`
+      select coalesce(json_agg(json_build_object(
+        'point_id', point_id, 'name', name, 'unit_si', unit_si,
+        'usable', usable, 'unusable_reason', unusable_reason) order by point_id), '[]'::json)
+      from app.points where asset_id = '${ASSET}'`),
+
+    modes: q<{ mode_id: string; mode_name: string; failure_threshold: number; indicator_unit: string; penalty_kw_per_unit: number | null }[]>(`
+      select coalesce(json_agg(json_build_object(
+        'mode_id', mode_id, 'mode_name', mode_name, 'failure_threshold', failure_threshold,
+        'indicator_unit', indicator_unit, 'penalty_kw_per_unit', penalty_kw_per_unit) order by mode_id), '[]'::json)
+      from app.failure_modes
+      where brick_class = (select brick_class from app.assets where asset_id='${ASSET}')`),
+
+    interventions: q<{ fault_id: string; action: string; hours: number | null; cost: number | null }[]>(`
+      select coalesce(json_agg(json_build_object(
+        'fault_id', fault_id, 'action', action, 'hours', labour_hours,
+        'cost', round((coalesce(labour_hours,0) * coalesce(labour_rate_usd_per_hour,0)
+                       + coalesce(parts_cost_usd,0))::numeric, 0)::float8) order by fault_id), '[]'::json)
+      from app.intervention_library`),
+
+    baselines: q<{ baseline_id: string; n: number }[]>(`
+      select coalesce(json_agg(json_build_object('baseline_id', baseline_id, 'n', n) order by baseline_id), '[]'::json)
+      from (select baseline_id, count(*) n from app.residuals r
+            join app.points p on p.point_id = r.point_id
+            where p.asset_id = '${ASSET}' group by baseline_id) b`),
+  };
+
+  // ---------------------------------------------------------------- where the data is from
+  const provenance = {
+    assets: q<{ n: number }>(`select json_build_object('n', count(*)) from app.assets`).n,
+    points: instruments.total,
+    scenarios: q<{ n: number }>(`select json_build_object('n', count(*)) from groundtruth.scenarios`).n,
+    faultEvents: q<{ n: number }>(`select json_build_object('n', count(*)) from groundtruth.fault_events`).n,
+    measurements: q<{ n: number }>(`select json_build_object('n', count(*)) from app.measurements`).n,
+    eras: q<{ n: number }>(`select json_build_object('n', count(distinct extract(year from time))) from app.health_state`).n,
+  };
+
   const excess = today.monotonic;
   const threshold = mode.failure_threshold;
   const computed = Math.round(100 * (1 - excess / threshold));
@@ -269,6 +367,9 @@ function main() {
           },
     advisory,
     others,
+    inventory,
+    provenance,
+    validation: readValidation(),
   };
 
   writeFileSync(OUT, `${JSON.stringify(snapshot, null, 2)}\n`);
