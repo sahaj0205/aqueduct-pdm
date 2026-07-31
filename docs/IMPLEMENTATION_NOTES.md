@@ -11953,3 +11953,92 @@ type-check, and a clean production build, and a live look is still owed.
 START HERE: `web/src/story/Story.tsx` — the section computing `flown`, `exploded` and
 `callbackActive` from `spot` is the one place both mechanics are switched on, and everything
 else in this note follows from those three lines.
+
+## The walkthrough — dark theme, and fixing the disorderly camera
+
+### What we did
+
+Three separate faults were found by putting the walkthrough on screen and looking at it,
+rather than by reading the code, and all three were the kind that only show up visually.
+
+The machine being followed was drawn on top of the scene's own heading instead of sitting
+in the gap left for it in the building diagram. The opening scene's content ran past the
+bottom of its own card, so the five occupied zones and the row of instrument marks were
+cut off entirely. And the closing scene — the one that pulls back to frame the whole
+journey — had been given a rectangle covering every other scene, so its heading was drawn
+across the top of the opening shot like a ghost.
+
+The camera also lurched. Moving from the last scene of the opening act into the first
+pipeline stage threw it three and a half thousand units back across the canvas, which is
+the single most disorienting thing a camera can do. The acts are now laid out as a
+descent: the building, the machine beside it, then downward through everything known about
+it, the reading itself, and into the pipeline — so every move is a short step in a
+consistent direction.
+
+Finally the whole thing is dark. This is the one surface in the project that gets projected
+into a room rather than read at a desk, and a white field at full width is the brightest
+object in a darkened room.
+
+### How it works
+
+`web/src/story/plantLayout.ts` :: one coordinate system
+  CHANGED FROM BEFORE: The building's assets were laid out inside the card's ordinary
+    layout flow while the machine that flies out of it used world coordinates — the space
+    the camera works in. The two disagreed by exactly the height of the card's heading, so
+    the machine rendered over the text. Every coordinate is now a world coordinate, the
+    building scene's rectangle is anchored at the world origin so local and world numbers
+    coincide, and both the drawing and the flying machine read from this one file.
+
+`web/src/story/Plant.tsx` :: the drawing as an absolute layer
+  CHANGED FROM BEFORE: The words now occupy a fixed amount of room at the top of the card
+    and the drawing is an absolutely positioned layer beneath them, so text can never grow
+    down into the diagram and the diagram can never be pushed out of the bottom. The
+    instrument marks moved inside that layer too, which is why all hundred and seven are
+    now visible with the three broken ones struck through.
+
+`web/src/story/scenes.ts` :: the layout, and the running order
+  CHANGED FROM BEFORE: The opening act's four scenes were at scattered coordinates; they
+    now descend the left of the canvas and hand off downward into the first pipeline stage.
+    Measured hop-to-hop, the camera used to travel 3,550 units on its worst move and now
+    travels 1,064, with the pipeline settling into a steady 1,600-unit rhythm.
+  CHANGED FROM BEFORE: The pull-out finale used to sit second to last, so the camera flew
+    all the way out and then all the way back in to land on one small card. It is last now,
+    and the honest-limits scene comes before it.
+  ⚠ JUDGEMENT CALL: The scene where the machine is picked out was widened from 560 to 1120
+    units so its words and the exploded machine each get half the card. The alternative was
+    keeping it small and dramatic and moving the words elsewhere, but a scene whose own
+    heading is hidden behind an opaque panel is not dramatic, it is broken.
+
+`web/src/story/Story.module.css` :: the dark theme
+  WHY IT EXISTS: Overrides the design tokens for everything inside the walkthrough and
+    nothing outside it, so the console and the facility-manager platform keep the light
+    palette they were designed against. Switching the tokens globally would have repainted
+    three applications to re-theme one.
+  CHOICES: Every value is the documented dark counterpart of the light token it replaces.
+    The one real adjustment is the indigo, which lifts toward lavender because the light
+    value sits at roughly three to one against an ink field — under the floor for the small
+    monospace type it is used on. Severity stays red, orange, gold and slate.
+  CHOICES: Depth is carried by a surface step from the page colour to a raised card colour
+    rather than by shadow, because a drop shadow against near-black does almost nothing.
+
+`web/src/story/Story.tsx` :: the finale as an overlay
+  CHANGED FROM BEFORE: The closing scene no longer draws a card on the canvas at all. Its
+    rectangle is by definition the union of every other scene's, so a panel there covered
+    the entire show. It is a camera position now, and its words are drawn in screen space
+    over the pulled-back view — which is what the scene is actually about.
+
+`web/scripts/verify-story.ts` :: checking the camera's path
+  WHY IT EXISTS: The complaint that transitions felt disorderly was a real, measurable
+    property that nothing was checking. It now measures the distance between every pair of
+    consecutive scenes and fails if any single move exceeds two station pitches, asserts
+    that the opening act hands downward into the pipeline rather than sideways, and asserts
+    no scene's rectangle starts left of the origin — a negative coordinate was what let one
+    scene bleed into the opening shot from off-frame.
+  CHANGED FROM BEFORE: One check asserted that the pick scene was small enough to hit the
+    zoom ceiling. Widening that scene to fix the overlap made it fail — for a change that
+    was entirely correct. It now tests the ceiling mechanism against a deliberately tiny
+    rectangle instead of asserting that a particular scene happens to be small, which is
+    what it should have been testing all along.
+
+START HERE: `web/src/story/plantLayout.ts` — the note at the top explains the coordinate
+mix-up that caused the worst of the visual faults.

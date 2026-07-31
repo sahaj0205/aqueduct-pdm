@@ -8,6 +8,7 @@
  * beside it.
  */
 
+import { PICK_WORDS_W } from "./plantLayout.ts";
 import type { Scene } from "./scenes.ts";
 import { SNAPSHOT } from "./snapshot.ts";
 import stationStyles from "./Station.module.css";
@@ -25,6 +26,9 @@ export function Pick({
 }) {
   return (
     <section className={`${stationStyles.station} ${current ? stationStyles.current : stationStyles.away}`}>
+      {/* Constrained to the left half. The machine itself flies into the right half and is
+          an opaque panel, so anything wider than this ends up underneath it. */}
+      <div className={stationStyles.halfColumn} style={{ width: PICK_WORDS_W }}>
       <header className={stationStyles.head}>
         <div className={stationStyles.meta}>
           <span className={stationStyles.num}>{String(index + 1).padStart(2, "0")}</span>
@@ -51,8 +55,23 @@ export function Pick({
             <dt>instrument</dt>
             <dd>{SNAPSHOT.point.point_id}</dd>
           </div>
+          <div className={stationStyles.figure}>
+            <dt>reports in</dt>
+            <dd>
+              {SNAPSHOT.point.unit_si}
+              <span className={stationStyles.from}>converted on the way in</span>
+            </dd>
+          </div>
+          <div className={stationStyles.figure}>
+            <dt>plausible range</dt>
+            <dd>
+              {SNAPSHOT.point.expected_min} to {SNAPSHOT.point.expected_max} {SNAPSHOT.point.unit_si}
+              <span className={stationStyles.from}>anything outside is refused</span>
+            </dd>
+          </div>
         </dl>
       )}
+      </div>
     </section>
   );
 }

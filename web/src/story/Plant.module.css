@@ -1,11 +1,24 @@
-/* The plant drawing: a labelled box per asset, arranged as the water actually flows —
-   towers and chillers at the top, the loop beneath them, the coil beneath that, the
-   zones at the bottom. */
+/*
+ * The plant drawing: a labelled box per asset, arranged as the water actually flows —
+ * towers and chillers along the top, the loop beneath them, the coil beneath that, the
+ * occupied rooms at the bottom.
+ *
+ * The card is a positioning context and nothing else here participates in its flex flow.
+ * See Plant.tsx for why the drawing has to be an absolute layer rather than a flex child.
+ */
+
+.words {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  flex: none;
+  overflow: hidden;
+}
 
 .diagram {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .asset {
@@ -13,8 +26,8 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
-  padding: var(--s3) var(--s4);
+  gap: 3px;
+  padding: var(--s2) var(--s4);
   border-radius: var(--r-md);
   border: 1px solid var(--hairline-strong);
   background: var(--sunken);
@@ -32,38 +45,43 @@
 .assetLabel {
   font-size: var(--t-caption);
   color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.tower { background: var(--info-wash); }
-.loop,
-.coil { background: var(--sunken); }
+.tower {
+  background: var(--info-wash);
+}
+
+.zone {
+  background: var(--paper);
+}
 
 /*
- * FLEEING: every asset except chiller-1 (which is not drawn here) scatters outward and
- * fades once chiller-1 has been picked out. The direction is per-asset — see the
- * --flee-x/--flee-y custom properties set inline in Plant.tsx — so the effect reads as an
- * explosion radiating from the centre of the drawing rather than a single slide.
+ * FLEEING: every asset except chiller-1 scatters outward and fades once chiller-1 has been
+ * picked out. The direction is per-asset — see the --flee-x/--flee-y custom properties set
+ * inline in Plant.tsx — so it reads as an explosion radiating from the middle of the
+ * drawing rather than eleven boxes sliding the same way.
  */
 .fled {
   transform: translate(var(--flee-x), var(--flee-y)) scale(0.82);
-  opacity: 0.1;
+  opacity: 0;
 }
 
 .ticks {
+  position: absolute;
   display: flex;
   flex-wrap: wrap;
-  gap: 3px;
-  align-content: flex-start;
-  max-height: 54px;
-  overflow: hidden;
-  padding-top: var(--s3);
-  border-top: 1px solid var(--hairline);
+  align-items: center;
+  gap: 4px;
+  transition: transform 900ms cubic-bezier(0.22, 1, 0.36, 1), opacity 900ms ease;
 }
 
 .tickOk,
 .tickBad {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: var(--r-pill);
   flex: none;
 }
@@ -72,10 +90,19 @@
   background: var(--hairline-strong);
 }
 
-/* Struck through as well as coloured, so the three defective instruments do not depend on
-   colour alone to read as different from the rest. */
+/* Struck through as well as coloured, so the three defective instruments never depend on
+   colour alone to read as different from the other hundred and four. */
 .tickBad {
   background: var(--sev-high);
-  clip-path: polygon(0 45%, 100% 45%, 100% 55%, 0 55%);
-  outline: 1px solid var(--sev-high);
+  border-radius: 0;
+  clip-path: polygon(0 40%, 100% 40%, 100% 60%, 0 60%);
+  transform: scale(1.5);
+}
+
+.ticksNote {
+  margin-left: var(--s3);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  white-space: nowrap;
 }

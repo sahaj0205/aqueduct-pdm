@@ -22,6 +22,15 @@
   z-index: 5;
 }
 
+/* Faded out once the story has moved on from the machine to the reading it produced. Kept
+   mounted so returning to an earlier scene brings it back rather than re-running its
+   flight. */
+.retired {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 600ms ease;
+}
+
 .label {
   font-size: var(--t-heading-sm);
   font-weight: var(--w-light);

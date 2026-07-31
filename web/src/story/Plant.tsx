@@ -1,16 +1,21 @@
 /**
  * The plant, drawn — every asset except chiller-1, which is a separate flying element
- * (see Chiller1.tsx) so it can travel from here into the "pick" scene without being
+ * (see Chiller1.tsx) so it can travel from here into the "pick" scene without ever being
  * unmounted and remounted.
  *
- * WHY CHILLER-1 IS MISSING FROM THIS DRAWING. It is not missing — it sits in the gap left
- * for it at CHILLER1_REST, rendered by a component one level up in Story.tsx that also
- * knows where it flies to. Drawing it here as well would mean two elements claiming the
- * same position, and the one that is not the flying element would sit there uselessly
- * once the real one has left.
+ * THE DRAWING IS AN ABSOLUTE LAYER, NOT PART OF THE CARD'S FLOW. Every asset is positioned
+ * from the coordinates in plantLayout.ts, which are world coordinates, and the plant
+ * scene's own rectangle is anchored at the world origin so those coordinates land exactly
+ * where the flying chiller expects the gap to be. Laying the drawing out in the card's
+ * normal flex flow instead — which is what an earlier version did — put it below the
+ * heading while chiller-1 stayed in world space, and the machine ended up drawn on top of
+ * the text rather than in its slot.
+ *
+ * WHY CHILLER-1 LOOKS MISSING FROM THIS FILE. It is not missing; it is rendered one level
+ * up, as a sibling of every scene, precisely so it can outlive this scene.
  */
 
-import { PLANT_ASSETS } from "./plantLayout.ts";
+import { DIAGRAM_TOP, PLANT_ASSETS, TICKS_BOX } from "./plantLayout.ts";
 import type { Scene } from "./scenes.ts";
 import { SNAPSHOT } from "./snapshot.ts";
 import stationStyles from "./Station.module.css";
@@ -43,22 +48,27 @@ export function Plant({
 
   return (
     <section className={`${stationStyles.station} ${current ? stationStyles.current : stationStyles.away}`}>
-      <header className={stationStyles.head}>
-        <div className={stationStyles.meta}>
-          <span className={stationStyles.num}>{String(index + 1).padStart(2, "0")}</span>
-        </div>
-        <h2 className={stationStyles.title}>{scene.title}</h2>
-        {scene.asks && <p className={stationStyles.asks}>{scene.asks}</p>}
-      </header>
+      {/* The words sit in normal flow in the upper part of the card, and are given a fixed
+          amount of room so they can never grow down into the drawing. */}
+      <div className={styles.words} style={{ height: DIAGRAM_TOP }}>
+        <header className={stationStyles.head}>
+          <div className={stationStyles.meta}>
+            <span className={stationStyles.num}>{String(index + 1).padStart(2, "0")}</span>
+          </div>
+          <h2 className={stationStyles.title}>{scene.title}</h2>
+          {scene.asks && <p className={stationStyles.asks}>{scene.asks}</p>}
+        </header>
 
-      <ol className={stationStyles.reveals}>
-        {scene.reveals.map((label, at) => (
-          <li key={label} className={current && beat >= at ? stationStyles.lit : stationStyles.unlit}>
-            {label}
-          </li>
-        ))}
-      </ol>
+        <ol className={stationStyles.reveals}>
+          {scene.reveals.map((label, at) => (
+            <li key={label} className={current && beat >= at ? stationStyles.lit : stationStyles.unlit}>
+              {label}
+            </li>
+          ))}
+        </ol>
+      </div>
 
+      {/* The drawing. Absolute, in world coordinates, so it and the flying chiller agree. */}
       <div className={styles.diagram}>
         {PLANT_ASSETS.map((asset) => (
           <div
@@ -68,20 +78,29 @@ export function Plant({
               left: asset.box.x, top: asset.box.y, width: asset.box.w, height: asset.box.h,
               // Each asset flees toward a slightly different point away from the centre of
               // the drawing, so the scatter reads as an explosion rather than a slide.
-              "--flee-x": `${(asset.box.x + asset.box.w / 2 - 620) * 0.9}px`,
-              "--flee-y": `${(asset.box.y + asset.box.h / 2 - 360) * 0.9}px`,
+              "--flee-x": `${(asset.box.x + asset.box.w / 2 - 595) * 0.9}px`,
+              "--flee-y": `${(asset.box.y + asset.box.h / 2 - 600) * 0.9}px`,
             } as React.CSSProperties}
           >
             <span className={styles.assetKind}>{KIND_LABEL[asset.kind]}</span>
             <span className={styles.assetLabel}>{asset.label}</span>
           </div>
         ))}
-      </div>
 
-      <div className={styles.ticks} aria-label={`${total} instruments, ${unusable} unusable`}>
-        {Array.from({ length: total }, (_, i) => (
-          <span key={i} className={i >= total - unusable ? styles.tickBad : styles.tickOk} />
-        ))}
+        {/* One mark per instrument in the building, the last three struck through: the
+            ones already known to be broken before any analysis has run. */}
+        <div
+          className={`${styles.ticks} ${fled ? styles.fled : ""}`}
+          style={{ left: TICKS_BOX.x, top: TICKS_BOX.y, width: TICKS_BOX.w }}
+          aria-label={`${total} instruments, ${unusable} of them unusable`}
+        >
+          {Array.from({ length: total }, (_, i) => (
+            <span key={i} className={i >= total - unusable ? styles.tickBad : styles.tickOk} />
+          ))}
+          <span className={styles.ticksNote}>
+            {total} instruments &middot; {unusable} defective at source
+          </span>
+        </div>
       </div>
     </section>
   );

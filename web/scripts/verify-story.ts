@@ -167,7 +167,15 @@ function main() {
     pick.scale > plant.scale && plant.scale > record.scale,
     `${pick.scale.toFixed(3)} > ${plant.scale.toFixed(3)} > ${record.scale.toFixed(3)}`,
   );
-  check("the small scene is held at the zoom ceiling", pick.scale === MAX_SCALE, `${MAX_SCALE}`);
+  // Tests the CEILING ITSELF against a deliberately tiny box, rather than asserting that
+  // some particular scene happens to be small. It used to name the "pick" scene, which was
+  // then widened so the machine flying into it would stop covering its own text — and the
+  // check failed for a layout change that was entirely correct.
+  check(
+    "a scene small enough to be magnified is held at the zoom ceiling",
+    fit({ x: 0, y: 0, w: 200, h: 150 }, VIEWPORT).scale === MAX_SCALE,
+    `capped at ${MAX_SCALE}`,
+  );
   check(
     "the widest scene pulls back past half size",
     record.scale < 0.5,
@@ -378,11 +386,23 @@ function main() {
     .replace(/&#x27;/g, "'")
     .replace(/&quot;/g, '"')
     .replace(/&amp;/g, "&");
-  const absent = SCENES.filter((scene) => !markup.includes(scene.title));
+  // The closing pull-out is deliberately excluded: its rectangle is the union of every
+  // other scene's, so it has no card of its own — a panel drawn there would cover the whole
+  // canvas. Its words are a screen-space overlay shown only while it is the current scene.
+  const carded = SCENES.filter((scene) => scene.id !== "map");
+  const absent = carded.filter((scene) => !markup.includes(scene.title));
   check(
-    `all ${SCENES.length} scenes are in the rendered tree together`,
+    `all ${carded.length} scenes that have a card are in the rendered tree together`,
     absent.length === 0,
-    absent.length ? `missing: ${absent.map((s) => s.id).join(", ")}` : `${SCENES.length} scenes`,
+    absent.length ? `missing: ${absent.map((s) => s.id).join(", ")}` : `${carded.length} cards`,
+  );
+  // Keyed on the pull-out's dimensions, which are unique to it — its ORIGIN is shared with
+  // the opening scene, so testing position alone reported a card that was never drawn.
+  const mapBox = sceneById("map")!.scene.box;
+  check(
+    "and the pull-out has no card, so it cannot cover the show it is framing",
+    !markup.includes(`width:${mapBox.w}px`),
+    `${mapBox.w}x${mapBox.h} would have spanned every other scene`,
   );
   check(
     "each is positioned at its own world coordinates",
@@ -488,6 +508,52 @@ function main() {
     s.baseline.residuals
       .slice(0, 200)
       .every((r) => Math.abs(r.observed - r.expected - r.residual) < 0.01),
+  );
+
+  console.log("\nthe camera travels in an orderly path, scene to scene");
+  // A walkthrough is disorienting when consecutive scenes sit far apart on the canvas: the
+  // camera lurches, and the audience loses track of where the new thing came from. This
+  // measures every hop between consecutive scenes and reports the worst.
+  let worstHop = { from: "", to: "", dist: 0 };
+  const hops: number[] = [];
+  for (let i = 1; i < SCENES.length; i += 1) {
+    const a = centreOf(SCENES[i - 1]!.box);
+    const b = centreOf(SCENES[i]!.box);
+    const dist = Math.hypot(b.x - a.x, b.y - a.y);
+    hops.push(dist);
+    // The final scene is the deliberate pull-out that frames everything at once, so its
+    // centre legitimately sits far from the last station's.
+    if (dist > worstHop.dist && i < SCENES.length - 1) {
+      worstHop = { from: SCENES[i - 1]!.id, to: SCENES[i]!.id, dist };
+    }
+  }
+  console.log(
+    `  hops: ${hops.map((h) => Math.round(h)).join(" · ")}`,
+  );
+  check(
+    "no hop between consecutive scenes exceeds two station pitches",
+    worstHop.dist <= 3400,
+    `worst is ${worstHop.from} to ${worstHop.to} at ${Math.round(worstHop.dist)} units`,
+  );
+  check(
+    "act one descends into act two rather than leaping back across the canvas",
+    (() => {
+      const arrival = sceneById("arrival")!.scene;
+      const ingest = sceneById("ingest")!.scene;
+      const a = centreOf(arrival.box);
+      const b = centreOf(ingest.box);
+      // Predominantly a downward move: the vertical change should dominate the horizontal.
+      return Math.abs(b.y - a.y) > Math.abs(b.x - a.x);
+    })(),
+  );
+  check(
+    "no scene's rectangle starts left of the canvas origin",
+    SCENES.every((s) => s.id === "map" || s.box.x >= 0),
+    "a negative x used to bleed into the opening shot",
+  );
+  check(
+    "the show ends on the pull-out that frames every other scene",
+    SCENES[SCENES.length - 1]!.id === "map",
   );
 
   console.log("\nthe callback: pointing from the baseline scene back at the record scene");

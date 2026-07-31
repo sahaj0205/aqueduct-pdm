@@ -7,7 +7,58 @@
  * `overflow: hidden` on a fixed stage removes the possibility.
  */
 
+/*
+ * ================================================================== THE DARK THEME
+ *
+ * SCOPED TO THE WALKTHROUGH, NOT GLOBAL. These override the design tokens for everything
+ * inside the stage and nowhere else, so the console and the facility-manager platform keep
+ * the light palette they were designed against. A theme switch in tokens.css would have
+ * repainted three applications to fix one.
+ *
+ * WHY DARK AT ALL. This is the one surface in the project that is projected into a room
+ * rather than read at a desk. A white field at 1400 pixels wide is the brightest object in
+ * a darkened room and the audience reads everything else against that glare; an ink field
+ * puts the light only where the content is.
+ *
+ * THE RULES FROM DESIGN_SEMANTIC.md STILL HOLD. Severity stays red / orange / gold / slate
+ * and never red-amber-green, and every value below is the documented dark counterpart of
+ * the light token it replaces rather than a fresh colour invented for this screen.
+ */
 .stage {
+  --paper: #0c1526;
+  --canvas-soft: #111d33;
+  --raised: #131f36;
+  --sunken: #16233c;
+  --hairline: #22334f;
+  --hairline-strong: #3b5170;
+
+  --ink: #f2f6fb;
+  --ink-strong: #ffffff;
+  --ink-muted: #c3d2e4;
+  --ink-faint: #91a4bd;
+  --ink-disabled: #64748d;
+
+  /* Indigo lifts toward lavender on dark: the light value sits at roughly 3:1 against this
+     field, which is under the floor for the small mono type it is used on. */
+  --primary: #9b8dff;
+  --primary-deep: #7d6cf5;
+  --primary-hover: #b3a8ff;
+  --info: #9b8dff;
+  --info-wash: #1d2350;
+
+  --sev-critical: #ff8389;
+  --sev-high: #ff9d4d;
+  --sev-medium: #f4d35e;
+  --sev-low: #a8c3de;
+
+  /* Shadow does almost nothing on a dark field, so depth is carried by the surface step
+     from --paper to --raised instead, and these are kept only so nothing renders a
+     stale blue glow. */
+  --lift-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --lift-2: 0 2px 6px rgba(0, 0, 0, 0.45), 0 16px 40px rgba(0, 0, 0, 0.35);
+  --lift-3: var(--lift-2);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--primary) 38%, transparent);
+
   position: fixed;
   inset: 0;
   overflow: hidden;
@@ -53,6 +104,119 @@
 
 .plot {
   position: absolute;
+}
+
+/* ------------------------------------------------------------------- the finale
+ *
+ * The closing scene's words, in screen space. The camera is pulled all the way back to
+ * frame every card at once behind this, so the panel sits over that view rather than in
+ * it — a card placed on the canvas at the union of all the others would cover them.
+ */
+
+.finale {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(720px, 68vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  padding: var(--s6);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--hairline-strong);
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--lift-2);
+  pointer-events: none;
+}
+
+.finale h2 {
+  margin: 0;
+  font-size: var(--t-display-lg);
+  font-weight: var(--w-light);
+  letter-spacing: var(--track-lg);
+  color: var(--ink);
+}
+
+.finaleAsks {
+  margin: 0;
+  padding-left: var(--s4);
+  border-left: 2px solid var(--primary);
+  font-size: var(--t-body-lg);
+  color: var(--ink);
+}
+
+.finaleList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.finaleList li {
+  position: relative;
+  padding-left: var(--s5);
+  font-size: var(--t-body-lg);
+  line-height: var(--lh-body);
+  transition: color 220ms ease, opacity 220ms ease;
+}
+
+.finaleList li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 9px;
+  height: 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--hairline-strong);
+}
+
+.lit {
+  color: var(--ink);
+}
+
+.lit::before {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.unlit {
+  color: var(--ink-disabled);
+  opacity: 0.5;
+}
+
+.finaleFigures {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--s3);
+}
+
+.finaleFigures div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s3);
+  background: var(--sunken);
+  border-radius: var(--r-md);
+}
+
+.finaleFigures dt {
+  font-family: var(--mono);
+  font-size: var(--t-micro-cap);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.finaleFigures dd {
+  margin: 0;
+  font-size: var(--t-body);
+  color: var(--ink);
 }
 
 /* ------------------------------------------------------------------ the readout */

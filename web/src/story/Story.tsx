@@ -37,6 +37,7 @@ import { useShow } from "./useShow.ts";
 import styles from "./Story.module.css";
 
 const PICK_INDEX = sceneById("pick")!.index;
+const RECORD_INDEX = sceneById("record")!.index;
 const RECORD_BOX = sceneById("record")!.scene.box;
 
 export function Story() {
@@ -56,6 +57,9 @@ export function Story() {
   // moment the camera moves on.
   const flown = spot.scene >= PICK_INDEX;
   const exploded = flown && (spot.scene > PICK_INDEX || spot.beat >= 2);
+  // Act I's last scene about the machine itself is the record; after that the story is
+  // about the reading, and the prop fades rather than hanging in frame.
+  const retired = spot.scene > RECORD_INDEX;
 
   const callbackActive = callbackActiveAt(scene, spot.beat);
 
@@ -83,6 +87,13 @@ export function Story() {
     >
       <div className={styles.world} ref={world}>
         {SCENES.map((each, index) => (
+          /*
+           * The final pull-out has no card of its own. Its rectangle is the union of every
+           * other scene's, so drawing a card there would put a full-canvas panel on top of
+           * the entire show — its heading appeared over the opening shot. It is a camera
+           * position and nothing more; its words are rendered as a fixed overlay below.
+           */
+          each.id === "map" ? null : (
           <div
             key={each.id}
             className={styles.plot}
@@ -107,15 +118,43 @@ export function Story() {
               />
             )}
           </div>
+          )
         ))}
 
         {/* The one element that physically travels between two scenes rather than being
             reframed by the camera. See Chiller1.tsx for why it cannot belong to either. */}
-        <Chiller1 flown={flown} exploded={exploded} />
+        <Chiller1 flown={flown} exploded={exploded} retired={retired} />
 
         {/* Mounted once, permanently, and made visible only on the beat it applies to. */}
         <Callback from={RECORD_BOX} to={scene.box} active={callbackActive} />
       </div>
+
+      {/* The final pull-out's words, in screen space rather than on the canvas — see the
+          note where its card is skipped above. Sits over the whole show at once, which is
+          exactly what the scene is about. */}
+      {scene.id === "map" && (
+        <div className={styles.finale}>
+          <h2>{scene.title}</h2>
+          {scene.asks && <p className={styles.finaleAsks}>{scene.asks}</p>}
+          <ol className={styles.finaleList}>
+            {scene.reveals.map((label, at) => (
+              <li key={label} className={spot.beat >= at ? styles.lit : styles.unlit}>
+                {label}
+              </li>
+            ))}
+          </ol>
+          {scene.figures && (
+            <dl className={styles.finaleFigures}>
+              {scene.figures.map((f) => (
+                <div key={f.label}>
+                  <dt>{f.label}</dt>
+                  <dd>{f.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+      )}
 
       <div className={styles.hud}>
         <div className={styles.where}>

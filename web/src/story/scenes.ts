@@ -26,6 +26,7 @@
  */
 
 import { type Box, union } from "./camera.ts";
+import { PLANT_BOX } from "./plantLayout.ts";
 import { SNAPSHOT as S } from "./snapshot.ts";
 
 /** Which of the three acts a scene belongs to. Shown in the presenter's readout. */
@@ -83,7 +84,18 @@ const costBasis: readonly string[] =
 const STATION = { w: 1300, h: 850 };
 /** Horizontal pitch along a row, and vertical pitch between rows. */
 const COL = 1600;
-const ROW_Y = [3000, 4100, 5200];
+
+/**
+ * THE THREE ROWS OF THE PIPELINE, and why they start where they do.
+ *
+ * Act I above them descends the left-hand side and ends at the fourth scene, whose bottom
+ * edge sits at y = 3060. The first row of stages begins at 3300, so the move from the last
+ * scene of Act I into the first stage is a short step straight DOWN rather than a leap
+ * back across the canvas. An earlier layout put Act I's scenes at scattered coordinates,
+ * which meant the camera lurched three and a half thousand units left to reach stage one —
+ * the single most disorienting move in the show.
+ */
+const ROW_Y = [3300, 4400, 5500];
 
 /** A station's box from its row and column. */
 const at = (col: number, row: 0 | 1 | 2): Box => ({
@@ -99,7 +111,7 @@ const ACT_ONE: Scene[] = [
     id: "plant",
     act: 1,
     title: "The building",
-    box: { x: 0, y: 0, w: 1240, h: 720 },
+    box: PLANT_BOX,
     asks: "What is actually here, before anything is measured?",
     reveals: [
       "two cooling towers, three chillers, one chilled water loop, one air handler coil, five occupied zones",
@@ -116,7 +128,11 @@ const ACT_ONE: Scene[] = [
     id: "pick",
     act: 1,
     title: "One machine",
-    box: { x: 1640, y: 140, w: 460, h: 420 },
+    // Level with the building, and to its right, so picking the machine out is a purely
+    // sideways move — the camera never changes height while the machine is flying. Wide
+    // enough to hold the words on the left and the exploded machine on the right without
+    // the two overlapping; see CHILLER1_EXPLODED.
+    box: { x: 1600, y: 180, w: 1120, h: 580 },
     asks: "Which machine, and which of its instruments?",
     reveals: [
       `the camera closes on ${S.asset.name}`,
@@ -133,7 +149,10 @@ const ACT_ONE: Scene[] = [
     id: "record",
     act: 1,
     title: "What we already know about this machine",
-    box: { x: -520, y: 1120, w: 3080, h: 1680 },
+    // Back to the left margin and below both, so the show starts descending. Its left edge
+    // is flush with the building's rather than hanging past it — a box starting at a
+    // negative x used to bleed into the opening shot from off-frame.
+    box: { x: 0, y: 1080, w: 2600, h: 1100 },
     asks: "What exists before a single reading arrives?",
     reveals: [
       "eight things are already in the database, and none of them were learned from data",
@@ -155,7 +174,9 @@ const ACT_ONE: Scene[] = [
     title: "The reading arrives",
     module: "Ingestion",
     cadence: "every few minutes",
-    box: { x: 3400, y: 1320, w: 1600, h: 900 },
+    // Directly beneath the record, and directly above the first pipeline stage, so Act I
+    // hands off to Act II as one continuous descent down the left of the canvas.
+    box: { x: 0, y: 2300, w: 1700, h: 760 },
     asks: "What does one reading actually look like?",
     reveals: [
       `${S.series.length} hours of history draw themselves, oldest first`,
@@ -486,6 +507,8 @@ const ACT_THREE: Scene[] = [
     id: "honesty",
     act: 3,
     title: "What this is, and what it is not",
+    // The next slot along the bottom row, so the last stage hands straight over to it
+    // without the camera leaving the run it has been travelling.
     box: at(3, 2),
     asks: "What should you not believe about what you just watched?",
     reveals: [
@@ -522,13 +545,24 @@ const MAP: Scene = {
     "nothing skipped a layer, and nothing reached back up",
     "every number on the way was traceable to the table that produced it",
   ],
+  figures: [
+    { label: "stages", value: "13" },
+    { label: "from", value: `${n(S.reading.v)} ${S.point.unit_si}` },
+    { label: "to", value: `a ${money(S.advisory?.effort_usd ?? 0)} job on one worklist` },
+    { label: "against", value: `${money(S.advisory?.cost_usd ?? 0)} of waiting` },
+  ],
 };
 
 /**
- * The running order. The map sits second to last so the honest limits get the final word —
- * an audience should leave knowing the caveats, not the diagram.
+ * The running order, and it ends on the pull-out deliberately.
+ *
+ * The honest limits come second to last, while the audience is still reading words, and
+ * the show finishes by pulling back to show the whole journey as one shape. The previous
+ * order put the map before the caveats, which meant the camera flew all the way out and
+ * then all the way back in to land on a single small card — the most disorienting move in
+ * the show, and for no narrative gain.
  */
-export const SCENES: readonly Scene[] = [...ACT_ONE, ...ACT_TWO, MAP, ...ACT_THREE];
+export const SCENES: readonly Scene[] = [...ACT_ONE, ...ACT_TWO, ...ACT_THREE, MAP];
 
 /**
  * Just the beat counts, which is all the show machine takes. Derived rather than written

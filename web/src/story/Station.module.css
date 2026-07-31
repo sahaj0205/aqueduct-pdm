@@ -9,7 +9,9 @@
   padding: var(--s6) var(--s6) var(--s5);
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
-  background: var(--paper);
+  /* One surface step above the stage behind it, which is what carries depth on a dark
+     field — a drop shadow against near-black does almost nothing. */
+  background: var(--raised, var(--paper));
   box-shadow: var(--lift-1);
   overflow: hidden;
   transition: opacity 240ms ease, border-color 240ms ease, box-shadow 240ms ease;
@@ -38,6 +40,16 @@
   opacity: 1;
   border-color: var(--primary);
   box-shadow: var(--ring), var(--lift-2);
+}
+
+/* A scene that shares its card with something drawn beside it — currently only the "pick"
+   scene, whose right-hand half is occupied by the machine flying in from the building. */
+.halfColumn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  flex: none;
+  min-width: 0;
 }
 
 .head {
@@ -119,6 +131,8 @@
   overflow: visible;
 }
 
+/* Allowed to shrink and clip rather than push the numbers and the "writes" line out
+   through the bottom of a fixed-height card. */
 .reveals {
   margin: 0;
   padding: 0;
@@ -126,6 +140,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--s3);
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .reveals li {
@@ -171,6 +188,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: var(--s3) var(--s5);
+  flex: none;
 }
 
 .figure {
@@ -191,12 +209,24 @@
   color: var(--ink-faint);
 }
 
+/*
+ * CLAMPED, because some of these values are genuinely long — the written justification for
+ * the failure threshold is five hundred characters of physics, and the advisory's cost
+ * basis is a full sentence of arithmetic. Both are worth showing and neither is worth
+ * letting push the rest of the card out through its own bottom edge. Three lines is enough
+ * to read the shape of the claim; the presenter says the rest.
+ */
 .figure dd {
   margin: 0;
   font-size: var(--t-body);
   line-height: var(--lh-body);
   color: var(--ink);
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
 }
 
 .from {

@@ -22,19 +22,44 @@ import { CHILLER1_EXPLODED, CHILLER1_REST } from "./plantLayout.ts";
 import { SNAPSHOT } from "./snapshot.ts";
 import styles from "./Chiller1.module.css";
 
+/**
+ * The four parts that fan outward once the machine comes apart.
+ *
+ * The offsets are kept modest and the labels short on purpose: they have to stay inside
+ * the right-hand half of the "pick" scene, and a long label — the full instrument name was
+ * tried first — grows past the card's edge and gets clipped.
+ */
 const PARTS = [
-  { id: "housing", label: "housing", dx: -140, dy: -80 },
-  { id: "condenser", label: "condenser", dx: 140, dy: -60 },
-  { id: "compressor", label: "compressor", dx: -120, dy: 100 },
-  { id: "instruments", label: `${SNAPSHOT.point.point_id}, and 4 more`, dx: 130, dy: 110 },
+  { id: "housing", label: "housing", dx: -120, dy: -110 },
+  { id: "condenser", label: "condenser", dx: 120, dy: -85 },
+  { id: "compressor", label: "compressor", dx: -110, dy: 115 },
+  // The instrument the walkthrough follows, named without its asset prefix — the prefix is
+  // already on the machine it is attached to, two lines above.
+  { id: "instrument", label: SNAPSHOT.point.point_id.split(".").pop() ?? "", dx: 115, dy: 120 },
 ] as const;
 
-export function Chiller1({ flown, exploded }: { flown: boolean; exploded: boolean }) {
+export function Chiller1({
+  flown,
+  exploded,
+  retired,
+}: {
+  flown: boolean;
+  exploded: boolean;
+  /**
+   * True once the story has moved past the scenes that are about the machine itself.
+   *
+   * It fades rather than staying put. The walkthrough's rule is that scenes never unmount,
+   * but this is not a scene — it is a prop that has finished its job, and leaving it lit in
+   * Act I's airspace means it hangs at the top edge of later wide shots with no explanation
+   * for why it is there.
+   */
+  retired: boolean;
+}) {
   const box = flown ? CHILLER1_EXPLODED : CHILLER1_REST;
 
   return (
     <div
-      className={`${styles.chiller} ${exploded ? styles.exploded : ""}`}
+      className={`${styles.chiller} ${exploded ? styles.exploded : ""} ${retired ? styles.retired : ""}`}
       style={{ left: box.x, top: box.y, width: box.w, height: box.h }}
     >
       <span className={styles.label}>{SNAPSHOT.asset.name}</span>
