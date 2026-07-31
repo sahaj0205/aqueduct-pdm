@@ -83,12 +83,12 @@ const costBasis: readonly string[] =
 /**
  * Every Act II station is the same size, so the run reads as one repeated apparatus.
  *
- * Height is set from what the fullest station MEASURED at in a browser — 542 units for the
- * baseline and health stations — plus a small margin, rather than from a round number. At
- * 850 every card carried two hundred units of dead space beneath its last line, which on a
- * projector reads as content that failed to load.
+ * Height is set from the fullest station MEASURED IN A BROWSER with its figures showing —
+ * the advisory needs 879 units — rather than from a round number or from a measurement taken
+ * while the figures were hidden. Sized to the sparse cards instead, the reveals on the full
+ * ones were silently squeezed and clipped through the middle of a line.
  */
-const STATION = { w: 1300, h: 580 };
+const STATION = { w: 1300, h: 880 };
 /** Horizontal pitch along a row, and vertical pitch between rows. */
 const COL = 1600;
 
@@ -102,7 +102,7 @@ const COL = 1600;
  * which meant the camera lurched three and a half thousand units left to reach stage one —
  * the single most disorienting move in the show.
  */
-const ROW_Y = [3300, 4260, 5220, 6180];
+const ROW_Y = [3300, 4400, 5500, 6600];
 
 /** A station's box from its row and column. */
 const at = (col: number, row: 0 | 1 | 2 | 3): Box => ({
@@ -139,7 +139,7 @@ const ACT_ONE: Scene[] = [
     // sideways move — the camera never changes height while the machine is flying. Wide
     // enough to hold the words on the left and the exploded machine on the right without
     // the two overlapping; see CHILLER1_EXPLODED.
-    box: { x: 1600, y: 180, w: 1120, h: 580 },
+    box: { x: 1600, y: 180, w: 1120, h: 620 },
     asks: "Which machine, and which of its instruments?",
     reveals: [
       `of everything in that plant, this one has an open fault: ${S.asset.name}`,
@@ -168,7 +168,7 @@ const ACT_ONE: Scene[] = [
      * the type is the size it says it is. The inventory inside is laid out in three dense
      * columns to fit it.
      */
-    box: { x: 0, y: 1080, w: 1260, h: 800 },
+    box: { x: 0, y: 1080, w: 1260, h: 890 },
     asks: "What exists before a single reading arrives?",
     reveals: [
       "all of this is already in the database, and none of it was learned from data",
@@ -193,7 +193,7 @@ const ACT_ONE: Scene[] = [
     // Directly beneath the record, and directly above the first pipeline stage, so Act I
     // hands off to Act II as one continuous descent down the left of the canvas. Kept
     // within a viewport's width for the same reason as the scene above it.
-    box: { x: 0, y: 2300, w: 1400, h: 720 },
+    box: { x: 0, y: 2300, w: 1400, h: 780 },
     asks: "What does one reading actually look like?",
     reveals: [
       `${S.series.length} hourly readings from that instrument, oldest on the left`,

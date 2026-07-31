@@ -238,10 +238,18 @@
 
 /* ------------------------------------------------------------------- what it wrote */
 
-/* Sits directly beneath whatever came before it. It used to be pushed to the bottom of the
-   card with an automatic margin, which opened a band of empty space on every station whose
-   content did not happen to fill the height. */
+/*
+ * Pinned to the bottom of the card.
+ *
+ * Cards are a fixed height set by the FULLEST of them, so a sparse one necessarily has room
+ * to spare. Letting this line float up under the content leaves that space dangling off the
+ * bottom; pinning it puts content at both ends and makes the space read as a margin rather
+ * than as something missing. The alternative — sizing cards to their own content — is not
+ * available, because the height is what sets the camera's framing and the run of stages has
+ * to be framed identically to read as one repeated apparatus.
+ */
 .writes {
+  margin-top: auto;
   display: flex;
   align-items: baseline;
   gap: var(--s3);

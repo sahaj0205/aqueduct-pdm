@@ -27,10 +27,10 @@ const money = (v: number | null) =>
  *
  * The card is a fixed rectangle — its size sets the camera's framing — so a list long
  * enough to overflow does not push the card taller, it runs out through the bottom and
- * under the footer. Six rows fit with room to spare, and the remainder is stated in words:
+ * under the footer. Five rows fit with room to spare, and the remainder is stated in words:
  * a list that silently stops at the card's edge lies about how many there are.
  */
-const ROWS = 6;
+const ROWS = 5;
 
 function More({ shown, total }: { shown: number; total: number }) {
   if (total <= shown) return null;
