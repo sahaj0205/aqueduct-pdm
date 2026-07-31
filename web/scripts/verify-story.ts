@@ -162,10 +162,29 @@ function main() {
   const plant = fit(SCENES[0]!.box, VIEWPORT);
   const pick = fit(SCENES[1]!.box, VIEWPORT);
   const record = fit(SCENES[2]!.box, VIEWPORT);
+  /*
+   * These used to assert a particular ORDER of scenes by scale, from when one scene was
+   * 3080 units wide and framed at under half size. That scene was deliberately shrunk so
+   * its type would survive the projector, and the ordering check failed for a fix that was
+   * the whole point. What actually matters is the band: every card sits close enough to
+   * read and none is magnified into a different design.
+   */
+  const carded = SCENES.filter((s) => s.id !== "map");
+  const scales = carded.map((s) => fit(s.box, VIEWPORT).scale);
   check(
-    "the small scene is closer than the wide one",
-    pick.scale > plant.scale && plant.scale > record.scale,
-    `${pick.scale.toFixed(3)} > ${plant.scale.toFixed(3)} > ${record.scale.toFixed(3)}`,
+    "every card is framed close enough to read",
+    Math.min(...scales) >= 0.6,
+    `closest ${Math.max(...scales).toFixed(3)}, furthest ${Math.min(...scales).toFixed(3)}`,
+  );
+  check(
+    "and none is blown up past the ceiling",
+    Math.max(...scales) <= MAX_SCALE,
+    `${Math.max(...scales).toFixed(3)} of ${MAX_SCALE}`,
+  );
+  check(
+    "the smaller a scene's rectangle, the closer the camera gets",
+    pick.scale > plant.scale,
+    `${pick.scale.toFixed(3)} > ${plant.scale.toFixed(3)}`,
   );
   // Tests the CEILING ITSELF against a deliberately tiny box, rather than asserting that
   // some particular scene happens to be small. It used to name the "pick" scene, which was
@@ -177,9 +196,9 @@ function main() {
     `capped at ${MAX_SCALE}`,
   );
   check(
-    "the widest scene pulls back past half size",
-    record.scale < 0.5,
-    record.scale.toFixed(3),
+    "the closing pull-out is the only shot that goes wide",
+    fit(sceneById("map")!.scene.box, VIEWPORT).scale < 0.5 && Math.min(...scales) >= 0.6,
+    `pull-out ${fit(sceneById("map")!.scene.box, VIEWPORT).scale.toFixed(3)} vs nearest card ${Math.min(...scales).toFixed(3)}`,
   );
   check(
     "a zero-sized viewport does not produce an infinite scale",
@@ -389,12 +408,12 @@ function main() {
   // The closing pull-out is deliberately excluded: its rectangle is the union of every
   // other scene's, so it has no card of its own — a panel drawn there would cover the whole
   // canvas. Its words are a screen-space overlay shown only while it is the current scene.
-  const carded = SCENES.filter((scene) => scene.id !== "map");
-  const absent = carded.filter((scene) => !markup.includes(scene.title));
+  const cardedScenes = SCENES.filter((scene) => scene.id !== "map");
+  const absent = cardedScenes.filter((scene) => !markup.includes(scene.title));
   check(
-    `all ${carded.length} scenes that have a card are in the rendered tree together`,
+    `all ${cardedScenes.length} scenes that have a card are in the rendered tree together`,
     absent.length === 0,
-    absent.length ? `missing: ${absent.map((s) => s.id).join(", ")}` : `${carded.length} cards`,
+    absent.length ? `missing: ${absent.map((s) => s.id).join(", ")}` : `${cardedScenes.length} cards`,
   );
   // Keyed on the pull-out's dimensions, which are unique to it — its ORIGIN is shared with
   // the opening scene, so testing position alone reported a card that was never drawn.
@@ -508,6 +527,55 @@ function main() {
     s.baseline.residuals
       .slice(0, 200)
       .every((r) => Math.abs(r.observed - r.expected - r.residual) < 0.01),
+  );
+
+  console.log("\nevery scene's type survives the scale it is framed at");
+  /*
+   * A scene is drawn at whatever scale the camera needs to fit its rectangle, so the size
+   * type ARRIVES at on the projector is the declared size times that scale. A large
+   * rectangle is therefore not a neutral choice: it pushes the camera back and shrinks
+   * every word on the card. One scene shipped at 2600 wide, which framed at 0.49 and put
+   * its body text on screen at about seven pixels.
+   *
+   * These sizes mirror the story-scoped type scale in Story.module.css. If that file
+   * changes, this must change with it — there is no way to read CSS custom properties from
+   * here, so the pairing is stated in both places.
+   */
+  const BODY_PX = 20; // --t-body-lg
+  const SMALLEST_PX = 13; // --t-micro-cap, the smallest type any card uses
+  const BODY_FLOOR = 15;
+  const SMALLEST_FLOOR = 9;
+
+  const typeRows = SCENES.filter((s) => s.id !== "map").map((scene) => {
+    const scale = fit(scene.box, VIEWPORT).scale;
+    return {
+      id: scene.id,
+      scale,
+      body: BODY_PX * scale,
+      smallest: SMALLEST_PX * scale,
+    };
+  });
+  typeRows.sort((a, b) => a.body - b.body);
+  for (const row of typeRows.slice(0, 4)) {
+    console.log(
+      `  ${row.id.padEnd(12)} framed at ${row.scale.toFixed(2)}  body ${row.body.toFixed(1)}px  smallest ${row.smallest.toFixed(1)}px`,
+    );
+  }
+  const tooSmall = typeRows.filter((r) => r.body < BODY_FLOOR);
+  check(
+    `body text lands at ${BODY_FLOOR}px or better on every card`,
+    tooSmall.length === 0,
+    tooSmall.length
+      ? tooSmall.map((r) => `${r.id} at ${r.body.toFixed(1)}px`).join(", ")
+      : `worst is ${typeRows[0]!.id} at ${typeRows[0]!.body.toFixed(1)}px`,
+  );
+  const microTooSmall = typeRows.filter((r) => r.smallest < SMALLEST_FLOOR);
+  check(
+    `and the smallest labels stay above ${SMALLEST_FLOOR}px`,
+    microTooSmall.length === 0,
+    microTooSmall.length
+      ? microTooSmall.map((r) => `${r.id} at ${r.smallest.toFixed(1)}px`).join(", ")
+      : `worst is ${typeRows[0]!.smallest.toFixed(1)}px`,
   );
 
   console.log("\nthe words describe the system, not the presentation");

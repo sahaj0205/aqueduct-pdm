@@ -34,37 +34,44 @@ export interface PlantAsset {
  * the drawing the same numbers, which removes the single arithmetic step where the two
  * systems previously drifted apart. scenes.ts imports this rather than restating it.
  */
-export const PLANT_BOX: Box = { x: 0, y: 0, w: 1400, h: 960 };
+/*
+ * SIZED SO THE CAMERA STAYS CLOSE. Framing is derived from the rectangle, so a tall card
+ * pushes the camera back and shrinks every word on it. At 1400 x 960 this scene framed at
+ * 0.83 and its labels rendered below thirteen pixels on a 1440-wide screen. The drawing
+ * below is packed tighter so the same content fits a shorter card, which brings the
+ * framing back toward 1:1.
+ */
+export const PLANT_BOX: Box = { x: 0, y: 0, w: 1400, h: 850 };
 
 /**
  * The drawing occupies the LOWER portion of the card; the heading, the question and the
  * revealed lines occupy the upper portion in normal flow above it. 380 is where the text
  * reliably ends once all three lines of this scene are showing.
  */
-export const DIAGRAM_TOP = 380;
+export const DIAGRAM_TOP = 330;
 
 /** Every asset in the drawing except chiller-1, which flies separately. */
 export const PLANT_ASSETS: readonly PlantAsset[] = [
   // Top row: what rejects heat, and what makes cold. Chiller-1's gap is between them.
-  { id: "tower-1", label: "Cooling tower 1", kind: "tower", box: { x: 60, y: 400, w: 180, h: 110 } },
-  { id: "tower-2", label: "Cooling tower 2", kind: "tower", box: { x: 270, y: 400, w: 180, h: 110 } },
-  { id: "chiller-2", label: "Chiller 2", kind: "chiller", box: { x: 740, y: 400, w: 180, h: 110 } },
-  { id: "chiller-3", label: "Chiller 3", kind: "chiller", box: { x: 950, y: 400, w: 180, h: 110 } },
+  { id: "tower-1", label: "Cooling tower 1", kind: "tower", box: { x: 60, y: 350, w: 180, h: 96 } },
+  { id: "tower-2", label: "Cooling tower 2", kind: "tower", box: { x: 270, y: 350, w: 180, h: 96 } },
+  { id: "chiller-2", label: "Chiller 2", kind: "chiller", box: { x: 740, y: 350, w: 180, h: 96 } },
+  { id: "chiller-3", label: "Chiller 3", kind: "chiller", box: { x: 950, y: 350, w: 180, h: 96 } },
   // The loop everything cold travels along, then the coil it feeds, then the rooms.
-  { id: "loop", label: "Chilled water loop", kind: "loop", box: { x: 60, y: 560, w: 1070, h: 56 } },
-  { id: "coil", label: "Air handler coil", kind: "coil", box: { x: 450, y: 650, w: 300, h: 56 } },
-  { id: "zone-1", label: "Zone 1", kind: "zone", box: { x: 60, y: 750, w: 190, h: 56 } },
-  { id: "zone-2", label: "Zone 2", kind: "zone", box: { x: 270, y: 750, w: 190, h: 56 } },
-  { id: "zone-3", label: "Zone 3", kind: "zone", box: { x: 480, y: 750, w: 190, h: 56 } },
-  { id: "zone-4", label: "Zone 4", kind: "zone", box: { x: 690, y: 750, w: 190, h: 56 } },
-  { id: "zone-5", label: "Zone 5", kind: "zone", box: { x: 900, y: 750, w: 190, h: 56 } },
+  { id: "loop", label: "Chilled water loop", kind: "loop", box: { x: 60, y: 480, w: 1070, h: 52 } },
+  { id: "coil", label: "Air handler coil", kind: "coil", box: { x: 450, y: 562, w: 300, h: 52 } },
+  { id: "zone-1", label: "Zone 1", kind: "zone", box: { x: 60, y: 646, w: 190, h: 52 } },
+  { id: "zone-2", label: "Zone 2", kind: "zone", box: { x: 270, y: 646, w: 190, h: 52 } },
+  { id: "zone-3", label: "Zone 3", kind: "zone", box: { x: 480, y: 646, w: 190, h: 52 } },
+  { id: "zone-4", label: "Zone 4", kind: "zone", box: { x: 690, y: 646, w: 190, h: 52 } },
+  { id: "zone-5", label: "Zone 5", kind: "zone", box: { x: 900, y: 646, w: 190, h: 52 } },
 ];
 
 /** Where the instrument marks sit, beneath the zones. */
-export const TICKS_BOX: Box = { x: 60, y: 838, w: 1070, h: 56 };
+export const TICKS_BOX: Box = { x: 60, y: 730, w: 1070, h: 48 };
 
 /** Where chiller-1 sits among the other assets before it is picked out. */
-export const CHILLER1_REST: Box = { x: 520, y: 400, w: 190, h: 110 };
+export const CHILLER1_REST: Box = { x: 520, y: 350, w: 190, h: 96 };
 
 /**
  * Where chiller-1 lands, exploded, once it has been picked out.

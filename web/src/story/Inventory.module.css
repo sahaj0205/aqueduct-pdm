@@ -1,6 +1,24 @@
 /* Three columns of real rows: what the machine can measure, how it is known to fail, and
    what putting each fault right costs. */
 
+/* Shown only when the capture carried no inventory. Deliberately worded, not a dash: an
+   empty column beside a zero reads as a machine with no instruments at all. */
+.uncaptured {
+  margin: 0;
+  padding: var(--s3) var(--s4);
+  border-left: 2px solid var(--sev-medium);
+  background: var(--sunken);
+  border-radius: var(--r-sm);
+  font-size: var(--t-caption);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+}
+
+.uncaptured code {
+  font-family: var(--mono);
+  color: var(--ink);
+}
+
 .columns {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

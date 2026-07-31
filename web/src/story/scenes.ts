@@ -156,10 +156,19 @@ const ACT_ONE: Scene[] = [
     id: "record",
     act: 1,
     title: "What we already know about this machine",
-    // Back to the left margin and below both, so the show starts descending. Its left edge
-    // is flush with the building's rather than hanging past it — a box starting at a
-    // negative x used to bleed into the opening shot from off-frame.
-    box: { x: 0, y: 1080, w: 2600, h: 1100 },
+    /*
+     * Back to the left margin and below both, so the show starts descending. Its left edge
+     * is flush with the building's rather than hanging past it — a box starting at a
+     * negative x used to bleed into the opening shot from off-frame.
+     *
+     * SIZED SO THE CAMERA STAYS NEAR 1:1. It was 2600 x 1100, which forced the camera back
+     * to roughly half scale to frame it, and at half scale this scene's type rendered at
+     * about seven pixels — legible on a laptop a foot away and useless on a projector. A
+     * box a viewport wide keeps the scale near one, so a world pixel is a screen pixel and
+     * the type is the size it says it is. The inventory inside is laid out in three dense
+     * columns to fit it.
+     */
+    box: { x: 0, y: 1080, w: 1260, h: 800 },
     asks: "What exists before a single reading arrives?",
     reveals: [
       "all of this is already in the database, and none of it was learned from data",
@@ -182,8 +191,9 @@ const ACT_ONE: Scene[] = [
     module: "Ingestion",
     cadence: "every few minutes",
     // Directly beneath the record, and directly above the first pipeline stage, so Act I
-    // hands off to Act II as one continuous descent down the left of the canvas.
-    box: { x: 0, y: 2300, w: 1700, h: 760 },
+    // hands off to Act II as one continuous descent down the left of the canvas. Kept
+    // within a viewport's width for the same reason as the scene above it.
+    box: { x: 0, y: 2300, w: 1400, h: 720 },
     asks: "What does one reading actually look like?",
     reveals: [
       `${S.series.length} hourly readings from that instrument, oldest on the left`,

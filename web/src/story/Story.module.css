@@ -54,6 +54,26 @@
   /* Shadow does almost nothing on a dark field, so depth is carried by the surface step
      from --paper to --raised instead, and these are kept only so nothing renders a
      stale blue glow. */
+  /*
+   * TYPE IS LARGER HERE THAN ANYWHERE ELSE IN THE PRODUCT, and it has to be.
+   *
+   * The rest of the build is read at a desk at 1:1. This is read across a room, and every
+   * scene is additionally drawn at whatever scale the camera needs to frame it — so a
+   * 15px label on a card framed at 0.83 arrives on the projector as 12px. The sizes below
+   * are chosen so that the SMALLEST scale any card is framed at still lands body text
+   * above roughly fifteen screen pixels; scripts/verify-story.ts computes that product for
+   * every scene and fails if any of them drops under the floor.
+   */
+  --t-display-lg: 40px;
+  --t-display-md: 30px;
+  --t-heading-sm: 22px;
+  --t-body-lg: 20px;
+  --t-body: 18px;
+  --t-tabular: 17px;
+  --t-caption: 16px;
+  --t-micro: 14px;
+  --t-micro-cap: 13px;
+
   --lift-1: 0 1px 2px rgba(0, 0, 0, 0.45);
   --lift-2: 0 2px 6px rgba(0, 0, 0, 0.45), 0 16px 40px rgba(0, 0, 0, 0.35);
   --lift-3: var(--lift-2);

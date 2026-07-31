@@ -39,6 +39,14 @@ export function Inventory({
   const usable = points.filter((p) => p.usable);
   const broken = points.filter((p) => !p.usable);
 
+  /*
+   * The inventory is empty when the committed capture predates it, or was taken while the
+   * database was mid-rebuild. Saying so is the only honest option: an empty column with a
+   * zero beside it looks like a machine with no instruments and no known failure modes,
+   * which is a far more alarming claim than "this has not been captured yet".
+   */
+  const captured = points.length > 0 || modes.length > 0 || interventions.length > 0;
+
   // Each column arrives on its own beat, so the presenter can talk through one kind of
   // thing at a time instead of the whole wall landing at once.
   const show = (fromBeat: number) => current && beat >= fromBeat;
@@ -65,6 +73,14 @@ export function Inventory({
           </li>
         ))}
       </ol>
+
+      {!captured && (
+        <p className={styles.uncaptured}>
+          This machine&rsquo;s inventory was not in the last capture. Run{" "}
+          <code>npm run snapshot</code> against a loaded database to fill it — the columns
+          below are empty because nothing was read, not because there is nothing there.
+        </p>
+      )}
 
       <div className={styles.columns}>
         {/* What it can measure at all. */}
