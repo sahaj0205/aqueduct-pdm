@@ -183,10 +183,16 @@
 
 /* ------------------------------------------------------------------------- figures */
 
+/*
+ * The minimum tile width decides how many fit on a row, and a row that wraps costs about
+ * ninety units of card height — which is enough to clip the last line of the text above it.
+ * At 240 a 1300-wide card fits four, so a scene with five numbers wrapped and lost a line.
+ * At 200 it fits five, which is the most any scene currently shows on one row.
+ */
 .figures {
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: var(--s3) var(--s5);
   flex: none;
 }

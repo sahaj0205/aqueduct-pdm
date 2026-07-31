@@ -16097,17 +16097,24 @@
     "points": 107,
     "scenarios": 8,
     "faultEvents": 6,
-    "measurements": 128528261,
+    "measurements": 128259784,
     "eras": 8
   },
   "validation": {
-    "available": false,
-    "reason": "the scoring harness last ran with no ground truth loaded, so nothing was measured",
-    "precision": null,
-    "recall": null,
-    "faultClassCorrect": null,
-    "faultClassTotal": null,
-    "suppressionRefusals": 3,
-    "generatedAt": null
+    "available": true,
+    "reason": null,
+    "precision": 43.7,
+    "recall": 76.1,
+    "faultClassCorrect": 4,
+    "faultClassTotal": 5,
+    "faultClassBaseline": 3,
+    "leadWarnings": 13,
+    "leadMedianDays": 26.6,
+    "leadP10Days": 12.2,
+    "leadWorstDays": 3.4,
+    "rulCoverage": 7.7,
+    "suppressionRefusals": 2,
+    "suppressionWrong": 1,
+    "generatedAt": "2026-07-31"
   }
 }

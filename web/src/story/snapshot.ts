@@ -204,7 +204,17 @@ export interface Snapshot {
     recall?: number | null;
     faultClassCorrect?: number | null;
     faultClassTotal?: number | null;
+    /** What a classifier that always guessed the commonest answer would have scored. */
+    faultClassBaseline?: number | null;
+    leadWarnings?: number | null;
+    /** Days between the first warning and the failure, across every injected fault. */
+    leadMedianDays?: number | null;
+    leadP10Days?: number | null;
+    leadWorstDays?: number | null;
+    /** How often the remaining-life band actually contained the truth, against a nominal 80%. */
+    rulCoverage?: number | null;
     suppressionRefusals?: number;
+    suppressionWrong?: number;
     generatedAt?: string | null;
   };
 }

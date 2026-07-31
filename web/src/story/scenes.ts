@@ -550,32 +550,57 @@ const ACT_THREE: Scene[] = [
     title: "So was it right?",
     box: at(4, 2),
     asks: "The system said a machine was failing. Did it actually fail?",
+    // Where the scoring lands, and when it was run — the date belongs here rather than as a
+    // sixth number tile, which pushed the figures onto a second row and clipped the text.
+    writes: S.validation.generatedAt
+      ? `VALIDATION.md — scored ${S.validation.generatedAt}, blind to the answer key`
+      : "VALIDATION.md",
     reveals: [
       "because every fault was injected, the exact day it started and the day it would have failed are both written down",
       "that answer key lives in a separate part of the database, and the credential the detectors run under is denied access to it",
       "so the pipeline is run blind over the data, and only afterwards is the key opened and the findings scored",
       S.validation.available
-        ? `of the days something was raised, ${S.validation.precision ?? "—"}% had a real fault underneath`
+        ? `it catches ${S.validation.recall ?? "—"}% of the days a real fault was present — and the first warning lands a median of ${S.validation.leadMedianDays ?? "—"} days before failure`
         : "at the moment there is nothing to report here, and that is stated rather than filled in",
       S.validation.available
-        ? "and the warning arrives days before the machine reaches the state that would have stopped it"
+        ? `but only ${S.validation.precision ?? "—"}% of what it raises has a real fault underneath, so roughly one finding in two is a false alarm`
         : (S.validation.reason ?? "the scoring harness has not been run against loaded ground truth"),
+      S.validation.available
+        ? `and the remaining-life bands are the weak part: nominally 80% confident, they actually contained the truth ${S.validation.rulCoverage ?? "—"}% of the time`
+        : "run `make validate` against loaded ground truth to fill this in",
+      S.validation.available
+        ? "those are the real numbers, weak ones included — a walkthrough that showed only the flattering half would be the thing this system exists to argue against"
+        : "a zero here would mean nothing was found, which is not the same as nothing having been checked",
     ],
     figures: S.validation.available
       ? [
-          ...(S.validation.precision !== null && S.validation.precision !== undefined
+          ...(S.validation.recall != null
+            ? [{ label: "recall", value: `${S.validation.recall}%`, from: "of the real faults, this share was caught" }]
+            : []),
+          ...(S.validation.precision != null
             ? [{ label: "precision", value: `${S.validation.precision}%`, from: "of what it raised, this share was real" }]
             : []),
-          ...(S.validation.recall !== null && S.validation.recall !== undefined
-            ? [{ label: "recall", value: `${S.validation.recall}%`, from: "of the real faults, this share was caught" }]
+          ...(S.validation.leadMedianDays != null
+            ? [{
+                label: "warning time",
+                value: `${S.validation.leadMedianDays} days`,
+                from: `median across ${S.validation.leadWarnings ?? "—"} warnings; worst ${S.validation.leadWorstDays ?? "—"}`,
+              }]
             : []),
           ...(S.validation.faultClassTotal
             ? [{
                 label: "sensor or machine",
                 value: `${S.validation.faultClassCorrect} of ${S.validation.faultClassTotal} correct`,
+                from: `always guessing would score ${S.validation.faultClassBaseline ?? "—"} of ${S.validation.faultClassTotal}`,
               }]
             : []),
-          { label: "scored on", value: S.validation.generatedAt ?? "—", from: "make validate" },
+          ...(S.validation.rulCoverage != null
+            ? [{
+                label: "remaining-life bands",
+                value: `${S.validation.rulCoverage}% covered`,
+                from: "against a nominal 80% — the weakest result in the report",
+              }]
+            : []),
         ]
       : [
           { label: "status", value: "not measured", from: S.validation.reason ?? "run `make validate`" },
