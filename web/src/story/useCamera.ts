@@ -62,6 +62,20 @@ const MAX_FRAME = 0.25;
 export function useCamera(target: Box) {
   const stage = useRef<HTMLDivElement | null>(null);
   const world = useRef<HTMLDivElement | null>(null);
+  /**
+   * The strip of chrome along the bottom — the progress rail and the presenter's readout.
+   *
+   * WHY THE CAMERA HAS TO KNOW ABOUT IT. Framing is computed against the viewport, so a
+   * scene sized to the full height is drawn all the way to the bottom edge and the chrome
+   * sits on top of it, covering the last line of every tall card. Measuring the chrome and
+   * subtracting its height means scenes are framed into the space that is actually free,
+   * and the overlap becomes impossible rather than merely avoided by choosing card sizes
+   * carefully.
+   *
+   * Measured rather than hardcoded so that a readout which grows — a longer scene title
+   * wrapping to two lines, say — pushes the framing up by exactly as much as it took.
+   */
+  const chrome = useRef<HTMLDivElement | null>(null);
 
   // All of this is deliberately in refs rather than state: none of it should cause a
   // render, and the animation loop has to read the newest value without being torn down
@@ -135,13 +149,19 @@ export function useCamera(target: Box) {
     // The viewport is measured, never assumed. A projector connected mid-presentation
     // changes it, and the framing of every scene depends on it, so a resize re-frames
     // rather than leaving the scene cropped at the old aspect ratio.
-    const observer = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      viewport.current = { w: rect.width, h: rect.height };
+    const measure = () => {
+      const rect = stageEl.getBoundingClientRect();
+      const chromeH = chrome.current?.getBoundingClientRect().height ?? 0;
+      // A floor, so that a very short window cannot produce a zero or negative height and
+      // send the framing to an infinite scale.
+      viewport.current = { w: rect.width, h: Math.max(120, rect.height - chromeH) };
       start();
-    });
+    };
+
+    const observer = new ResizeObserver(measure);
     observer.observe(stageEl);
+    if (chrome.current) observer.observe(chrome.current);
+    measure();
 
     return () => {
       observer.disconnect();
@@ -157,5 +177,5 @@ export function useCamera(target: Box) {
     kick.current();
   }, [target]);
 
-  return { stage, world };
+  return { stage, world, chrome };
 }

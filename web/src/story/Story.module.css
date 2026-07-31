@@ -24,27 +24,45 @@
  * and never red-amber-green, and every value below is the documented dark counterpart of
  * the light token it replaces rather than a fresh colour invented for this screen.
  */
+/*
+ * NOT NEAR-BLACK, AND NOT WHITE. The first version of this surface was the product's own
+ * white canvas, which at full width is the brightest object in a darkened room and makes
+ * everything on it read as glare. The correction went too far the other way — a near-black
+ * #0c1526 that turned the walkthrough into a light show and made the cards feel like they
+ * were floating in a void.
+ *
+ * What follows is the middle: a slate navy light enough to read as a surface with weight
+ * rather than as an absence, with the cards a clear step above it and the tiles a step
+ * below. Three levels, close together, so depth comes from an ordered stack rather than
+ * from contrast — which is what makes it read as considered rather than as a dark mode
+ * that was switched on.
+ *
+ * The hue is the same navy the product's ink is built from, so it belongs to the same
+ * family as the light theme instead of being a separate grey invented for this screen.
+ */
 .stage {
-  --paper: #0c1526;
-  --canvas-soft: #111d33;
-  --raised: #131f36;
-  --sunken: #16233c;
-  --hairline: #22334f;
-  --hairline-strong: #3b5170;
+  --paper: #1a2332;
+  --canvas-soft: #1f2937;
+  --raised: #232f42;
+  --sunken: #1c2636;
+  --hairline: #34435c;
+  --hairline-strong: #4c5f7d;
 
-  --ink: #f2f6fb;
+  --ink: #eef3fa;
   --ink-strong: #ffffff;
-  --ink-muted: #c3d2e4;
-  --ink-faint: #91a4bd;
-  --ink-disabled: #64748d;
+  --ink-muted: #c2d0e2;
+  --ink-faint: #95a6bf;
+  --ink-disabled: #6b7c96;
 
   /* Indigo lifts toward lavender on dark: the light value sits at roughly 3:1 against this
      field, which is under the floor for the small mono type it is used on. */
-  --primary: #9b8dff;
-  --primary-deep: #7d6cf5;
-  --primary-hover: #b3a8ff;
-  --info: #9b8dff;
-  --info-wash: #1d2350;
+  /* Indigo, lifted toward lavender so it clears the contrast floor against the lighter
+     surface as well as it did against the dark one. */
+  --primary: #a99cff;
+  --primary-deep: #8a79f7;
+  --primary-hover: #bcb2ff;
+  --info: #a99cff;
+  --info-wash: #2a2f56;
 
   --sev-critical: #ff8389;
   --sev-high: #ff9d4d;
@@ -246,14 +264,28 @@
  * colour in this project is spoken for and a fourth meaning for it would be one too many.
  */
 
-.rail {
+/*
+ * The rail and the readout together, as one block pinned to the bottom.
+ *
+ * MEASURED BY THE CAMERA. useCamera observes this element and subtracts its height from the
+ * viewport before framing a scene, so cards are fitted into the space above it and can never
+ * be drawn underneath it. Previously the rail floated over the world at a fixed offset and
+ * sat on top of the bottom of every tall card.
+ */
+.chrome {
   position: absolute;
-  left: var(--s6);
-  right: var(--s6);
-  bottom: 74px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--paper);
+  border-top: 1px solid var(--hairline);
+}
+
+.rail {
   display: flex;
   align-items: center;
   gap: 5px;
+  padding: var(--s4) var(--s6) 0;
   pointer-events: none;
 }
 
@@ -294,18 +326,12 @@
 
 /* ------------------------------------------------------------------ the readout */
 
+/* Sits inside the chrome block, which owns the background and the border. */
 .hud {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
   display: flex;
   align-items: baseline;
   gap: var(--s5);
-  padding: var(--s4) var(--s6);
-  background: color-mix(in srgb, var(--paper) 86%, transparent);
-  backdrop-filter: blur(10px);
-  border-top: 1px solid var(--hairline);
+  padding: var(--s3) var(--s6) var(--s4);
 }
 
 .where {

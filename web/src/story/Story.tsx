@@ -50,7 +50,7 @@ export function Story() {
   // cameraTargetFor returns a memoised union of the two, so the camera widens to hold
   // both rather than retargeting to just the current one.
   const target = cameraTargetFor(scene, spot.beat);
-  const { stage, world } = useCamera(target);
+  const { stage, world, chrome } = useCamera(target);
 
   // Chiller-1 has left its resting place among the other assets from the moment the
   // presenter reaches the "pick" scene onward, and stays exploded from partway through
@@ -178,6 +178,7 @@ export function Story() {
         In screen space rather than on the canvas, so it costs no room inside any card and
         stays in exactly the same place while the camera moves.
       */}
+      <div className={styles.chrome} ref={chrome}>
       <div className={styles.rail} aria-hidden="true">
         {SCENES.map((each, index) => (
           <span
@@ -217,6 +218,7 @@ export function Story() {
           </span>
           <span className={styles.keys}>space &middot; &larr; &rarr;</span>
         </div>
+      </div>
       </div>
 
       {/* What has just been revealed, for a screen reader. The visual reveal is a dot
