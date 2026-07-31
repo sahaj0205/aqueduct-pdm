@@ -34,7 +34,7 @@ export interface PlantAsset {
  * the drawing the same numbers, which removes the single arithmetic step where the two
  * systems previously drifted apart. scenes.ts imports this rather than restating it.
  */
-export const PLANT_BOX: Box = { x: 0, y: 0, w: 1400, h: 940 };
+export const PLANT_BOX: Box = { x: 0, y: 0, w: 1400, h: 960 };
 
 /**
  * The drawing occupies the LOWER portion of the card; the heading, the question and the

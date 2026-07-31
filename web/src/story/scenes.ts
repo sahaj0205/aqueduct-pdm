@@ -83,11 +83,12 @@ const costBasis: readonly string[] =
 /**
  * Every Act II station is the same size, so the run reads as one repeated apparatus.
  *
- * Height is set to what the fullest station actually needs rather than to a round number.
- * At 850 every card carried a band of dead space beneath its last line, which on a
- * projector reads as content failing to load.
+ * Height is set from what the fullest station MEASURED at in a browser — 542 units for the
+ * baseline and health stations — plus a small margin, rather than from a round number. At
+ * 850 every card carried two hundred units of dead space beneath its last line, which on a
+ * projector reads as content that failed to load.
  */
-const STATION = { w: 1300, h: 720 };
+const STATION = { w: 1300, h: 580 };
 /** Horizontal pitch along a row, and vertical pitch between rows. */
 const COL = 1600;
 
