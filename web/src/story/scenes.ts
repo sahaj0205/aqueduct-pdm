@@ -115,8 +115,8 @@ const ACT_ONE: Scene[] = [
     asks: "What is actually here, before anything is measured?",
     reveals: [
       "two cooling towers, three chillers, one chilled water loop, one air handler coil, five occupied zones",
-      `${S.instruments.total} instruments appear across the plant`,
-      `${S.instruments.unusable} of them strike through — defective at source, each with a written reason, before any analysis runs`,
+      `${S.instruments.total} instruments report from this plant`,
+      `${S.instruments.unusable} of them are defective at source — each carries a written reason, and is ruled out before any analysis runs`,
     ],
     figures: [
       { label: "instruments", value: String(S.instruments.total) },
@@ -135,9 +135,9 @@ const ACT_ONE: Scene[] = [
     box: { x: 1600, y: 180, w: 1120, h: 580 },
     asks: "Which machine, and which of its instruments?",
     reveals: [
-      `the camera closes on ${S.asset.name}`,
-      "every other asset desaturates and leaves the frame",
-      `it comes apart, and one instrument is left lit: ${S.point.point_id}`,
+      `of everything in that plant, this one has an open fault: ${S.asset.name}`,
+      "the rest of the building is set aside — nothing from here on is about them",
+      `and one of its instruments carries the whole story: ${S.point.point_id}`,
     ],
     figures: [
       { label: "asset", value: S.asset.asset_id },
@@ -179,8 +179,8 @@ const ACT_ONE: Scene[] = [
     box: { x: 0, y: 2300, w: 1700, h: 760 },
     asks: "What does one reading actually look like?",
     reveals: [
-      `${S.series.length} hours of history draw themselves, oldest first`,
-      `the head arrives and holds: ${n(S.reading.v)} ${S.point.unit_si}`,
+      `${S.series.length} hourly readings from that instrument, oldest on the left`,
+      `the newest one, and the subject of everything that follows: ${n(S.reading.v)} ${S.point.unit_si}`,
       "this is the number the next thirteen stages are about",
     ],
     figures: [
@@ -205,7 +205,7 @@ const ACT_TWO: Scene[] = [
       `the reading is stamped SI on the way in — ${S.point.unit_si}, never a Fahrenheit`,
       "the unit is a property of the ingestion manifest, checked once, not of every query",
       "the row is written",
-      "behind it, a slower bucket fills: the hourly rollup that charts and long fits read",
+      "an hourly average is maintained alongside it — that is what the charts and the long-window fits actually read",
     ],
     figures: [{ label: "stored as", value: S.point.unit_si }],
   },
@@ -242,7 +242,7 @@ const ACT_TWO: Scene[] = [
     writes: "nothing — this gates every stage below it",
     reveals: [
       "three gates: is it running, did it start over an hour ago, is it above twenty tons",
-      "if any gate fails, everything downstream greys out and no judgement is made",
+      "if any one of them fails, no judgement is made at all — every stage below is skipped",
       "a chiller starting up is not a chiller performing badly",
       "this stage writes nothing at all — and that is the point of it",
     ],
@@ -298,8 +298,8 @@ const ACT_TWO: Scene[] = [
       `it predicts what this reading SHOULD have been, given the load it is under`,
       `observed ${n(S.baseline.residuals[S.baseline.residuals.length - 1]?.observed ?? 0)} against expected ${n(S.baseline.residuals[S.baseline.residuals.length - 1]?.expected ?? 0)} ${UNIT}`,
       "the difference is what carries forward — not the reading itself",
-      `the model was fitted on ${S.commissioning.days} days declared healthy — the reference from three scenes ago`,
-      "this is where the walkthrough stops being about a number and starts being about a gap",
+      `the model was fitted on the ${S.commissioning.days} days this plant was declared healthy, and on nothing since`,
+      "from here on it is the gap that travels, not the reading — the reading has done its job",
     ],
     figures: [
       {
@@ -443,7 +443,7 @@ const ACT_TWO: Scene[] = [
     asks: "Could an open fault upstream be producing this symptom?",
     writes: "a consequential link, and a demoted rank",
     reveals: [
-      "the camera pulls all the way back to the building",
+      "before this machine is blamed, the plant feeding it is checked",
       "this chiller is fed by a cooling tower — warm condenser water would look exactly like fouling",
       "so the graph is walked upstream before any advisory is raised",
       S.advisory?.consequential
@@ -516,7 +516,7 @@ const ACT_THREE: Scene[] = [
       "readings are loaded, then each layer runs over what is stored",
       "connect a live feed shaped like the measurements table and every stage above still runs, in this order",
       "no stage ever skips a layer, and no stage ever reaches back up",
-      `and on the day we stood at, the prediction refused — that is the system working, not failing`,
+      "and on the day shown here the prediction refused outright — that is the system working, not failing",
     ],
     figures: [
       { label: "runs as", value: "batch, not streaming" },

@@ -510,6 +510,32 @@ function main() {
       .every((r) => Math.abs(r.observed - r.expected - r.residual) < 0.01),
   );
 
+  console.log("\nthe words describe the system, not the presentation");
+  /*
+   * A scene's revealed lines are what the audience READS. They must be facts about the
+   * plant and the platform — the thing the walkthrough is explaining — and never
+   * descriptions of what the animation is doing. Several scenes originally shipped with
+   * stage directions in them ("the camera closes on chiller 1", "every other asset
+   * desaturates and leaves the frame"), which tells a facility manager nothing about their
+   * building and states the obvious about a picture they can already see.
+   */
+  const STAGE_DIRECTION =
+    /\bcamera\b|desaturat|leaves the frame|draw themselves|greys out|settles? into orbit|the head arrives|pulls? (all the way )?back|zooms? (in|out)|on screen|this (scene|slide)|the walkthrough|scenes ago/i;
+  const offenders: string[] = [];
+  for (const scene of SCENES) {
+    for (const line of scene.reveals) {
+      if (STAGE_DIRECTION.test(line)) offenders.push(`${scene.id}: "${line.slice(0, 60)}…"`);
+    }
+    if (scene.asks && STAGE_DIRECTION.test(scene.asks)) {
+      offenders.push(`${scene.id} (asks): "${scene.asks.slice(0, 60)}…"`);
+    }
+  }
+  check(
+    "no scene narrates its own animation",
+    offenders.length === 0,
+    offenders.length ? offenders.join(" | ") : `${SCENES.length} scenes clean`,
+  );
+
   console.log("\nthe camera travels in an orderly path, scene to scene");
   // A walkthrough is disorienting when consecutive scenes sit far apart on the canvas: the
   // camera lurches, and the audience loses track of where the new thing came from. This
