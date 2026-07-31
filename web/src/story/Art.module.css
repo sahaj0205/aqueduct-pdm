@@ -1,0 +1,184 @@
+/*
+ * The drawings inside a stage's card.
+ *
+ * Colour follows the same rules as everywhere else in this project: indigo carries emphasis
+ * and the thing being followed, the severity scale is reserved for measurement, and nothing
+ * is coloured only to be decorative. The two health bands that use severity colours use them
+ * because health IS a measurement on that scale.
+ */
+
+.art {
+  width: 100%;
+  height: auto;
+  /* Capped, so a drawing can never grow into the space the text needs. Scaled down to fit
+     rather than cropped — the aspect ratio is preserved by the viewBox. */
+  max-height: 150px;
+  overflow: visible;
+  flex: none;
+}
+
+.fade {
+  transition: opacity 420ms ease;
+}
+
+/* ------------------------------------------------------------------ shared labels */
+
+.tick {
+  font-family: var(--mono);
+  font-size: 22px;
+  fill: var(--ink-faint);
+  text-anchor: middle;
+}
+
+.key,
+.keyObserved,
+.keyGap {
+  font-family: var(--mono);
+  font-size: 22px;
+}
+
+.key {
+  fill: var(--ink-faint);
+}
+
+.keyObserved {
+  fill: var(--primary);
+}
+
+.keyGap {
+  fill: var(--sev-high);
+}
+
+/* --------------------------------------------------------- expected against observed */
+
+/* What a healthy machine of this kind would have produced under the same load. */
+.expected {
+  fill: none;
+  stroke: var(--ink-faint);
+  stroke-width: 4;
+  stroke-dasharray: 14 10;
+}
+
+/* What it actually produced. */
+.observed {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 5;
+  stroke-linejoin: round;
+}
+
+/* The area between them — the residual, which is the number the next stage consumes. */
+.band {
+  fill: color-mix(in srgb, var(--sev-high) 26%, transparent);
+  stroke: none;
+}
+
+/* ------------------------------------------------------ the climb toward a threshold */
+
+.climb {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* The value at which this fault counts as failed. Dashed, because it is a decision rather
+   than a measurement — a line somebody argued for and wrote down. */
+.threshold {
+  stroke: var(--sev-critical);
+  stroke-width: 4;
+  stroke-dasharray: 16 12;
+}
+
+.thresholdLabel {
+  font-family: var(--mono);
+  font-size: 22px;
+  fill: var(--sev-critical);
+}
+
+.head {
+  fill: var(--primary);
+  stroke: var(--raised);
+  stroke-width: 5;
+}
+
+.headLabel {
+  font-family: var(--mono);
+  font-size: 24px;
+  fill: var(--ink);
+}
+
+/* ------------------------------------------------------------------- the health bar */
+
+/* The four bands health quantises onto. Red, orange, gold, slate — never red-amber-green,
+   because a scale whose ends collapse for one reader in twelve has no ends. */
+.bandCritical { fill: color-mix(in srgb, var(--sev-critical) 60%, transparent); }
+.bandDegraded { fill: color-mix(in srgb, var(--sev-high) 55%, transparent); }
+.bandWatch { fill: color-mix(in srgb, var(--sev-medium) 50%, transparent); }
+.bandHealthy { fill: color-mix(in srgb, var(--sev-low) 45%, transparent); }
+
+.needle {
+  stroke: var(--ink);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.needleLabel {
+  font-family: var(--mono);
+  font-size: 26px;
+  fill: var(--ink);
+}
+
+/* --------------------------------------------------------------- the two costs */
+
+.rowLabel {
+  font-family: var(--mono);
+  font-size: 22px;
+  fill: var(--ink-faint);
+}
+
+.rowValue {
+  font-family: var(--mono);
+  font-size: 26px;
+  fill: var(--ink);
+}
+
+/* Deliberately drawn to the same scale as each other. The whole argument of the advisory is
+   that these two numbers are not comparable in size, and normalising them separately —
+   which would make both bars full width — would destroy the only point the picture makes. */
+.barAct {
+  fill: var(--primary);
+}
+
+.barWait {
+  fill: var(--sev-critical);
+}
+
+/* --------------------------------------------------------------- remaining life */
+
+.fanBand {
+  fill: color-mix(in srgb, var(--primary) 30%, transparent);
+  stroke: color-mix(in srgb, var(--primary) 55%, transparent);
+  stroke-width: 3;
+}
+
+.fanMid {
+  stroke: var(--primary);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.fanLabel {
+  font-family: var(--mono);
+  font-size: 24px;
+  fill: var(--ink);
+}
+
+/* The state the walkthrough stands in on the chosen day: no answer, and the reason. */
+.refusal {
+  font-family: var(--sans);
+  font-size: 28px;
+  fill: var(--ink-muted);
+  font-style: italic;
+}

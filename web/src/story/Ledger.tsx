@@ -20,6 +20,7 @@
 
 import { forwardRef } from "react";
 
+import { Minimap } from "./Minimap.tsx";
 import type { LedgerEntry } from "./scenes.ts";
 import styles from "./Ledger.module.css";
 
@@ -30,7 +31,7 @@ import styles from "./Ledger.module.css";
  * nobody will do mid-presentation — or run off the bottom. Eight covers the pipeline comfortably at the point it matters most; anything older is counted rather than dropped,
  * so the record never understates what has been built.
  */
-const ROWS = 8;
+const ROWS = 5;
 
 export const Ledger = forwardRef<HTMLDivElement, { entries: LedgerEntry[]; current: number }>(
   function Ledger({ entries, current }, ref) {
@@ -58,6 +59,10 @@ export const Ledger = forwardRef<HTMLDivElement, { entries: LedgerEntry[]; curre
             {produced} of {entries.length} stages left something
           </span>
         </header>
+
+        {/* The journey as a shape, drawn from the same rectangles the camera flies between.
+            Answers "where am I and how much is left" without a word of text. */}
+        <Minimap current={current} />
 
         <ol className={styles.list}>
           {hidden > 0 && <li className={styles.earlier}>and {hidden} earlier</li>}

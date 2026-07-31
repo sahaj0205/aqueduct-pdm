@@ -25,6 +25,7 @@
  * this file — which is the entire argument the walkthrough is making.
  */
 
+import type { ArtKind } from "./Art.tsx";
 import { type Box, union } from "./camera.ts";
 import { PLANT_BOX } from "./plantLayout.ts";
 import { SNAPSHOT as S } from "./snapshot.ts";
@@ -73,6 +74,14 @@ export interface Scene {
   reveals: readonly string[];
   /** Real numbers this scene puts on screen. */
   figures?: readonly Figure[];
+  /**
+   * A drawing, on the few stages where one says something words struggle with.
+   *
+   * Deliberately absent from most scenes. A picture on every card would be thirteen more
+   * things to decode, and the ones that added nothing would teach the audience to stop
+   * looking at the ones that do.
+   */
+  art?: ArtKind;
 }
 
 // ------------------------------------------------------------------ small helpers
@@ -102,7 +111,7 @@ const costBasis: readonly string[] =
  * while the figures were hidden. Sized to the sparse cards instead, the reveals on the full
  * ones were silently squeezed and clipped through the middle of a line.
  */
-const STATION = { w: 1300, h: 880 };
+const STATION = { w: 1300, h: 960 };
 /** Horizontal pitch along a row, and vertical pitch between rows. */
 const COL = 1600;
 
@@ -328,6 +337,7 @@ const ACT_TWO: Scene[] = [
     cadence: "every few minutes",
     box: at(4, 1),
     asks: "Given exactly what is being asked of this machine right now, is this the number it should be producing?",
+    art: "gap",
     writes: "app.residuals",
     reads: { from: "context", what: "a reading taken while the machine was genuinely running and loaded" },
     reveals: [
@@ -363,6 +373,7 @@ const ACT_TWO: Scene[] = [
     cadence: "every few minutes",
     box: at(3, 1),
     asks: "For this specific way of failing, what is the one number that tracks it?",
+    art: "climb",
     writes: "an indicator series, per machine, per failure mode",
     reads: { from: "baseline", what: "the gap between what was observed and what was expected" },
     reveals: [
@@ -386,6 +397,7 @@ const ACT_TWO: Scene[] = [
     cadence: "once a day",
     box: at(2, 1),
     asks: "How much of the way to failure has this machine travelled, and did it really start?",
+    art: "gauge",
     writes: "app.health_state · indicator_raw · indicator_monotonic · t_onset",
     reads: { from: "indicator", what: "the indicator series for this one failure mode" },
     reveals: [
@@ -411,6 +423,7 @@ const ACT_TWO: Scene[] = [
     cadence: "once a day",
     box: at(1, 1),
     asks: "If it keeps worsening like this, when does it cross the threshold?",
+    art: "fan",
     writes: "app.rul_estimates — or the refusal, with its reason",
     reads: { from: "health", what: "the clamped indicator, and the date decline was judged to have begun" },
     reveals: [
@@ -508,20 +521,18 @@ const ACT_TWO: Scene[] = [
     cadence: "once a day",
     box: at(1, 2),
     asks: "What should be done, by whom, and what does waiting cost?",
+    art: "scales",
     writes: "app.advisories",
     reads: { from: "rootcause", what: "a fault established as this machine's own, not a symptom of another's" },
     reveals: [
       "thirteen stages collapse into one card a person can act on",
-      `the job: brush the condenser tubes — ${money(S.advisory?.effort_usd ?? 0)}`,
-      `the cost of not doing it: ${money(S.advisory?.cost_usd ?? 0)}`,
+      "the job, and what not doing it costs — the two are not the same order of magnitude",
       "every term in that number carries its own arithmetic in the database beside it",
       costBasis[0] ?? "energy, duty and tariff, each traceable",
       "the tariff and the labour rate are read from the model — the code refuses to default them",
     ],
     figures: [
       { label: "do this", value: "brush the condenser tubes" },
-      { label: "cost of acting", value: money(S.advisory?.effort_usd ?? 0) },
-      { label: "cost of waiting", value: money(S.advisory?.cost_usd ?? 0) },
       { label: "fault class", value: S.advisory?.fault_class ?? "—" },
       ...(costBasis[0] ? [{ label: "basis", value: costBasis[0], from: "app.advisories.detail" }] : []),
       ...(costBasis[1] ? [{ label: "coefficient", value: costBasis[1] }] : []),

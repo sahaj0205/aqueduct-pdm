@@ -1,0 +1,47 @@
+/* The journey, drawn small. Every shape is a scene's real rectangle, scaled down. */
+
+.map {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+/* Scenes already passed: filled, so the amount done reads at a glance. */
+.past {
+  fill: color-mix(in srgb, var(--primary) 34%, transparent);
+  stroke: var(--primary);
+  stroke-width: 14;
+}
+
+/* Where we are. Brighter and outlined more heavily — position is carried by weight as well
+   as by colour, and by the marker drawn over it. */
+.now {
+  fill: var(--primary);
+  stroke: var(--primary);
+  stroke-width: 26;
+}
+
+/* Still to come. Present but quiet: the extent of the journey is visible from the first
+   screen, without competing with what has been covered. */
+.ahead {
+  fill: none;
+  stroke: var(--hairline-strong);
+  stroke-width: 12;
+}
+
+/* The route taken so far, following the serpentine the scenes are laid out on. */
+.route {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 22;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.75;
+}
+
+.here {
+  fill: var(--primary);
+  stroke: var(--paper);
+  stroke-width: 26;
+}

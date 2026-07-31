@@ -13,6 +13,7 @@
  * the single thing in the walkthrough that cannot be said in a list.
  */
 
+import { Art } from "./Art.tsx";
 import { type Figure, type Scene, sceneById } from "./scenes.ts";
 import { SNAPSHOT } from "./snapshot.ts";
 import styles from "./Station.module.css";
@@ -130,6 +131,10 @@ export function Station({
       </header>
 
       {isArrival && <History shown={beat} />}
+
+      {/* The drawing, on the few stages that earn one. Held back until the scene has said
+          its first line, so the eye reads the claim before the picture of it. */}
+      {scene.art && current && beat >= 1 && <Art kind={scene.art} shown={beat - 1} />}
 
       <ol className={styles.reveals}>
         {scene.reveals.map((label, at) => (
