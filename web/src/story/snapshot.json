@@ -15902,5 +15902,212 @@
       ]
     }
   },
-  "others": []
+  "others": [],
+  "inventory": {
+    "points": [
+      {
+        "point_id": "chiller-1.cdw_entering_temp",
+        "name": "Chiller 1 condenser water entering temperature",
+        "unit_si": "degC",
+        "usable": true,
+        "unusable_reason": null
+      },
+      {
+        "point_id": "chiller-1.cdw_flow",
+        "name": "Chiller 1 condenser water flow",
+        "unit_si": "meter**3/second",
+        "usable": true,
+        "unusable_reason": null
+      },
+      {
+        "point_id": "chiller-1.cdw_leaving_temp",
+        "name": "Chiller 1 condenser water leaving temperature",
+        "unit_si": "degC",
+        "usable": true,
+        "unusable_reason": null
+      },
+      {
+        "point_id": "chiller-1.chw_flow",
+        "name": "Chiller 1 chilled water flow",
+        "unit_si": "meter**3/second",
+        "usable": true,
+        "unusable_reason": null
+      },
+      {
+        "point_id": "chiller-1.chw_return_temp",
+        "name": "Chiller 1 chilled water return temperature",
+        "unit_si": "degC",
+        "usable": true,
+        "unusable_reason": null
+      },
+      {
+        "point_id": "chiller-1.chw_supply_temp",
+        "name": "Chiller 1 chilled water supply temperature",
+        "unit_si": "degC",
+        "usable": true,
+        "unusable_reason": null
+      },
+      {
+        "point_id": "chiller-1.compressor_cmd",
+        "name": "Chiller 1 compressor speed command",
+        "unit_si": "dimensionless",
+        "usable": true,
+        "unusable_reason": null
+      },
+      {
+        "point_id": "chiller-1.power",
+        "name": "Chiller 1 power",
+        "unit_si": "watt",
+        "usable": true,
+        "unusable_reason": null
+      },
+      {
+        "point_id": "chiller-1.status",
+        "name": "Chiller 1 on/off status",
+        "unit_si": "dimensionless",
+        "usable": true,
+        "unusable_reason": null
+      }
+    ],
+    "modes": [
+      {
+        "mode_id": "chiller-condenser-fouling",
+        "mode_name": "Condenser fouling",
+        "failure_threshold": 3,
+        "indicator_unit": "degC",
+        "penalty_kw_per_unit": 1.876
+      },
+      {
+        "mode_id": "chiller-efficiency-loss",
+        "mode_name": "Compressor efficiency loss",
+        "failure_threshold": 0.536,
+        "indicator_unit": "kW/ton",
+        "penalty_kw_per_unit": 48.34
+      },
+      {
+        "mode_id": "chiller-refrigerant-loss",
+        "mode_name": "Refrigerant charge loss",
+        "failure_threshold": 2,
+        "indicator_unit": "degC",
+        "penalty_kw_per_unit": null
+      }
+    ],
+    "interventions": [
+      {
+        "fault_id": "chiller-condenser-fouling",
+        "action": "Isolate and drain the condenser, brush the tube bundle mechanically, treat the water side, refill and verify the approach temperature has returned to its commissioned value before closing the work order.",
+        "hours": 8,
+        "cost": 850
+      },
+      {
+        "fault_id": "apar-20",
+        "action": "Check the supply air temperature sensor against a calibrated reference probe in the same airstream, re-trim or replace it, and confirm the control loop settles with the valve back on its normal duty.",
+        "hours": 1.5,
+        "cost": 120
+      },
+      {
+        "fault_id": "apar-6",
+        "action": "Verify the economizer changeover logic and the return and supply air sensors, since supply air warmer than return air during free cooling means either the dampers are not where the controller thinks or two sensors disagree.",
+        "hours": 3,
+        "cost": 0
+      },
+      {
+        "fault_id": "apar-27",
+        "action": "Mixed air hotter than both the return and outdoor air it is made from is physically impossible, so check the three sensors against one another and against a reference probe before touching any hardware.",
+        "hours": 2,
+        "cost": 120
+      },
+      {
+        "fault_id": "apar-20",
+        "action": "Survey the coil for capacity loss: check the water side for fouling and air side for blockage, verify the valve strokes fully and the chilled water arriving is at the temperature the coil was selected for, then decide between cleaning and replacement.",
+        "hours": 6,
+        "cost": 260
+      },
+      {
+        "fault_id": "chiller-excess-lift",
+        "action": "Measure the condenser approach temperature and the cooling tower supply, to separate a fouled condenser from a tower that is returning warm water.",
+        "hours": 3,
+        "cost": 0
+      },
+      {
+        "fault_id": "chiller-capacity-shortfall",
+        "action": "Chilled water above setpoint with the compressor at full command means the plant is out of capacity. Check charge, condenser cleanliness and tower performance in that order, and stage another chiller if one is available.",
+        "hours": 4,
+        "cost": 0
+      },
+      {
+        "fault_id": "apar-16",
+        "action": "Confirm chilled water is available at the coil at the expected temperature and flow, then stroke the valve through its full range while watching the air-side temperature drop.",
+        "hours": 3,
+        "cost": 0
+      },
+      {
+        "fault_id": "apar-7",
+        "action": "Verify the mixed air and supply air sensors against each other with both coils confirmed shut, and check the supply fan heat assumption against measured power.",
+        "hours": 2,
+        "cost": 0
+      },
+      {
+        "fault_id": "chiller-efficiency-loss",
+        "action": "Compressor teardown: inspect and replace bearings and seals, verify impeller clearances, change oil and filters, then re-run the machine against its commissioning kW/ton at matched load and lift to confirm the efficiency came back.",
+        "hours": 32,
+        "cost": 14500
+      },
+      {
+        "fault_id": "apar-18",
+        "action": "Re-measure outdoor air fraction at the design airflow, verify the damper linkage and its position feedback, and re-trim the minimum position to the ventilation requirement.",
+        "hours": 4,
+        "cost": 180
+      },
+      {
+        "fault_id": "chiller-refrigerant-loss",
+        "action": "Leak-test the circuit under pressure, repair whatever is found, evacuate, and recharge to the nameplate mass. Verify chilled water reaches setpoint at full command before signing off.",
+        "hours": 12,
+        "cost": 6200
+      },
+      {
+        "fault_id": "coil-valve-leak-by",
+        "action": "Isolate the chilled water branch, replace the cooling coil control valve and actuator, stroke it end to end and confirm zero flow at the commanded-shut position.",
+        "hours": 4,
+        "cost": 2400
+      },
+      {
+        "fault_id": "fan-bearing-degradation",
+        "action": "Lock out the supply fan, replace both shaft bearings, check belt tension and sheave alignment, clean the impeller, and confirm power at matched airflow has returned toward the similarity-law baseline.",
+        "hours": 6,
+        "cost": 480
+      },
+      {
+        "fault_id": "filter-loading",
+        "action": "Change the filter bank and record the clean-filter pressure drop as the new reference.",
+        "hours": 2,
+        "cost": 320
+      },
+      {
+        "fault_id": "chiller-kw-per-ton-residual",
+        "action": "Before condemning the machine, verify the flow meter and the two chilled water temperature sensors the kW/ton calculation depends on, since a flow meter reading low makes a healthy chiller look inefficient.",
+        "hours": 3,
+        "cost": 0
+      }
+    ],
+    "baselines": []
+  },
+  "provenance": {
+    "assets": 8,
+    "points": 107,
+    "scenarios": 8,
+    "faultEvents": 6,
+    "measurements": 128528261,
+    "eras": 8
+  },
+  "validation": {
+    "available": false,
+    "reason": "the scoring harness last ran with no ground truth loaded, so nothing was measured",
+    "precision": null,
+    "recall": null,
+    "faultClassCorrect": null,
+    "faultClassTotal": null,
+    "suppressionRefusals": 3,
+    "generatedAt": null
+  }
 }

@@ -113,6 +113,15 @@
   flex: none;
 }
 
+/* States the remainder rather than letting the list stop silently at the card's edge. */
+.more {
+  background: none;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  padding: 2px var(--s3);
+}
+
 /* An instrument ruled out at source. Struck through as well as dimmed, so the state does
    not depend on colour alone. */
 .dead {

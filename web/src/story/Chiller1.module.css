@@ -31,16 +31,58 @@
   transition: opacity 600ms ease;
 }
 
+/* Laid out like a sibling asset while it is still in the drawing: kind above, name below,
+   left-aligned. It only becomes a centred card once it has been pulled out. */
+.chiller {
+  align-items: flex-start;
+  padding: var(--s2) var(--s4);
+  gap: 3px;
+}
+
+.kind {
+  font-family: var(--mono);
+  font-size: var(--t-micro-cap);
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary);
+  flex: none;
+}
+
 .label {
-  font-size: var(--t-heading-sm);
+  font-size: var(--t-caption);
+  line-height: 1.45;
   font-weight: var(--w-light);
   color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  flex: none;
+  transition: font-size 500ms ease;
 }
 
 .id {
   font-family: var(--mono);
-  font-size: var(--t-caption);
+  font-size: var(--t-micro);
   color: var(--primary);
+  flex: none;
+}
+
+/* Pulled out: room for the full name, and centred like the card it has become. */
+.exploded {
+  align-items: center;
+  justify-content: center;
+  padding: var(--s5);
+  gap: var(--s2);
+}
+
+.exploded .kind {
+  display: none;
+}
+
+.exploded .label {
+  font-size: var(--t-heading-sm);
 }
 
 /* The four parts fan outward from the centre once the machine has exploded. Hidden and

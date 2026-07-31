@@ -29,6 +29,11 @@ import styles from "./Chiller1.module.css";
  * the right-hand half of the "pick" scene, and a long label — the full instrument name was
  * tried first — grows past the card's edge and gets clipped.
  */
+/** "chiller-1" reads as "Chiller 1", matching the labels on the machines beside it. */
+const SHORT_NAME = SNAPSHOT.asset.asset_id
+  .replace(/-/g, " ")
+  .replace(/^./, (c) => c.toUpperCase());
+
 const PARTS = [
   { id: "housing", label: "housing", dx: -120, dy: -110 },
   { id: "condenser", label: "condenser", dx: 120, dy: -85 },
@@ -62,7 +67,15 @@ export function Chiller1({
       className={`${styles.chiller} ${exploded ? styles.exploded : ""} ${retired ? styles.retired : ""}`}
       style={{ left: box.x, top: box.y, width: box.w, height: box.h }}
     >
-      <span className={styles.label}>{SNAPSHOT.asset.name}</span>
+      {/*
+        At rest it has to read like the machines either side of it — same kind label, same
+        short name — because it IS one of them until it is picked out. Its full name is
+        twenty-two characters and wrapped to two lines inside a 190-wide slot, pushing its
+        own identifier through the bottom of the box. The long name belongs to the exploded
+        state, where there is room for it.
+      */}
+      <span className={styles.kind}>chiller</span>
+      <span className={styles.label}>{exploded ? SNAPSHOT.asset.name : SHORT_NAME}</span>
       <span className={styles.id}>{SNAPSHOT.asset.asset_id}</span>
 
       {PARTS.map((part) => (

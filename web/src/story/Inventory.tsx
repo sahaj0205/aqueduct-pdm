@@ -22,6 +22,21 @@ import styles from "./Inventory.module.css";
 const money = (v: number | null) =>
   v === null ? "—" : `$${Math.round(v).toLocaleString("en-US")}`;
 
+/**
+ * How many rows a column shows before it says how many it is not showing.
+ *
+ * The card is a fixed rectangle — its size sets the camera's framing — so a list long
+ * enough to overflow does not push the card taller, it runs out through the bottom and
+ * under the footer. Six rows fit with room to spare, and the remainder is stated in words:
+ * a list that silently stops at the card's edge lies about how many there are.
+ */
+const ROWS = 6;
+
+function More({ shown, total }: { shown: number; total: number }) {
+  if (total <= shown) return null;
+  return <li className={styles.more}>and {total - shown} more</li>;
+}
+
 export function Inventory({
   scene,
   index,
@@ -89,18 +104,20 @@ export function Inventory({
             its instruments <span>{points.length}</span>
           </h3>
           <ul className={styles.list}>
-            {usable.slice(0, 9).map((p) => (
-              <li key={p.point_id}>
-                <code>{p.point_id.replace(`${S.asset.asset_id}.`, "")}</code>
-                <span className={styles.unit}>{p.unit_si}</span>
-              </li>
-            ))}
+            {/* The broken ones are never truncated away — they are the point of the column. */}
             {broken.map((p) => (
               <li key={p.point_id} className={styles.dead}>
                 <code>{p.point_id.replace(`${S.asset.asset_id}.`, "")}</code>
                 <span className={styles.unit}>unusable</span>
               </li>
             ))}
+            {usable.slice(0, Math.max(1, ROWS - broken.length)).map((p) => (
+              <li key={p.point_id}>
+                <code>{p.point_id.replace(`${S.asset.asset_id}.`, "")}</code>
+                <span className={styles.unit}>{p.unit_si}</span>
+              </li>
+            ))}
+            <More shown={Math.max(1, ROWS - broken.length) + broken.length} total={points.length} />
           </ul>
         </div>
 
@@ -110,7 +127,7 @@ export function Inventory({
             how it fails <span>{modes.length}</span>
           </h3>
           <ul className={styles.list}>
-            {modes.map((m) => (
+            {modes.slice(0, ROWS).map((m) => (
               <li key={m.mode_id}>
                 <span className={styles.name}>{m.mode_name}</span>
                 <span className={styles.unit}>
@@ -118,24 +135,33 @@ export function Inventory({
                 </span>
               </li>
             ))}
+            <More shown={ROWS} total={modes.length} />
           </ul>
         </div>
 
-        {/* What it costs to put each of them right. */}
+        {/*
+          What each job takes. The stored cost is PARTS ONLY — labour is added on top from a
+          rate held elsewhere, which is how the condenser job reaches the $1,610 the advisory
+          quotes at the end of the walkthrough from $850 of consumables and eight hours. The
+          column is labelled to say exactly that, because "$850" under a heading reading
+          "what it costs" would contradict the figure this same walkthrough shows later.
+        */}
         <div className={`${styles.col} ${show(3) ? styles.in : styles.out}`}>
           <h3 className={styles.colHead}>
-            what fixing it costs <span>{interventions.length}</span>
+            what fixing it takes <span>{interventions.length}</span>
           </h3>
           <ul className={styles.list}>
-            {interventions.slice(0, 9).map((i) => (
+            {interventions.slice(0, ROWS).map((i) => (
               <li key={`${i.fault_id}-${i.action}`}>
                 <span className={styles.name}>{i.action}</span>
                 <span className={styles.unit}>
-                  {i.hours ? `${i.hours} h · ` : ""}
-                  {money(i.cost)}
+                  {i.hours ? `${i.hours} h` : ""}
+                  {i.hours && i.cost ? " · " : ""}
+                  {i.cost ? `${money(i.cost)} parts` : ""}
                 </span>
               </li>
             ))}
+            <More shown={ROWS} total={interventions.length} />
           </ul>
         </div>
       </div>
