@@ -74,7 +74,17 @@ function env(): Record<string, string> {
   return out;
 }
 
-const E = env();
+/**
+ * Connection settings, with the environment taking precedence over the .env file.
+ *
+ * WHY THE OVERRIDE EXISTS. The capture is only as good as the database it reads, and the
+ * complete one does not always live on this machine — it may be on another box, reached
+ * through an SSH tunnel on a different local port. Being able to say
+ * `POSTGRES_PORT=5544 npm run snapshot` means the snapshot can be taken against whichever
+ * database is actually whole, without editing a checked-in file to do it and remembering
+ * to put it back.
+ */
+const E = { ...env(), ...(process.env as Record<string, string>) };
 
 /**
  * Run one query that returns a single JSON value.
@@ -301,11 +311,13 @@ function main() {
       from app.failure_modes
       where brick_class = (select brick_class from app.assets where asset_id='${ASSET}')`),
 
+    // The stored cost is PARTS ONLY and the labour rate lives elsewhere — which is how the
+    // condenser job reaches the $1,610 the advisory quotes from $850 of consumables and
+    // eight hours. Taken as stored rather than recomputed here.
     interventions: q<{ fault_id: string; action: string; hours: number | null; cost: number | null }[]>(`
       select coalesce(json_agg(json_build_object(
-        'fault_id', fault_id, 'action', action, 'hours', labour_hours,
-        'cost', round((coalesce(labour_hours,0) * coalesce(labour_rate_usd_per_hour,0)
-                       + coalesce(parts_cost_usd,0))::numeric, 0)::float8) order by fault_id), '[]'::json)
+        'fault_id', applies_to_fault, 'action', description,
+        'hours', duration_hours, 'cost', cost_usd) order by intervention_id), '[]'::json)
       from app.intervention_library`),
 
     baselines: q<{ baseline_id: string; n: number }[]>(`

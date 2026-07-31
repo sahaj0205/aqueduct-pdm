@@ -41,7 +41,14 @@ function env(): Record<string, string> {
   return out;
 }
 
-const E = env();
+/**
+ * Connection settings, with the environment taking precedence over the .env file, so the
+ * capture can be pointed at whichever database is actually complete — including one reached
+ * through an SSH tunnel on a different local port. Without this the script silently reads
+ * the local database even when told otherwise, which is how a provenance count of zero
+ * ground-truth events nearly ended up on screen while the real figure was six.
+ */
+const E = { ...env(), ...(process.env as Record<string, string>) };
 
 function q<T>(sql: string): T {
   const text = execFileSync(
