@@ -12421,3 +12421,109 @@ wondering what else was arranged favourably.
 
     START HERE: web/public/flow.html — the whole checkpoint is that file; the change to
     App.tsx exists only so its address can be typed without an extension.
+
+## The front door — every way in, ranked
+
+### WHAT WE DID
+
+The home page now lists every part of the system that has been built, instead of two of
+them. Six separate things existed — a presentation deck, a facility-manager platform, the
+working console, a printable reference document, a guided walk and a cinematic
+walkthrough — and four of them had no link anywhere in the product. They could only be
+reached by typing their address into the browser, which means anyone who was sent a link
+rather than a briefing never knew they were there.
+
+The home page now carries a ranked section naming four ways in, each saying who it is
+for, how large it is, and — the part that was actually costing us — whether anything has
+to be running first. Three of the four are frozen captures that work on a laptop with no
+network; the console is live and needs the backend started. Before this, a visitor's most
+likely first click was the console, and with no backend running it answered with a red
+error panel, which reads as "this project is broken" rather than "you opened the one
+screen with a prerequisite".
+
+Two things were demoted rather than deleted. The guided walk is no longer offered
+alongside the deck, because it is a mode of the console rather than a peer of a
+presentation; it is started from inside the console where it belongs. The cinematic
+walkthrough covers the same ground as the reference document, so it keeps its address and
+a one-line link but no longer competes for a first-time visitor's attention.
+
+### HOW IT WORKS
+
+    web/src/components/Splash.tsx :: WAYS
+      WHY IT EXISTS: The list of everything a visitor can open, in the order we want them
+        opened. It is data rather than markup so the ranking is one array to reorder, and
+        so that adding a seventh artefact later is a row rather than a block of JSX.
+      WHAT IT DOES: Holds four entries. Each carries the address, the name, a paragraph
+        saying who it is for and what is inside, a size line, and a `needs` field naming
+        what must already be running. `needs` is null for the three frozen captures and
+        holds the literal command `make api` for the console. One entry is flagged
+        `external`, which switches its rendering from a router link to a plain anchor.
+      CHOICES: Ordered deck, platform, console, reference. The deck first because it is
+        the only artefact that makes the whole case unaided; the platform second because
+        it is the product rather than an explanation of one; the console third because it
+        is the evidence and also the only entry that can fail; the reference last because
+        a document is looked up rather than visited.
+      ⚠ JUDGEMENT CALL: The cinematic walkthrough is deliberately NOT in this array. It
+        answers the same question as the flow reference — what happens to one reading —
+        differently, and a first-time visitor asked to choose between two entries with the
+        same answer will pick neither. The alternative was a fifth card, which would have
+        made the section a menu instead of a ranking. It is a line of prose beneath the
+        grid instead, and its route is untouched.
+
+    web/src/components/Splash.tsx :: the hero's two buttons
+      WHY IT EXISTS: The single most likely first click on the page, and it must not be
+        able to fail.
+      WHAT IT DOES: The filled button goes to the deck, the outlined one to the
+        facility-manager platform. Both are router links now rather than buttons calling
+        back into the shell. The line beneath them says neither needs anything running and
+        why — every figure in both was captured from the database and ships with the page.
+      CHANGED FROM BEFORE: They used to read "Take the guided tour" and "Open the
+        console", and both called back into App.tsx to navigate. Both destinations need
+        the backend, so the two most prominent controls on the front page were the two
+        that could put an error in front of a new visitor.
+
+    web/src/components/Splash.tsx :: the section order
+      WHY IT EXISTS: Navigation before explanation.
+      WHAT IT DOES: The ranked entries sit directly beneath the hero, above the four-step
+        "How it works" band that was previously the first thing under it. Someone who
+        already knows what this is no longer scrolls past four paragraphs about the
+        pipeline to find the way in.
+      CHANGED FROM BEFORE: "How it works" and the dark honesty band are unchanged in
+        content; they have moved down by one section.
+
+    web/src/components/Splash.module.css :: .way and .wayGrid
+      WHY IT EXISTS: The visual treatment of the four entries.
+      WHAT IT DOES: Same white card, hairline and twelve-pixel radius as the process cards
+        below, because they are the same object doing a different job. What separates them
+        is that these are anchors — they lift two pixels on hover, gain the heavier
+        shadow, and their indigo arrow slides right. The grid is fixed at two columns
+        rather than auto-fitting.
+      CHOICES: Two columns and not `auto-fit`. At this container width auto-fit lands
+        three across with one orphaned below, which reads as three important things and an
+        afterthought — the opposite of a ranking. Two-by-two keeps the pairs honest: the
+        two that always work on top, the live one and the document beneath. Collapses to a
+        single column below 1000px, where the pairing carries no meaning anyway.
+
+    web/src/components/Splash.module.css :: .wayNeeds
+      WHY IT EXISTS: The chip carrying `make api` on the console card — the one thing on
+        the page a visitor loses time by not reading.
+      WHAT IT DOES: A small cream chip with the command set in mono, sitting in the card's
+        meta line next to the size. Cards with no prerequisite get the words "nothing to
+        start" in faint ink instead, so the absence is stated rather than left blank.
+      CHOICES: Cream, not a severity colour. The semantic rules reserve orange and gold
+        for measurement, and a warning-coloured chip here would be the only coloured badge
+        on the page, telling somebody that a perfectly healthy screen is dangerous.
+
+    web/src/App.tsx :: the removed `enter` callback
+      WHY IT EXISTS: It no longer does.
+      WHAT IT DOES: Deleted. It reset the walk's step counter and navigated to either the
+        walk or the console, which was the whole of what the front page's two buttons
+        needed. The page now links to four routes directly, two of which the shell has no
+        say over, so there was nothing left for it to decide.
+      CHANGED FROM BEFORE: `Splash` took two callback props and now takes none — only the
+        two data responses it counts its statistics from. The walk's step counter is reset
+        where the walk is now started, on the console's tab strip, which was already doing
+        it.
+
+    START HERE: web/src/components/Splash.tsx — the WAYS array at the top is the whole
+    decision; everything else in the checkpoint renders it or gets out of its way.

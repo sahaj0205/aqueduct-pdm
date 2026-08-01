@@ -203,16 +203,13 @@ export function App() {
   const navigate = useNavigate();
 
   /**
-   * Leaving the front door. Sets the flag, picks a mode, and navigates — the front door
-   * is a route now, so getting out of it is a navigation like any other.
+   * LEAVING THE FRONT DOOR IS NO LONGER THE SHELL'S JOB. There used to be an `enter`
+   * callback here that reset the tour and navigated to either the walk or the console,
+   * because the front page offered exactly those two destinations as buttons. It now
+   * offers six across four routes and two of them are not React routes at all, so the
+   * page links to them directly and the shell has nothing left to decide. The tour's
+   * counter is reset where the tour is now started, on the tab strip.
    */
-  const enter = useCallback(
-    (withTour: boolean) => {
-      setStep(0);
-      navigate(withTour ? "/tour" : "/console");
-    },
-    [navigate],
-  );
 
   const leaveTour = useCallback(() => {
     navigate("/console");
@@ -364,14 +361,7 @@ export function App() {
   if (atFrontDoor) {
     // The two responses the shell is already fetching are handed straight to it, so the
     // figures on the front page are counted from the running system rather than typed in.
-    return (
-      <Splash
-        onStart={() => enter(true)}
-        onSkip={() => enter(false)}
-        range={range}
-        topology={topology}
-      />
-    );
+    return <Splash range={range} topology={topology} />;
   }
 
   return (

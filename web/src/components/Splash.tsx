@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 import { Credit } from "../design/Credit.tsx";
 import { Mark } from "../design/Mark.tsx";
 import { BRAND } from "../lib/brand.ts";
@@ -22,15 +24,85 @@ import styles from "./Splash.module.css";
  * is to not have the figures written down anywhere.
  *
  * WHILE THEY LOAD they render as em dashes rather than as zeros. A zero is a claim.
+ *
+ * WHY THIS PAGE GREW A NAVIGATION SECTION. Six separate things had been built and this
+ * page offered two of them. The deck, the facility-manager platform, the flow reference
+ * and the walkthrough were each reachable only by typing their address, which means that
+ * for anybody who was handed a link rather than a briefing, four of the six did not
+ * exist. The fix is not more buttons in the hero — it is one section that names every
+ * way in, says who each is for, and says what has to be running before it will work.
+ *
+ * THE ORDER OF THAT SECTION IS A RANKING, not a menu. The deck first because it is the
+ * only artefact that makes the whole case unaided; the platform second because it is the
+ * product rather than an explanation of one; the console third because it is the
+ * evidence and it is also the only entry that can fail; the reference last because it is
+ * a document and documents are looked up rather than visited.
  */
 
 interface Props {
-  onStart: () => void;
-  onSkip: () => void;
   /** Null until the shell's first fetch lands. Numbers show as dashes until then. */
   range: ClockRange | null;
   topology: TwinTopology | null;
 }
+
+/**
+ * Every way into the system, ranked, with the cost of entry stated.
+ *
+ * `needs` IS THE LOAD-BEARING FIELD. Three of these four are frozen captures that render
+ * on a laptop with no network; the console is live and talks to an API that has to be
+ * started first. A visitor who clicks the console cold gets a red error panel and
+ * reasonably concludes the whole project is broken, when in fact they have opened the one
+ * screen with a prerequisite. Saying so on the card costs one line and prevents that.
+ *
+ * THE WALKTHROUGH IS NOT IN THIS LIST, deliberately — it is a footnote under the grid.
+ * It covers the same ground as the flow reference, told as a camera move rather than as a
+ * document, so giving it equal billing would ask a first-time visitor to choose between
+ * two entries that answer the same question. It keeps its address and its link; it does
+ * not keep a card.
+ */
+interface Way {
+  to: string;
+  /** True for the flow reference, which is a file in `public/` and not a React route. */
+  external?: boolean;
+  name: string;
+  what: string;
+  /** Size and shape, so a visitor knows what they are committing to before clicking. */
+  meta: string;
+  /** What must already be running. Null when the entry is a frozen capture. */
+  needs: string | null;
+}
+
+const WAYS: Way[] = [
+  {
+    to: "/deck",
+    name: "The deck",
+    what: "The whole case, in ten acts, for somebody deciding whether the system is worth having. The claim sits on the slide and the evidence sits behind a click — the rules, the scenarios and every validation figure each open a panel, and only if the room asks for one.",
+    meta: "53 slides · ten acts",
+    needs: null,
+  },
+  {
+    to: "/fm",
+    name: "The platform",
+    what: "What a facility manager is actually handed: a worklist ordered by money returned rather than by severity, the asset register behind it, the week's schedule, the instruments, and the system's own track record against what really happened.",
+    meta: "six sections",
+    needs: null,
+  },
+  {
+    to: "/console",
+    name: "The console",
+    what: "The same system opened up for somebody checking the working. A clock along the top drags through the recording and every screen shows only what was known by that date. The guided tour starts from inside it.",
+    meta: "seven screens",
+    needs: "make api",
+  },
+  {
+    to: "/flow.html",
+    external: true,
+    name: "The flow reference",
+    what: "One reading followed through thirteen stages, with the module that handles it and the database table it lands in named at each one. A document rather than a screen — it prints, and it can be sent to somebody with nothing running.",
+    meta: "thirteen stages · one file",
+    needs: null,
+  },
+];
 
 /**
  * The four stages, each on its own saturated card.
@@ -67,7 +139,7 @@ const STEPS = [
   },
 ];
 
-export function Splash({ onStart, onSkip, range, topology }: Props) {
+export function Splash({ range, topology }: Props) {
   // Counted from the live responses. See the note above on why nothing here is a literal.
   const recordings = range?.eras.length ?? null;
   const days = range ? range.eras.reduce((sum, e) => sum + e.days, 0) : null;
@@ -109,18 +181,25 @@ export function Splash({ onStart, onSkip, range, topology }: Props) {
             the sensor data before anybody reports them, and prices the decision to act
             now against the decision to wait.
           </p>
+            {/* The two entries that cannot fail. Both are frozen captures, so neither
+                can put an error panel in front of somebody who has just arrived — which
+                is why the console, live and dependent on an API, is not offered here but
+                in the ranked section below where its prerequisite can be stated. */}
             <div className={styles.actions}>
-            <button className={styles.primary} onClick={onStart}>
-              Take the guided tour
+            <Link className={styles.primary} to="/deck">
+              Watch the deck
               <span className={styles.arrow} aria-hidden="true">
                 →
               </span>
-            </button>
-            <button className={styles.secondary} onClick={onSkip}>
-              Open the console
-            </button>
+            </Link>
+            <Link className={styles.secondary} to="/fm">
+              Open the platform
+            </Link>
           </div>
-            <p className={styles.duration}>Ten stops, about four minutes.</p>
+            <p className={styles.duration}>
+              Ten acts. Neither needs anything running — every figure in both was
+              captured from the database and travels with the page.
+            </p>
           </div>
 
           {/* The right-hand slot. This language puts an illustrated artifact here; ours
@@ -137,6 +216,59 @@ export function Splash({ onStart, onSkip, range, topology }: Props) {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* Navigation before explanation. A visitor who already knows what this is
+            should not have to scroll past four paragraphs about the pipeline to find the
+            way in, so the ranked entries sit directly under the hero and "How it works"
+            moves below them. */}
+        <section className={styles.ways}>
+          <h2 className={styles.sectionHead}>Ways in</h2>
+          <div className={styles.wayGrid}>
+            {WAYS.map((w) => {
+              const body = (
+                <>
+                  <div className={styles.wayHead}>
+                    <h3 className={styles.wayName}>{w.name}</h3>
+                    <span className={styles.wayArrow} aria-hidden="true">
+                      →
+                    </span>
+                  </div>
+                  <p className={styles.wayWhat}>{w.what}</p>
+                  <p className={styles.wayMeta}>
+                    <span>{w.meta}</span>
+                    {w.needs ? (
+                      <span className={styles.wayNeeds}>
+                        needs <code>{w.needs}</code>
+                      </span>
+                    ) : (
+                      <span className={styles.wayFree}>nothing to start</span>
+                    )}
+                  </p>
+                </>
+              );
+              // The reference is a standalone file in `public/` rather than a route, so
+              // it gets a real anchor and a full page load. Routing it through the SPA
+              // would only bounce it back out again through the redirect in App.tsx.
+              return w.external ? (
+                <a key={w.to} className={styles.way} href={w.to}>
+                  {body}
+                </a>
+              ) : (
+                <Link key={w.to} className={styles.way} to={w.to}>
+                  {body}
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* The walkthrough, kept and demoted. See the note above WAYS for why it is a
+              line of prose here rather than a fifth card. */}
+          <p className={styles.also}>
+            There is also <Link to="/story">the walkthrough</Link> — the same journey as
+            the reference above, told as a camera move through the plant rather than as a
+            document. Twenty-one scenes, built for a projector, nothing to start.
+          </p>
         </section>
 
         <section className={styles.process}>

@@ -241,6 +241,153 @@
   color: var(--ink-faint);
 }
 
+/* -------------------------------------------------------------------------- ways
+   The ranked entries. Same white card, same hairline and same twelve-pixel radius as
+   the process cards below, because they are the same object at a different job —
+   introducing a second card treatment on one page is how a design language starts
+   coming apart. What separates them is that these are anchors: they lift on hover and
+   their arrow moves, and the process cards do neither. */
+
+.ways {
+  padding: var(--s8) 0 0;
+}
+
+/* Two columns rather than auto-fit. These four are a RANKING and the reading order has
+   to survive the layout — auto-fit at this container width lands three across and one
+   orphaned below, which reads as three important things and an afterthought. Two by two
+   keeps the pairs honest: the two that always work on top, the live one and the document
+   beneath. */
+.wayGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s5);
+}
+
+.way {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s6);
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--lift-1);
+  text-decoration: none;
+  color: inherit;
+  transition:
+    box-shadow 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease;
+}
+
+.way:hover {
+  border-color: var(--hairline-strong);
+  box-shadow: var(--lift-2);
+  transform: translateY(-2px);
+}
+
+.way:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.wayHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s4);
+}
+
+.wayName {
+  margin: 0;
+  font-weight: var(--w-light);
+  font-size: var(--t-display-md);
+  letter-spacing: var(--track-md);
+  line-height: 1.12;
+  color: var(--ink);
+}
+
+/* Indigo, and the only place on the card it appears. The arrow IS the affordance —
+   these cards carry no button, so without it a card reads as a panel rather than as
+   something that goes somewhere. */
+.wayArrow {
+  flex: none;
+  font-size: var(--t-body-lg);
+  color: var(--primary);
+  transition: transform 140ms ease;
+}
+
+.way:hover .wayArrow {
+  transform: translateX(3px);
+}
+
+.wayWhat {
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--ink-muted);
+}
+
+/* The footer of each card: what it is, and what it costs to open. Pushed to the bottom
+   by the flex growth on the description above, so the four cards' meta lines sit on one
+   baseline however uneven the prose above them runs. */
+.wayMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  margin: 0;
+  padding-top: var(--s3);
+  border-top: 1px solid var(--hairline-soft);
+  font-size: var(--t-caption);
+  letter-spacing: var(--track-caption);
+  color: var(--ink-faint);
+}
+
+/* The prerequisite, and the one thing on this page a visitor loses time by not reading.
+   Cream rather than a severity colour: the semantic rules reserve orange and gold for
+   measurement, and a warning-coloured chip here would be the page's only coloured badge
+   telling somebody that a perfectly healthy screen is dangerous. */
+.wayNeeds {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 2px var(--s2);
+  border-radius: var(--r-xs);
+  background: var(--canvas-cream);
+  color: var(--ink-muted);
+}
+
+.wayNeeds code {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+}
+
+.wayFree {
+  color: var(--ink-disabled);
+}
+
+/* The walkthrough's one line. Deliberately prose and deliberately quiet — it is offered
+   to somebody who has read the four cards and wants more, not to somebody choosing. */
+.also {
+  margin: var(--s5) 0 0;
+  max-width: 78ch;
+  font-size: var(--t-body-sm);
+  line-height: var(--lh-body);
+  color: var(--ink-faint);
+}
+
+.also a {
+  color: var(--primary);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.also a:hover {
+  border-bottom-color: var(--primary);
+}
+
 /* ----------------------------------------------------------------------- process */
 
 .process {
@@ -399,6 +546,12 @@
     grid-template-columns: minmax(0, 1fr);
     gap: var(--s6);
     padding: var(--s7) 0;
+  }
+
+  /* One column, which keeps the ranking legible as a straight list. The two-by-two
+     pairing only carries meaning while both columns are visible at once. */
+  .wayGrid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
