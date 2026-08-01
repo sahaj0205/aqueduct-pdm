@@ -1,0 +1,90 @@
+/* Shared table shape for every screen in the platform. Not a <DataTable> component —
+   each screen's columns differ too much for one prop surface to stay honest — just one
+   place the row height, hairlines and hover state come from, so five tables don't grow
+   five slightly different ideas of how tall a row is. */
+
+.wrap {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r2);
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-tabular);
+}
+
+.table thead th {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  font-weight: var(--w-medium);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--hairline-strong);
+  background: var(--canvas-soft);
+  white-space: nowrap;
+}
+
+.table tbody td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--ink-muted);
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr.clickable {
+  cursor: pointer;
+}
+
+.table tbody tr.clickable:hover td {
+  background: var(--canvas-soft);
+}
+
+.childRow td {
+  background: var(--canvas-soft);
+}
+
+.childRow td:first-child {
+  padding-left: 40px;
+}
+
+.tierDivider td {
+  padding: 9px 16px;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  background: var(--sunken);
+  border-bottom: 1px solid var(--hairline-strong);
+}
+
+.primary {
+  color: var(--ink);
+  font-weight: var(--w-medium);
+}
+
+.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.faint {
+  color: var(--ink-faint);
+}

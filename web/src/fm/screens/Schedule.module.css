@@ -1,0 +1,62 @@
+.batch {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  padding: var(--s4);
+  margin-bottom: var(--s3);
+  background: var(--paper);
+}
+
+.batchHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: var(--s2);
+}
+
+.batchTitle {
+  color: var(--ink);
+  font-weight: var(--w-medium);
+}
+
+.batchMeta {
+  font-size: var(--t-caption);
+  color: var(--ink-faint);
+}
+
+.batchSaved {
+  display: inline-block;
+  margin-top: var(--s2);
+  font-size: var(--t-caption);
+  color: var(--primary);
+  background: var(--info-wash);
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+}
+
+.item {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: var(--t-body);
+  color: var(--ink-muted);
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.dispatched {
+  color: var(--primary);
+  font-size: var(--t-micro);
+  text-transform: capitalize;
+}
+
+.seasonWarn {
+  color: var(--sev-high-text);
+  background: var(--sev-high-wash);
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  font-size: var(--t-micro);
+  margin-left: 8px;
+}

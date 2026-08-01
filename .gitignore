@@ -38,6 +38,7 @@ docs/plots/*.png
 # --- Working notes ---
 SCRATCH.md
 CLAUDE.md
+INTERVIEW_PREP.md
 
 # --- Editor / OS ---
 .DS_Store

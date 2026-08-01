@@ -1,0 +1,125 @@
+/*
+ * The facility-manager platform's dark theme.
+ *
+ * SCOPED TO AN ATTRIBUTE ON <html>, NOT TO A WRAPPER CLASS. Two things render outside
+ * the platform's own DOM subtree — the toast stack and any portalled overlay — so a
+ * wrapper class would leave them in light colours against a dark page. FmApp sets
+ * `data-fm-theme="dark"` on the document element while it is mounted and removes it on
+ * unmount, which is also what keeps the console at "/" and "/console" in its original
+ * light theme: the attribute simply is not there.
+ *
+ * EVERY VALUE HERE IS MIRRORED IN fm/lib/chartTheme.ts. This file covers everything laid
+ * out in HTML; that one covers everything drawn in SVG, where a custom property cannot
+ * resolve. Edit one, edit the other.
+ */
+
+:root[data-fm-theme="dark"] {
+  /* ---------------------------------------------------------------- surfaces */
+  --paper: #131c2e;
+  --canvas-soft: #0f1726;
+  --canvas-cream: #2a2418;
+  --raised: #182236;
+  --sunken: #0f1726;
+  --surface-dark: #0b1220;
+  --surface-dark-raised: #1c2740;
+
+  --hairline: #233149;
+  --hairline-soft: #1b2537;
+  --hairline-strong: #3a4d6b;
+
+  /* --------------------------------------------------------------------- ink */
+  --ink: #e9eff8;
+  --ink-strong: #ffffff;
+  --ink-muted: #aabdd4;
+  --ink-faint: #7488a3;
+  --ink-disabled: #55677f;
+  --on-dark: #e9eff8;
+  --on-dark-soft: #aabdd4;
+  --on-fill: #0b1220;
+
+  /* ------------------------------------------------------------------ action
+   * Indigo lifted off the light theme's #533afd so it holds contrast against a dark
+   * panel instead of sinking into it. Still one indigo, still only for calls to
+   * action and link emphasis — never body text.
+   */
+  --primary: #8b7bff;
+  --primary-deep: #7566ff;
+  --primary-hover: #9d90ff;
+  --primary-active: #6a5aec;
+  --primary-soft: #a396ff;
+  --primary-subdued: #3a3570;
+  --on-primary: #0b1220;
+  --info: #8b7bff;
+  --info-wash: #242a4d;
+
+  /* =================================================================== severity
+   * Four tiers, lifted for dark. Red, orange, gold, slate — never red-amber-green.
+   * `-on` values flip to dark ink because every fill here is now light enough to
+   * need it.
+   */
+  --sev-critical: #ff6b74;
+  --sev-critical-on: #2a0f13;
+  --sev-high: #ff9f52;
+  --sev-high-on: #2a1a0c;
+  --sev-medium: #f2cf51;
+  --sev-medium-on: #2a2410;
+  --sev-low: #8ba1bd;
+  --sev-low-on: #101823;
+
+  /* Washes are dark tints. A pale wash on a dark panel reads as a light-theme
+     element that failed to load. */
+  --sev-critical-wash: #3b1b20;
+  --sev-high-wash: #3a2718;
+  --sev-medium-wash: #37301a;
+  --sev-low-wash: #1b2434;
+
+  --sev-critical-text: #ff8f96;
+  --sev-high-text: #ffb87d;
+  --sev-medium-text: #f5db83;
+  --sev-low-text: #a8bcd6;
+
+  --health-healthy: var(--sev-low);
+  --health-watch: var(--sev-medium);
+  --health-degraded: var(--sev-high);
+  --health-critical: var(--sev-critical);
+
+  /* ============================================================== fault class
+   * Outline, never filled, deliberately desaturated. These classify; they do not
+   * alarm, so they stay one hue and let the badge's shape carry the distinction.
+   */
+  --cls-ink: #aabdd4;
+  --cls-line: #3a4d6b;
+  --cls-ambiguous-line: #2b3a52;
+
+  /* Depth is surface change and 1px lines here, as in the light theme, but a dark
+     surface needs a real shadow to separate a raised panel from the page. */
+  --lift-1: rgba(0, 0, 0, 0.36) 0 1px 3px;
+  --lift-2: rgba(0, 0, 0, 0.44) 0 8px 24px, rgba(0, 0, 0, 0.3) 0 2px 6px;
+  --lift-3: var(--lift-2);
+
+  --ring: 0 0 0 3px color-mix(in srgb, var(--primary) 42%, transparent);
+
+  color-scheme: dark;
+}
+
+/* The page itself, so the area outside the platform's panels is dark too rather than
+   leaving the body's light background showing through at the edges. */
+:root[data-fm-theme="dark"] body {
+  background: var(--canvas-soft);
+  color: var(--ink);
+}
+
+/* Native form controls do not inherit a theme from custom properties. Without this the
+   drawer's date picker and select render as light widgets on a dark panel. */
+:root[data-fm-theme="dark"] input,
+:root[data-fm-theme="dark"] select,
+:root[data-fm-theme="dark"] textarea {
+  background: var(--sunken);
+  color: var(--ink);
+  border-color: var(--hairline-strong);
+}
+
+:root[data-fm-theme="dark"] input::placeholder,
+:root[data-fm-theme="dark"] textarea::placeholder {
+  color: var(--ink-faint);
+}

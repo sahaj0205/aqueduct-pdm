@@ -1,0 +1,41 @@
+/* Outline tags — fault class and cost provenance. Both classify rather than alarm, so
+   neither ever borrows a severity colour. */
+
+.faultTag {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--cls-line);
+  color: var(--cls-ink);
+  white-space: nowrap;
+}
+
+.faultTag.ambiguous {
+  border-style: dashed;
+  border-color: var(--cls-ambiguous-line);
+  color: var(--ink-faint);
+}
+
+.provenance {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  color: var(--ink-faint);
+  background: var(--sunken);
+  white-space: nowrap;
+}
+
+.provenance.measured {
+  color: var(--primary);
+  background: var(--info-wash);
+}

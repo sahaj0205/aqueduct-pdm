@@ -1,0 +1,54 @@
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.legend {
+  display: flex;
+  gap: var(--s4);
+  font-size: var(--t-caption);
+  color: var(--ink-muted);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.tooltip {
+  background: var(--paper);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  box-shadow: var(--lift-1);
+  font-size: var(--t-caption);
+  max-width: 240px;
+}
+
+.tooltipDate {
+  font-family: var(--mono);
+  color: var(--ink-faint);
+  margin-bottom: 4px;
+}
+
+.tooltipRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s3);
+  color: var(--ink);
+}
+
+.tooltipGap {
+  color: var(--ink-faint);
+  font-style: normal;
+}

@@ -1,0 +1,19 @@
+.stack {
+  position: fixed;
+  bottom: var(--s5);
+  right: var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  z-index: 100;
+}
+
+.toast {
+  background: var(--ink);
+  color: var(--on-dark);
+  padding: 12px 18px;
+  border-radius: var(--r-md);
+  box-shadow: var(--lift-2);
+  font-size: var(--t-body);
+  max-width: 360px;
+}

@@ -1,0 +1,55 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--ink) 32%, transparent);
+  z-index: 40;
+}
+
+.panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: min(420px, 100vw);
+  background: var(--paper);
+  border-left: 1px solid var(--hairline-strong);
+  box-shadow: var(--lift-2);
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s5);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.title {
+  font-size: var(--t-heading-sm);
+  font-weight: var(--w-light);
+  color: var(--ink);
+}
+
+.close {
+  background: none;
+  border: none;
+  color: var(--ink-faint);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.close:hover {
+  color: var(--ink);
+}
+
+.body {
+  padding: var(--s5);
+  overflow-y: auto;
+  flex: 1;
+}

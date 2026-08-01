@@ -1,0 +1,46 @@
+.buckets {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--s3);
+  margin-bottom: var(--s5);
+}
+
+.bucket {
+  padding: var(--s4);
+  border-radius: var(--r2);
+  border: 1px solid var(--hairline);
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bucketCount {
+  font-family: var(--mono);
+  font-size: var(--t-display-md);
+  color: var(--ink);
+}
+
+.bucketLabel {
+  font-size: var(--t-caption);
+  color: var(--ink-muted);
+}
+
+.bucketNote {
+  margin: calc(var(--s5) * -1 + var(--s2)) 0 var(--s5);
+  font-size: var(--t-caption);
+  color: var(--ink-faint);
+  max-width: 78ch;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--s4);
+  align-items: stretch;
+}
+
+.changesRow {
+  display: flex;
+  gap: var(--s6);
+}

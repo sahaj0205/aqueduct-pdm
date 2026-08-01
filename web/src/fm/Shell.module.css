@@ -1,0 +1,137 @@
+.shell {
+  display: grid;
+  grid-template-columns: 236px 1fr;
+  min-height: 100vh;
+  background: var(--canvas-soft);
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border-right: 1px solid var(--hairline);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s5) var(--s5) var(--s4);
+  color: var(--ink);
+  text-decoration: none;
+  border: none;
+}
+
+.brandName {
+  font-size: var(--t-heading-md);
+  font-weight: var(--w-light);
+  letter-spacing: var(--track-md);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 var(--s3);
+  flex: 1;
+}
+
+.navLink {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: 10px var(--s3);
+  border-radius: var(--r-md);
+  font-size: var(--t-body);
+  color: var(--ink-muted);
+  text-decoration: none;
+  border: none;
+}
+
+.navLink:hover {
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.navLinkActive {
+  background: var(--info-wash);
+  color: var(--primary);
+  font-weight: var(--w-medium);
+}
+
+.navLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.navBadge {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  background: var(--sunken);
+  border-radius: var(--r-pill);
+  padding: 1px 7px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.navLinkActive .navBadge {
+  background: var(--paper);
+  color: var(--primary);
+}
+
+.navBadgeAlert {
+  background: var(--sev-critical-wash);
+  color: var(--sev-critical-text);
+}
+
+.sep {
+  height: 1px;
+  background: var(--hairline);
+  margin: var(--s3) var(--s3);
+}
+
+.footer {
+  padding: var(--s4) var(--s5) var(--s5);
+  border-top: 1px solid var(--hairline);
+}
+
+.user {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.userName {
+  font-size: var(--t-caption);
+  color: var(--ink);
+  font-weight: var(--w-medium);
+}
+
+.userRole {
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}
+
+.main {
+  min-width: 0;
+  padding: var(--s6) var(--s6) var(--s8);
+}
+
+.mainInner {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.utility {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}

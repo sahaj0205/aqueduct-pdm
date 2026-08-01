@@ -1,0 +1,101 @@
+.headRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.faultLine {
+  line-height: 1.4;
+}
+
+.consequentialNote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+
+.deadline {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.siblingLink {
+  font-size: var(--t-micro);
+  color: var(--primary);
+  margin-top: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.dismissedPanel {
+  margin-top: var(--s5);
+}
+
+.dismissedRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s3) 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: var(--t-body);
+}
+
+.dismissedRow:last-child {
+  border-bottom: none;
+}
+
+.dismissedMeta {
+  color: var(--ink-faint);
+  font-size: var(--t-caption);
+}
+
+
+.sensorRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s3) 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.sensorRow:last-child {
+  border-bottom: none;
+}
+
+.sensorMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sensorLabel {
+  color: var(--ink);
+  font-size: var(--t-body);
+}
+
+.sensorVerdict {
+  font-size: var(--t-caption);
+  color: var(--ink-faint);
+}
+
+.link {
+  color: var(--primary);
+  font-size: var(--t-caption);
+  text-decoration: none;
+}

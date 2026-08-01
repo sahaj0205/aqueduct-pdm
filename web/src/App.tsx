@@ -16,9 +16,11 @@ import { Credit } from "./design/Credit.tsx";
 import { Mark } from "./design/Mark.tsx";
 import { BRAND } from "./lib/brand.ts";
 import { Term } from "./design/Term.tsx";
+import { FmApp } from "./fm/FmApp.tsx";
 import type { ClockState } from "./components/ControlBar.tsx";
 import { NavTabs } from "./components/NavTabs.tsx";
 import { Splash } from "./components/Splash.tsx";
+import { Story } from "./story/Story.tsx";
 import { Walkthrough } from "./components/Walkthrough.tsx";
 import { clampToEra, toIso } from "./lib/clock.ts";
 import { buildTour } from "./lib/tour.ts";
@@ -319,7 +321,20 @@ export function App() {
     twinState,
   };
 
+  // The facility-manager platform: its own shell, its own routes, its own data layer.
+  // Handed off before any of the console's rendering below, so it shares nothing with
+  // the narrative walkthrough except the router it's mounted under.
+  if (location.pathname.startsWith("/fm")) {
+    return <FmApp />;
+  }
 
+  // The walkthrough: the journey of one reading, told as a camera move through a single
+  // world. Handed off the same way and for the same reason — it owns the whole viewport,
+  // has no masthead, no clock and no tabs, and is shown on a projector rather than worked
+  // in. It shares the design tokens and nothing else.
+  if (location.pathname.startsWith("/story")) {
+    return <Story />;
+  }
 
   if (atFrontDoor) {
     // The two responses the shell is already fetching are handed straight to it, so the

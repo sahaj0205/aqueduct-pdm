@@ -1,0 +1,43 @@
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.title {
+  font-size: var(--t-body-lg);
+  color: var(--ink);
+}
+
+.drivers {
+  font-size: var(--t-caption);
+  color: var(--ink-faint);
+}
+
+.legend {
+  display: flex;
+  gap: var(--s4);
+  font-size: var(--t-caption);
+  color: var(--ink-muted);
+  margin-bottom: var(--s3);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.swatchArea {
+  width: 12px;
+  height: 10px;
+  border-radius: 2px;
+}

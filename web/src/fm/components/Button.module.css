@@ -1,0 +1,76 @@
+/* One button, three variants. Pill geometry, 8px 16px padding — never smaller, never a
+   rounded-rectangle — so every action in the platform reads as the same control. */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: var(--sans);
+  font-size: var(--t-button-sm);
+  font-weight: var(--w-medium);
+  line-height: 1;
+  padding: 8px 16px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--hairline-strong);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 110ms ease, color 110ms ease, background 110ms ease;
+}
+
+.btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.btn:disabled:hover {
+  border-color: var(--hairline-strong);
+  color: var(--ink);
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+.primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: var(--on-primary);
+}
+
+.primary:disabled:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+.ghost {
+  border-color: transparent;
+  background: none;
+  color: var(--ink-muted);
+}
+
+.ghost:hover {
+  background: var(--sunken);
+  border-color: transparent;
+  color: var(--ink);
+}
+
+.sm {
+  padding: 6px 14px;
+  font-size: var(--t-micro);
+}

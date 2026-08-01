@@ -1,0 +1,250 @@
+{
+ "scenarios": [
+  {
+   "scenario_id": "ahu_cooling_valve_leakage",
+   "system": "sdahu",
+   "source_file": "AHU_annual.csv, coi_leakage_010_annual.csv",
+   "is_fault_free": false,
+   "t_start": "2036-02-25T06:00:00+00:00",
+   "t_end": "2036-06-24T06:00:00+00:00",
+   "notes": "Chilled water leaks past the cooling coil valve even when it is commanded shut, so the coil keeps cooling air that does not need cooling. Shows up as supply air drifting below setpoint in mild weather, and as wasted energy the building then has to reheat."
+  },
+  {
+   "scenario_id": "ahu_oa_damper_stuck",
+   "system": "sdahu",
+   "source_file": "AHU_annual.csv, damper_stuck_010_annual.csv, damper_stuck_025_annual.csv, damper_stuck_075_annual.csv",
+   "is_fault_free": false,
+   "t_start": "2037-01-27T06:00:00+00:00",
+   "t_end": "2037-05-27T06:00:00+00:00",
+   "notes": "The outdoor air damper jams and stops responding to the economizer. The unit can no longer trade free outdoor cooling against mechanical cooling, so it either drags in unconditioned air or refuses free cooling it should be taking."
+  },
+  {
+   "scenario_id": "ahu_sat_sensor_drift",
+   "system": "sdahu",
+   "source_file": "AHU_annual.csv, coi_bias_2_annual.csv, coi_bias_4_annual.csv",
+   "is_fault_free": false,
+   "t_start": "2038-05-27T06:00:00+00:00",
+   "t_end": "2038-09-24T06:00:00+00:00",
+   "notes": "The supply air temperature sensor drifts high. Nothing is wrong with the equipment, but the controller believes the air is warmer than it is and opens the coil valve to compensate, so the building is overcooled while the reported supply temperature sits obediently at setpoint. This is the scenario that separates a sensor fault from an equipment fault."
+  },
+  {
+   "scenario_id": "chiller_bypass_valve_leakage",
+   "system": "chiller",
+   "source_file": "ChillerPlant.csv, ChillerPlant_bypass_leakage_025.csv, ChillerPlant_bypass_leakage_050.csv, ChillerPlant_bypass_leakage_075.csv",
+   "is_fault_free": false,
+   "t_start": "2037-05-10T06:00:00+00:00",
+   "t_end": "2037-09-07T06:00:00+00:00",
+   "notes": "The plant bypass valve leaks, letting chilled water short-circuit from the supply back into the return without passing through any load. The plant burns pumping energy moving water that does no cooling, and the water reaching the building arrives warmer than it should."
+  },
+  {
+   "scenario_id": "chiller_condenser_fouling",
+   "system": "chiller",
+   "source_file": "ChillerPlant.csv, ChillerPlant_chiller_fouling_095.csv, ChillerPlant_chiller_fouling_065.csv",
+   "is_fault_free": false,
+   "t_start": "2036-05-10T06:00:00+00:00",
+   "t_end": "2036-09-07T06:00:00+00:00",
+   "notes": "Scale and biofilm build up on the condenser tubes, so the chiller cannot reject heat as well. It has to compress against a higher condensing temperature to shed the same load, which costs power and eventually capacity."
+  },
+  {
+   "scenario_id": "clean_ahu",
+   "system": "sdahu",
+   "source_file": "AHU_annual.csv",
+   "is_fault_free": true,
+   "t_start": "2039-05-27T06:00:00+00:00",
+   "t_end": "2039-09-24T06:00:00+00:00",
+   "notes": "Fault-free control run for the air handler, same length and same source window as the faulted scenarios. Nothing is injected. Any rule that fires here is a false positive, and there is no other way to measure that."
+  },
+  {
+   "scenario_id": "clean_chiller",
+   "system": "chiller",
+   "source_file": "ChillerPlant.csv",
+   "is_fault_free": true,
+   "t_start": "2039-05-10T06:00:00+00:00",
+   "t_end": "2039-09-07T06:00:00+00:00",
+   "notes": "Fault-free control run for the chiller plant, same length and same source window as the faulted scenarios. Nothing is injected."
+  },
+  {
+   "scenario_id": "cooling_tower_fouling",
+   "system": "chiller",
+   "source_file": "ChillerPlant.csv, ChillerPlant_coolingtower_fouling_095.csv, ChillerPlant_coolingtower_fouling_080.csv, ChillerPlant_coolingtower_fouling_065.csv",
+   "is_fault_free": false,
+   "t_start": "2038-05-10T06:00:00+00:00",
+   "t_end": "2038-09-07T06:00:00+00:00",
+   "notes": "HELD OUT. The tower fill fouls, so it can no longer cool the condenser water close to the wet bulb temperature. The chillers then face warmer condenser water and lose efficiency and capacity, which is a fault that shows up on one machine and is caused by another. NO RULE IS WRITTEN FOR THIS FAULT. It exists to test whether the system generalises to a degradation it has never been taught, rather than only recognising the ones it was tuned on."
+  }
+ ],
+ "fault_events": [
+  {
+   "event_id": 7,
+   "scenario_id": "ahu_cooling_valve_leakage",
+   "asset_id": "ahu-1",
+   "fault_mode": "cooling_coil_valve_leakage",
+   "severity_level": "leaking (single measured severity)",
+   "t_onset": "2036-03-17T06:00:00+00:00",
+   "t_failure": "2036-05-01T06:00:00+00:00",
+   "params": {
+    "seed": 24010301,
+    "profile": "progressive",
+    "waypoints": [
+     {
+      "file": "coi_leakage_010_annual.csv",
+      "label": "leaking (single measured severity)",
+      "level": 1
+     }
+    ],
+    "severity_ceiling": 1.0,
+    "duration_to_failure_days": 45
+   }
+  },
+  {
+   "event_id": 8,
+   "scenario_id": "chiller_condenser_fouling",
+   "asset_id": "chiller-1",
+   "fault_mode": "condenser_fouling",
+   "severity_level": "65% heat transfer retained",
+   "t_onset": "2036-05-31T06:00:00+00:00",
+   "t_failure": "2036-08-09T06:00:00+00:00",
+   "params": {
+    "seed": 24051501,
+    "profile": "progressive",
+    "waypoints": [
+     {
+      "file": "ChillerPlant_chiller_fouling_095.csv",
+      "label": "95% heat transfer retained",
+      "level": 1
+     },
+     {
+      "file": "ChillerPlant_chiller_fouling_065.csv",
+      "label": "65% heat transfer retained",
+      "level": 2
+     }
+    ],
+    "severity_ceiling": 1.0,
+    "duration_to_failure_days": 70
+   }
+  },
+  {
+   "event_id": 9,
+   "scenario_id": "ahu_oa_damper_stuck",
+   "asset_id": "ahu-1",
+   "fault_mode": "outdoor_air_damper_stuck",
+   "severity_level": "stuck at 75% open",
+   "t_onset": "2037-02-17T06:00:00+00:00",
+   "t_failure": "2037-02-17T06:00:00+00:00",
+   "params": {
+    "seed": 24020101,
+    "profile": "step",
+    "waypoints": [
+     {
+      "file": "damper_stuck_010_annual.csv",
+      "label": "stuck at 10% open",
+      "level": 1
+     },
+     {
+      "file": "damper_stuck_025_annual.csv",
+      "label": "stuck at 25% open",
+      "level": 2
+     },
+     {
+      "file": "damper_stuck_075_annual.csv",
+      "label": "stuck at 75% open",
+      "level": 3
+     }
+    ],
+    "severity_ceiling": 1.0,
+    "duration_to_failure_days": 0
+   }
+  },
+  {
+   "event_id": 10,
+   "scenario_id": "chiller_bypass_valve_leakage",
+   "asset_id": "chw-plant-1",
+   "fault_mode": "bypass_valve_leakage",
+   "severity_level": "75% bypass leakage",
+   "t_onset": "2037-05-31T06:00:00+00:00",
+   "t_failure": "2037-06-30T06:00:00+00:00",
+   "params": {
+    "seed": 25051501,
+    "profile": "progressive",
+    "waypoints": [
+     {
+      "file": "ChillerPlant_bypass_leakage_025.csv",
+      "label": "25% bypass leakage",
+      "level": 1
+     },
+     {
+      "file": "ChillerPlant_bypass_leakage_050.csv",
+      "label": "50% bypass leakage",
+      "level": 2
+     },
+     {
+      "file": "ChillerPlant_bypass_leakage_075.csv",
+      "label": "75% bypass leakage",
+      "level": 3
+     }
+    ],
+    "severity_ceiling": 1.0,
+    "duration_to_failure_days": 30
+   }
+  },
+  {
+   "event_id": 13,
+   "scenario_id": "cooling_tower_fouling",
+   "asset_id": "ct-1",
+   "fault_mode": "cooling_tower_fouling",
+   "severity_level": "65% heat transfer retained",
+   "t_onset": "2038-05-31T06:00:00+00:00",
+   "t_failure": "2038-07-30T06:00:00+00:00",
+   "params": {
+    "seed": 26051501,
+    "profile": "progressive",
+    "waypoints": [
+     {
+      "file": "ChillerPlant_coolingtower_fouling_095.csv",
+      "label": "95% heat transfer retained",
+      "level": 1
+     },
+     {
+      "file": "ChillerPlant_coolingtower_fouling_080.csv",
+      "label": "80% heat transfer retained",
+      "level": 2
+     },
+     {
+      "file": "ChillerPlant_coolingtower_fouling_065.csv",
+      "label": "65% heat transfer retained",
+      "level": 3
+     }
+    ],
+    "severity_ceiling": 1.0,
+    "duration_to_failure_days": 60
+   }
+  },
+  {
+   "event_id": 12,
+   "scenario_id": "ahu_sat_sensor_drift",
+   "asset_id": "ahu-1",
+   "fault_mode": "supply_air_temperature_sensor_drift",
+   "severity_level": "+4F sensor bias",
+   "t_onset": "2038-06-17T06:00:00+00:00",
+   "t_failure": "2038-09-15T06:00:00+00:00",
+   "params": {
+    "seed": 24060101,
+    "profile": "progressive",
+    "waypoints": [
+     {
+      "file": "coi_bias_2_annual.csv",
+      "label": "+2F sensor bias",
+      "level": 1
+     },
+     {
+      "file": "coi_bias_4_annual.csv",
+      "label": "+4F sensor bias",
+      "level": 2
+     }
+    ],
+    "severity_ceiling": 1.0,
+    "duration_to_failure_days": 90
+   }
+  }
+ ]
+}

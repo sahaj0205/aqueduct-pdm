@@ -1,0 +1,41 @@
+.advisoryCard {
+  padding: var(--s4);
+  border: 1px solid var(--hairline-strong);
+  border-left: 3px solid var(--sev-high);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  margin-bottom: var(--s3);
+}
+
+.advisoryTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s3);
+  margin-bottom: 6px;
+}
+
+.advisoryTitle {
+  color: var(--ink);
+  font-weight: var(--w-medium);
+}
+
+.advisoryMeta {
+  font-size: var(--t-caption);
+  color: var(--ink-faint);
+}
+
+.blocks {
+  font-size: var(--t-caption);
+  color: var(--ink-faint);
+  margin-top: 6px;
+}
+
+.ackBtn {
+  margin-top: var(--s3);
+}
+
+.ackBtn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}

@@ -1,0 +1,43 @@
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: var(--s3);
+}
+
+.title {
+  font-size: var(--t-body-lg);
+  color: var(--ink);
+}
+
+.note {
+  font-size: var(--t-caption);
+  color: var(--ink-faint);
+}
+
+.stat {
+  display: flex;
+  gap: var(--s5);
+  margin-top: var(--s4);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--hairline);
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.statLabel {
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.statValue {
+  font-family: var(--mono);
+  font-size: var(--t-body-lg);
+  color: var(--ink);
+}

@@ -1,0 +1,27 @@
+.wrap {
+  padding: var(--s7) var(--s5);
+  text-align: center;
+  color: var(--ink-muted);
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--r2);
+  background: var(--paper);
+}
+
+.wrap.good {
+  border-style: solid;
+  border-color: var(--hairline);
+}
+
+.title {
+  font-size: var(--t-heading-sm);
+  font-weight: var(--w-light);
+  color: var(--ink);
+  margin-bottom: var(--s2);
+}
+
+.sub {
+  font-size: var(--t-body);
+  color: var(--ink-muted);
+  max-width: 52ch;
+  margin: 0 auto;
+}

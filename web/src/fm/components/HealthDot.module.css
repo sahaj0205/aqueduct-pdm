@@ -1,0 +1,22 @@
+.wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  white-space: nowrap;
+}
+
+.shape {
+  flex: none;
+}
+
+.value {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--w-medium);
+  color: var(--ink);
+}
+
+.band {
+  color: var(--ink-faint);
+  font-size: var(--t-caption);
+}

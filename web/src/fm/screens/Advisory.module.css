@@ -1,0 +1,275 @@
+.back {
+  display: inline-block;
+  margin-bottom: var(--s4);
+  color: var(--ink-faint);
+  font-size: var(--t-caption);
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--primary);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s5);
+  margin-bottom: var(--s5);
+  flex-wrap: wrap;
+}
+
+.headline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.title {
+  font-size: var(--t-display-md);
+  font-weight: var(--w-light);
+  letter-spacing: var(--track-md);
+  color: var(--ink);
+}
+
+.badges {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.physics {
+  color: var(--ink-muted);
+  max-width: 60ch;
+}
+
+.actions {
+  display: flex;
+  gap: var(--s2);
+  flex: none;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s5);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.statRow {
+  display: flex;
+  gap: var(--s6);
+  margin-bottom: var(--s4);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.statLabel {
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.statValue {
+  font-family: var(--mono);
+  font-size: var(--t-heading-sm);
+  color: var(--ink);
+}
+
+.sectionNote {
+  background: var(--sunken);
+  border-radius: var(--r-md);
+  padding: var(--s3) var(--s4);
+  font-size: var(--t-body);
+  color: var(--ink-muted);
+  margin-bottom: var(--s4);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.listItem {
+  display: flex;
+  gap: var(--s2);
+  font-size: var(--t-body);
+  color: var(--ink-muted);
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.listItem:last-child {
+  border-bottom: none;
+}
+
+.listItemLabel {
+  color: var(--ink);
+  font-weight: var(--w-medium);
+  flex: none;
+  min-width: 14ch;
+}
+
+.term {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.term:last-child {
+  border-bottom: none;
+}
+
+.termLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.termLabel {
+  color: var(--ink-muted);
+  font-size: var(--t-body);
+}
+
+.termNote {
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}
+
+.termValue {
+  font-family: var(--mono);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-top: var(--s3);
+  margin-top: var(--s2);
+  border-top: 1px solid var(--hairline-strong);
+  font-size: var(--t-heading-sm);
+  color: var(--ink);
+}
+
+.checklist {
+  margin: var(--s3) 0 0;
+  padding-left: 20px;
+  color: var(--ink-muted);
+  font-size: var(--t-body);
+}
+
+.checklist li {
+  margin-bottom: 4px;
+}
+
+.causeLink {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: var(--w-medium);
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.timelineItem {
+  display: flex;
+  gap: var(--s3);
+}
+
+.timelineDate {
+  font-family: var(--mono);
+  font-size: var(--t-caption);
+  color: var(--ink-faint);
+  flex: none;
+  width: 9ch;
+}
+
+.timelineBody strong {
+  color: var(--ink);
+  font-weight: var(--w-medium);
+}
+
+.timelineBody p {
+  margin: 2px 0 0;
+  color: var(--ink-muted);
+  font-size: var(--t-caption);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-size: var(--t-caption);
+  color: var(--ink-muted);
+  font-weight: var(--w-medium);
+}
+
+.field input,
+.field select,
+.field textarea {
+  padding: 9px 12px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-md);
+  font-size: var(--t-body);
+  color: var(--ink);
+  background: var(--paper);
+  font-family: inherit;
+}
+
+.field textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.submit {
+  margin-top: var(--s2);
+}
+
+.workOrderCard {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s4);
+  background: var(--info-wash);
+  border-radius: var(--r-md);
+  margin-bottom: var(--s4);
+}
+
+.workOrderMeta {
+  font-size: var(--t-caption);
+  color: var(--ink-muted);
+}
