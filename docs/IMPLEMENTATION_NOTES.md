@@ -12527,3 +12527,77 @@ a one-line link but no longer competes for a first-time visitor's attention.
 
     START HERE: web/src/components/Splash.tsx — the WAYS array at the top is the whole
     decision; everything else in the checkpoint renders it or gets out of its way.
+
+## The facility-manager platform — same theme as the front door
+
+### WHAT WE DID
+
+The facility-manager platform used to render in dark slate navy while every other surface
+a visitor sees is white. Someone arriving from the home page clicked "Open the platform"
+and walked out of a white product page into a dark application, which reads as a different
+piece of software by a different team rather than as the product the page was just
+describing. The platform is the thing this project is selling and the home page is where
+it is sold, so those two surfaces have to look like one company.
+
+The platform now renders in the same light palette as everything else. Nothing had to be
+repainted to achieve it: every stylesheet in the platform was already written against the
+shared design tokens with not one colour written directly into it, and every value the
+dark theme set was an override of a token that already existed. Deleting the dark file was
+the entire visual change.
+
+The charts needed one more step, because a chart sets its colours as drawing instructions
+that cannot read the design tokens, so they were held as a second hand-maintained copy of
+the whole palette in dark. That copy is gone and the charts now read the same single
+palette the rest of the product does. That removes a standing hazard as much as it changes
+a colour: there were two files holding one palette between them, each with a comment
+asking whoever edited one to remember the other, and nothing able to enforce it.
+
+### HOW IT WORKS
+
+    web/src/fm/theme.css :: DELETED
+      WHY IT EXISTED: It held the platform's dark palette — fifty-four custom properties
+        covering surfaces, ink, the action colour, the four severity tiers and their
+        washes — scoped to a `data-fm-theme="dark"` attribute so it applied to the
+        platform and not to the console.
+      WHAT REPLACED IT: Nothing. All fifty-four were overrides of properties already
+        declared in design/tokens.css, so removing the file leaves every one of them
+        resolving to its light value. Checked before deleting rather than after: the two
+        token lists were diffed and the dark file introduced no name of its own.
+      CHANGED FROM BEFORE: It also carried two supporting rules that are no longer needed
+        — a body background, because the platform's own shell already paints a full-height
+        background of its own, and an override for native form controls, which only
+        existed because a browser's default date picker and select render light and were
+        landing on dark panels.
+
+    web/src/fm/FmApp.tsx :: the removed theme effect
+      WHY IT EXISTS: It no longer does.
+      WHAT IT DOES: Deleted. It set `data-fm-theme="dark"` on the document element when
+        the platform mounted and removed it on unmount, which is what kept the theme from
+        leaking into the console. With no dark stylesheet there is nothing to scope.
+      CHANGED FROM BEFORE: The component no longer imports React's effect hook or the
+        stylesheet, and is now purely a route table. The long note explaining why the
+        platform matched the deck's dark is replaced by one explaining why it now matches
+        the front door instead — the old reasoning optimised for the presenter's darkened
+        room and cost the visitor's sense that these are one product.
+
+    web/src/fm/lib/chartTheme.ts :: now a re-export
+      WHY IT EXISTS: Charts and the plant drawing set colour as an SVG fill or stroke
+        attribute, which cannot resolve a CSS custom property, so chart colours must reach
+        a component as literal strings rather than as tokens.
+      WHAT IT DOES: One line — it re-exports design/palette.ts, the literals the console
+        already draws with. The file previously held twenty-six of its own exports in
+        slate navy, including a whole second copy of the severity scale, its washes, the
+        five states a drawn machine can be in, and the chart furniture.
+      CHOICES: Kept as a one-line seam rather than deleted outright. Six components import
+        it as a namespace, so pointing them at the palette directly would be six edits for
+        no change in behaviour, and it is also the one place a second theme could be
+        reintroduced later without touching a component.
+      ⚠ JUDGEMENT CALL: Re-exporting rather than deleting the module leaves an indirection
+        that now holds no content of its own. The alternative — deleting it and rewriting
+        the six imports — is defensible and slightly cleaner to read, but it spends a
+        six-file diff to remove one line and gives up the seam. The deciding factor was
+        that the file's stated purpose was always "the palette this half of the product
+        draws with", and that is still exactly what it is.
+
+    START HERE: web/src/fm/FmApp.tsx — the note at the top is the reasoning for the whole
+    checkpoint, and the deletion it describes is the change.
