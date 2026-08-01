@@ -12295,3 +12295,129 @@ acts in it are the argument the whole artefact makes.
         the range that was actually measured, and needs re-walking in a browser before it is
         presented. Stated that way in the check's own comment so nobody reads a pass as a
         guarantee.
+
+---
+
+## The flow reference — one reading, stage by stage, served at /flow
+
+### WHAT WE DID
+
+The system can now hand somebody a single page that follows one sensor reading all the
+way from the instrument to a costed work order, naming every stage it passes through, the
+part of the platform that stage belongs to, and the table it writes. Before this, that
+explanation existed only as a conversation — the architecture document describes the
+layers but reads bottom-up as a map of the codebase, and the walkthrough and the deck both
+argue for the system rather than explaining its mechanics. Somebody who wanted to know
+what actually happens between a thermometer and a maintenance job had to be talked
+through it.
+
+It matters because that is the first question a technical buyer asks and the last thing
+the running dashboard can show them. The dashboard displays conclusions; it cannot display
+the sequence that produced them. This page is that sequence, and because it is a plain
+document rather than a screen in the application, it can be opened, scrolled, printed and
+sent on with nothing running behind it.
+
+The page also states, in its opening panel and before anything else, that the platform is
+a batch pipeline today rather than a live streaming service — and that the same stages
+would run in the same order against a live feed. That admission is the first thing on the
+page rather than a footnote, because the alternative is a reader discovering it later and
+wondering what else was arranged favourably.
+
+### HOW IT WORKS
+
+    web/public/flow.html :: the document
+      WHY IT EXISTS: The one artefact that explains the mechanics of the platform end to
+        end. Everything else either shows results (the dashboard), argues a case (the deck),
+        or maps the code (the architecture document). This explains the machinery, in the
+        order the data moves through it.
+      WHAT IT DOES: Thirteen stages down a single spine, each one stating the question it
+        answers, four to eight short points on what it actually does, and — set apart on a
+        sunken strip — the table it writes into. Around them sit five supporting sections:
+        what has to be in the database before any reading arrives, one worked example
+        tracing a real chiller reading through all thirteen stages with real thresholds and
+        coefficients, a matrix of which stages a single new reading actually touches, the
+        split between what would run every few minutes and what would run once a day, and
+        four things the system never does.
+      CHOICES: Every threshold, coefficient, tariff and cost on the page is one that exists
+        in the database or the semantic model — 3.0 K for condenser fouling, 1.876 kW per
+        kelvin, 0.128 dollars per kilowatt-hour, 95 dollars an hour, 850 dollars of
+        consumables. The final dollar total is deliberately left as a formula rather than a
+        number, because the duty fraction and the crossing probability are measured per
+        window and inventing either would have put the only fabricated figure on a page
+        whose whole argument is traceability.
+      ⚠ JUDGEMENT CALL: It is a static file in web/public rather than a React screen like
+        the walkthrough and the deck. The alternative was porting roughly 1,700 lines of
+        markup into components, which would have bought consistency with the other two and
+        cost the property that makes a reference useful — that it survives on its own, with
+        no build step and no API. The cost of the choice is real and is that the design
+        tokens are duplicated by copy rather than imported, so a palette change in
+        tokens.css does not reach this page.
+
+    web/public/flow.html :: the token block
+      WHY IT EXISTS: A file served outside the bundle cannot import a stylesheet from src/,
+        so the page has to carry its own copy of the design system or look like it belongs
+        to a different product.
+      WHAT IT DOES: Re-declares the same custom properties tokens.css defines — the navy
+        ink, the cool off-white, the single indigo, the four severity tiers — in all four
+        theme states the product supports: the light default, the dark preference, and the
+        two explicit data-theme overrides.
+      CHOICES: Severity is carried through unchanged, including that healthy is slate rather
+        than green and that each tier has its own silhouette as well as its own hue. The
+        page has a severity legend on it, so importing the palette but dropping the
+        colour-deficiency rule would have reintroduced exactly the failure the semantic
+        document exists to prevent.
+
+    web/public/flow.html :: the @font-face pair
+      WHY IT EXISTS: The type treatment is built on heavy negative letter-spacing, and that
+        spacing is measured against Inter's widths. Served without the font, every heading
+        on the page sets too tight.
+      WHAT IT DOES: Declares Inter at 300 and 400 against two woff2 files copied out of the
+        installed package into web/public/fonts/, matching the two weights src/main.tsx
+        already imports.
+      CHOICES: woff2 only, and only two weights. The application ships woff as a fallback;
+        for a document read in a current browser it is 60 KB of nothing.
+
+    web/public/fonts/ :: inter-latin-300-normal.woff2, inter-latin-400-normal.woff2
+      WHY IT EXISTS: Files under public/ are the only ones a page outside the bundle can
+        reference by a stable path. The bundled copies of these fonts carry a content hash
+        in their filenames, which changes on any build.
+      WHAT IT DOES: Copies of the same two files the application bundles, at fixed
+        addresses. Vite copies them into dist/ untouched.
+      ⚠ JUDGEMENT CALL: This duplicates roughly 47 KB that the bundle already contains, and
+        a browser that has loaded the dashboard will download them a second time for this
+        page. The alternative was referencing the hashed build output, which would break on
+        every rebuild. A stale path in a reference document is worse than a duplicated
+        download.
+
+    web/src/App.tsx :: the /flow guard
+      WHY IT EXISTS: Different servers disagree about what an address with no file extension
+        means, and the disagreement was measured rather than assumed. Under `vite preview`
+        and under a static host that tries an .html suffix, /flow resolves to the document
+        directly. Under the dev server, and under any host whose fallback rule sends unknown
+        paths to the application, /flow reaches React instead — where the catch-all route
+        would quietly send it to the console.
+      WHAT IT DOES: Matches /flow and /flow/ exactly, then replaces the browser's location
+        with /flow.html. Where the server already resolved the address, this code never runs
+        at all, because React was never loaded.
+      CHOICES: Matched exactly rather than by prefix, so the guard can never fire on
+        /flow.html and send the page to itself. Placed beside the existing handoffs for the
+        walkthrough and the deck, because it is the same kind of thing — an address that
+        does not render inside the application shell.
+      ⚠ JUDGEMENT CALL: A redirect rather than a route. Under the dev server this means a
+        brief white frame before the document appears. The alternative was adding a rewrite
+        rule to the server configuration, which lives on the deployment host and not in this
+        repository — so the address would work in production and break for anybody running
+        the project locally. The flash is the cheaper failure.
+
+    Route naming
+      WHY IT EXISTS: /story was the obvious name and is already taken by the nineteen-scene
+        projector walkthrough. /deck and /fm are also occupied.
+      WHAT IT DOES: The document answers "what happens to a reading as it flows through",
+        so /flow names its content rather than its format.
+      CHOICES: Not linked from anywhere in the application, matching how /story and /deck
+        are reached. All three are shown deliberately by a presenter rather than discovered
+        by an operator, and putting them in the navigation would offer an operator three
+        screens that do not help them fix anything.
+
+    START HERE: web/public/flow.html — the whole checkpoint is that file; the change to
+    App.tsx exists only so its address can be typed without an extension.

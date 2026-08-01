@@ -344,6 +344,23 @@ export function App() {
     return <Deck />;
   }
 
+  // The flow reference: what happens to one reading, stage by stage, with the module and
+  // the table behind each one.
+  //
+  // NOT A REACT SCREEN, and that is the point. It is a standalone document in web/public,
+  // so it can be opened, printed, and sent to somebody with the application not running —
+  // which is what a reference gets used for. It shares the design tokens by copy rather
+  // than by import, because a file served outside the bundle cannot resolve one.
+  //
+  // The server hands out /flow.html directly and React never runs for it. This catches
+  // only the extensionless address somebody actually types, which the SPA fallback would
+  // otherwise swallow into the console. Matched exactly, so it can never redirect to
+  // itself.
+  if (location.pathname === "/flow" || location.pathname === "/flow/") {
+    window.location.replace("/flow.html");
+    return null;
+  }
+
   if (atFrontDoor) {
     // The two responses the shell is already fetching are handed straight to it, so the
     // figures on the front page are counted from the running system rather than typed in.

@@ -1,0 +1,2350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Augur — what happens when a reading arrives</title>
+<meta
+  name="description"
+  content="Every stage a sensor reading passes through in Augur, from ingest to a costed work order, with the module and the table behind each one."
+/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+<style>
+/* Inter, self-hosted, exactly as the application does it in src/main.tsx.
+   It matters here rather than being a nicety: the whole type treatment is built
+   on heavy negative tracking, and that tracking is measured against Inter's
+   widths. Falling back to system-ui leaves the headings set too tight.
+
+   Two weights and no more, because the design system uses exactly two — 300 for
+   display and body, 400 for buttons and captions. woff2 only; every browser
+   that can render this page supports it. */
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("/fonts/inter-latin-300-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/inter-latin-400-normal.woff2") format("woff2");
+}
+
+/* A minimal reset. The page was authored against a host that supplied one;
+   served from this project's own origin there is none, so it brings its own.
+   Deliberately tiny — the page styles everything it uses. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+/* The ground behind the page, so an overscroll bounce does not flash white on
+   a dark theme. Matches --paper in both themes below. */
+body {
+  background: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #0c1526;
+  }
+}
+
+:root[data-theme="dark"] body {
+  background: #0c1526;
+}
+
+:root[data-theme="light"] body {
+  background: #ffffff;
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+</style>
+
+<style>
+
+  /* ============================================================================
+     Tokens lifted from web/src/design/tokens.css so this page belongs to the
+     product it describes. Two governing rules carried over verbatim:
+
+       1. Deep navy (#0d253d), never pure black, for every piece of type.
+       2. Colour has three jobs and they never mix — one indigo for action and
+          emphasis, atmosphere on the opening band only, and severity scoped
+          strictly to measurement. Severity is red / orange / gold / slate and
+          never red-amber-green: around eight per cent of men have red-green
+          colour deficiency, and a scale whose ends collapse into each other has
+          no ends for one reader in twelve.
+     ========================================================================= */
+
+  :root {
+    --sans: Inter, "SF Pro Display", system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+
+    --paper: #ffffff;
+    --canvas: #f6f9fc;
+    --sunken: #eef3f9;
+    --hairline: #e3e8ee;
+    --hairline-strong: #cbd9e7;
+
+    --ink: #0d253d;
+    --ink-muted: #273951;
+    --ink-faint: #64748d;
+
+    --indigo: #533afd;
+    --indigo-wash: #eeecff;
+
+    --sev-critical: #da1e28;
+    --sev-high: #ff832b;
+    --sev-medium: #f1c21b;
+    --sev-slate: #64748d;
+
+    --mesh-cream: #f5e9d4;
+    --mesh-lavender: #c9b8f5;
+    --mesh-indigo: #533afd;
+
+    --shadow: 0 1px 2px rgba(13, 37, 61, 0.06), 0 8px 24px rgba(13, 37, 61, 0.05);
+    --shadow-flat: 0 1px 2px rgba(13, 37, 61, 0.05);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0c1526;
+      --canvas: #111d33;
+      --sunken: #16233c;
+      --hairline: #24344f;
+      --hairline-strong: #3b5170;
+
+      --ink: #f2f6fb;
+      --ink-muted: #c3d2e4;
+      --ink-faint: #91a4bd;
+
+      --indigo: #9b8dff;
+      --indigo-wash: #1d2350;
+
+      --sev-critical: #ff8389;
+      --sev-high: #ff9d4d;
+      --sev-medium: #f4d35e;
+      --sev-slate: #a8c3de;
+
+      --mesh-cream: #4a3f2c;
+      --mesh-lavender: #4c3f7a;
+      --mesh-indigo: #3b2ec4;
+
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
+      --shadow-flat: 0 1px 2px rgba(0, 0, 0, 0.35);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #0c1526;
+    --canvas: #111d33;
+    --sunken: #16233c;
+    --hairline: #24344f;
+    --hairline-strong: #3b5170;
+    --ink: #f2f6fb;
+    --ink-muted: #c3d2e4;
+    --ink-faint: #91a4bd;
+    --indigo: #9b8dff;
+    --indigo-wash: #1d2350;
+    --sev-critical: #ff8389;
+    --sev-high: #ff9d4d;
+    --sev-medium: #f4d35e;
+    --sev-slate: #a8c3de;
+    --mesh-cream: #4a3f2c;
+    --mesh-lavender: #4c3f7a;
+    --mesh-indigo: #3b2ec4;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
+    --shadow-flat: 0 1px 2px rgba(0, 0, 0, 0.35);
+  }
+
+  :root[data-theme="light"] {
+    --paper: #ffffff;
+    --canvas: #f6f9fc;
+    --sunken: #eef3f9;
+    --hairline: #e3e8ee;
+    --hairline-strong: #cbd9e7;
+    --ink: #0d253d;
+    --ink-muted: #273951;
+    --ink-faint: #64748d;
+    --indigo: #533afd;
+    --indigo-wash: #eeecff;
+    --sev-critical: #da1e28;
+    --sev-high: #ff832b;
+    --sev-medium: #f1c21b;
+    --sev-slate: #64748d;
+    --mesh-cream: #f5e9d4;
+    --mesh-lavender: #c9b8f5;
+    --mesh-indigo: #533afd;
+    --shadow: 0 1px 2px rgba(13, 37, 61, 0.06), 0 8px 24px rgba(13, 37, 61, 0.05);
+    --shadow-flat: 0 1px 2px rgba(13, 37, 61, 0.05);
+  }
+
+  /* ---------------------------------------------------------------- base */
+
+  .doc {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-weight: 300;
+    font-size: 16px;
+    line-height: 1.55;
+    font-feature-settings: "ss01" 1;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  .doc *,
+  .doc *::before,
+  .doc *::after {
+    box-sizing: border-box;
+  }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  .col {
+    max-width: 68ch;
+  }
+
+  .doc p {
+    margin: 0;
+  }
+
+  .doc a {
+    color: var(--indigo);
+    text-decoration: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--indigo) 35%, transparent);
+  }
+
+  .doc a:hover,
+  .doc a:focus-visible {
+    border-bottom-color: var(--indigo);
+  }
+
+  .doc :focus-visible {
+    outline: 2px solid var(--indigo);
+    outline-offset: 3px;
+    border-radius: 3px;
+  }
+
+  code,
+  .mono {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    font-weight: 400;
+    font-feature-settings: "tnum" 1;
+    letter-spacing: -0.01em;
+  }
+
+  code {
+    background: var(--sunken);
+    border-radius: 4px;
+    padding: 0.12em 0.38em;
+    color: var(--ink-muted);
+  }
+
+  /* ------------------------------------------------------------ opening band */
+
+  .top {
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .top::before {
+    content: "";
+    position: absolute;
+    inset: -20% -10% auto -10%;
+    height: 150%;
+    background:
+      radial-gradient(620px 340px at 8% 0%, color-mix(in srgb, var(--mesh-cream) 80%, transparent), transparent 66%),
+      radial-gradient(700px 400px at 46% -10%, color-mix(in srgb, var(--mesh-lavender) 58%, transparent), transparent 64%),
+      radial-gradient(600px 340px at 88% -6%, color-mix(in srgb, var(--mesh-indigo) 24%, transparent), transparent 62%);
+    pointer-events: none;
+  }
+
+  .top > .wrap {
+    position: relative;
+    padding-top: 68px;
+    padding-bottom: 52px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .eyebrow::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--hairline-strong);
+  }
+
+  h1 {
+    margin: 22px 0 0;
+    font-size: clamp(34px, 5.4vw, 54px);
+    font-weight: 300;
+    line-height: 1.04;
+    letter-spacing: -1.4px;
+    text-wrap: balance;
+    max-width: 24ch;
+  }
+
+  .lede {
+    margin-top: 20px;
+    font-size: clamp(17px, 1.9vw, 20px);
+    line-height: 1.45;
+    letter-spacing: -0.26px;
+    color: var(--ink-muted);
+    max-width: 62ch;
+  }
+
+  /* ------------------------------------------------------------------ bands */
+
+  .band {
+    padding: 60px 0;
+  }
+
+  .band-soft {
+    background: var(--canvas);
+    border-top: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  h2 {
+    margin: 0;
+    font-size: clamp(24px, 3vw, 32px);
+    font-weight: 300;
+    line-height: 1.14;
+    letter-spacing: -0.64px;
+    text-wrap: balance;
+  }
+
+  h3 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 300;
+    line-height: 1.2;
+    letter-spacing: -0.26px;
+  }
+
+  .sub {
+    margin-top: 14px;
+    color: var(--ink-muted);
+    max-width: 68ch;
+  }
+
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .stack-lg {
+    display: flex;
+    flex-direction: column;
+    gap: 34px;
+  }
+
+  /* ------------------------------------------------------------- honesty box */
+
+  .honesty {
+    display: grid;
+    grid-template-columns: 4px 1fr;
+    gap: 0;
+    background: var(--paper);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    box-shadow: var(--shadow-flat);
+    overflow: hidden;
+    margin-top: 34px;
+    max-width: 74ch;
+  }
+
+  .honesty-rail {
+    background: var(--sev-medium);
+  }
+
+  .honesty-body {
+    padding: 22px 26px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .honesty-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .honesty-body strong {
+    font-weight: 400;
+    color: var(--ink);
+  }
+
+  .honesty-body p {
+    color: var(--ink-muted);
+    font-size: 15px;
+  }
+
+  /* ------------------------------------------------------------ phase-0 grid */
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 14px;
+    margin-top: 32px;
+  }
+
+  .card {
+    background: var(--paper);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 20px 20px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: var(--shadow-flat);
+  }
+
+  .card-name {
+    font-size: 15px;
+    font-weight: 400;
+    letter-spacing: -0.2px;
+  }
+
+  .card-what {
+    font-size: 14px;
+    color: var(--ink-muted);
+    line-height: 1.45;
+  }
+
+  .card-src {
+    margin-top: auto;
+    padding-top: 10px;
+    border-top: 1px solid var(--hairline);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    word-break: break-word;
+  }
+
+  /* ------------------------------------------------------------- the spine */
+
+  .spine {
+    margin-top: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .phase {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 0 26px;
+    position: relative;
+    padding-bottom: 36px;
+  }
+
+  .phase:last-child {
+    padding-bottom: 0;
+  }
+
+  /* The rail is the structural device, and it says something true: nothing in
+     this pipeline skips a layer and nothing reaches back up. */
+  .phase::before {
+    content: "";
+    position: absolute;
+    left: 21px;
+    top: 44px;
+    bottom: -4px;
+    width: 1px;
+    background: var(--hairline-strong);
+  }
+
+  .phase:last-child::before {
+    display: none;
+  }
+
+  .marker {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .num {
+    width: 43px;
+    height: 43px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--paper);
+    border: 1px solid var(--hairline-strong);
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--ink-muted);
+    flex: none;
+  }
+
+  .phase-live .num {
+    border-color: var(--indigo);
+    background: var(--indigo-wash);
+    color: var(--indigo);
+  }
+
+  .beat {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 4px;
+    min-width: 0;
+  }
+
+  .beat-head {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 9px;
+  }
+
+  /* The classification line above each title: which module of the platform this
+     stage lives in, and the path to it. Two registers on purpose — the name is
+     for somebody following the argument, the path is for somebody who will go
+     and read it. */
+  .beat-tag {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px 12px;
+  }
+
+  .module {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--indigo);
+    white-space: nowrap;
+  }
+
+  .module-path {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+
+  .beat-tag .cadence {
+    margin-left: auto;
+  }
+
+  .beat-title {
+    font-size: 21px;
+    font-weight: 300;
+    letter-spacing: -0.3px;
+    line-height: 1.2;
+  }
+
+  .cadence {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    border-radius: 20px;
+    border: 1px solid var(--hairline-strong);
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+
+  .cadence-fast {
+    border-color: color-mix(in srgb, var(--indigo) 45%, transparent);
+    color: var(--indigo);
+    background: var(--indigo-wash);
+  }
+
+  .cadence-once {
+    border-style: dashed;
+  }
+
+  .asks {
+    font-size: 16.5px;
+    color: var(--ink);
+    letter-spacing: -0.15px;
+    padding-left: 14px;
+    border-left: 2px solid var(--indigo);
+  }
+
+  .beat-body {
+    color: var(--ink-muted);
+    font-size: 15px;
+    max-width: 66ch;
+  }
+
+  .beat-list {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--ink-muted);
+    font-size: 15px;
+    max-width: 66ch;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .beat-list li::marker {
+    color: var(--ink-faint);
+  }
+
+  .beat-list strong {
+    font-weight: 400;
+    color: var(--ink);
+  }
+
+  /* The keyword. Weight and full-strength ink do most of the work; the swash
+     underneath is the indigo already used for emphasis elsewhere, kept low
+     enough that a bullet with three of them still reads as a sentence. It is
+     never a severity colour — those are reserved for measurement. */
+  .kw {
+    font-weight: 400;
+    color: var(--ink);
+    background: linear-gradient(
+      to top,
+      color-mix(in srgb, var(--indigo) 17%, transparent) 0.3em,
+      transparent 0.3em
+    );
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+
+  /* what the stage writes — set apart, because this is the answer to
+     "where does it land" and it is the question an architect asks first */
+  .writes {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 12px;
+    background: var(--sunken);
+    border-radius: 8px;
+    padding: 12px 16px;
+    max-width: 66ch;
+  }
+
+  .writes-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .writes-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink);
+    font-weight: 400;
+  }
+
+  .writes-none .writes-val {
+    color: var(--ink-faint);
+    font-style: normal;
+  }
+
+  .note {
+    font-size: 14px;
+    color: var(--ink-faint);
+    max-width: 66ch;
+    padding-left: 14px;
+    border-left: 1px solid var(--hairline-strong);
+  }
+
+  .note strong {
+    font-weight: 400;
+    color: var(--ink-muted);
+  }
+
+  /* ------------------------------------------------------------------ tables */
+
+  .scroller {
+    overflow-x: auto;
+    margin-top: 30px;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    background: var(--paper);
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 720px;
+    font-size: 14px;
+  }
+
+  thead th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--hairline-strong);
+    background: var(--canvas);
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--hairline);
+    color: var(--ink-muted);
+    vertical-align: top;
+    line-height: 1.45;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  td.stage {
+    color: var(--ink);
+    font-weight: 400;
+    white-space: nowrap;
+  }
+
+  td.num-cell,
+  td.tab {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-feature-settings: "tnum" 1;
+    white-space: nowrap;
+    color: var(--ink);
+  }
+
+  .yes,
+  .maybe,
+  .no {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .yes {
+    color: var(--ink);
+    font-weight: 400;
+  }
+
+  .maybe {
+    color: var(--ink-faint);
+  }
+
+  .no {
+    color: var(--ink-faint);
+    opacity: 0.75;
+  }
+
+  /* ------------------------------------------------------- severity swatches */
+
+  .tiers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 22px;
+  }
+
+  .tier {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    border: 1px solid var(--hairline);
+    border-radius: 20px;
+    padding: 6px 14px 6px 10px;
+    font-size: 13px;
+    color: var(--ink-muted);
+    background: var(--paper);
+  }
+
+  .dot {
+    width: 11px;
+    height: 11px;
+    flex: none;
+  }
+
+  /* Four distinct silhouettes as well as four hues, so the tier is never
+     carried by colour alone. */
+  .dot-critical {
+    background: var(--sev-critical);
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  }
+
+  .dot-high {
+    background: var(--sev-high);
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  }
+
+  .dot-medium {
+    background: var(--sev-medium);
+  }
+
+  .dot-slate {
+    background: var(--sev-slate);
+    border-radius: 50%;
+  }
+
+  .tier .mono {
+    color: var(--ink-faint);
+  }
+
+  /* ------------------------------------------------------------- two columns */
+
+  .split {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 18px;
+    margin-top: 32px;
+    align-items: start;
+  }
+
+  .path {
+    background: var(--paper);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 24px 24px 26px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: var(--shadow-flat);
+  }
+
+  .path-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .path-when {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--indigo);
+  }
+
+  .path-when-slow {
+    color: var(--ink-faint);
+  }
+
+  .chain {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 4px;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink);
+  }
+
+  .chain span:not(.arrow) {
+    background: var(--sunken);
+    border-radius: 5px;
+    padding: 4px 8px;
+  }
+
+  .arrow {
+    color: var(--ink-faint);
+    padding: 0 1px;
+  }
+
+  /* -------------------------------------------------------------- never list */
+
+  .nevers {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 30px;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--hairline);
+  }
+
+  .never {
+    background: var(--paper);
+    padding: 18px 22px;
+    display: grid;
+    grid-template-columns: minmax(0, 30ch) minmax(0, 1fr);
+    gap: 6px 24px;
+  }
+
+  .never-claim {
+    font-size: 15px;
+    font-weight: 400;
+    color: var(--ink);
+    letter-spacing: -0.15px;
+  }
+
+  .never-why {
+    font-size: 14.5px;
+    color: var(--ink-muted);
+  }
+
+  /* ----------------------------------------------------------------- closing */
+
+  .pull {
+    margin-top: 34px;
+    padding: 30px 34px;
+    background: var(--paper);
+    border: 1px solid var(--hairline-strong);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    max-width: 74ch;
+  }
+
+  .pull p {
+    font-size: clamp(17px, 2vw, 20px);
+    line-height: 1.5;
+    letter-spacing: -0.3px;
+    color: var(--ink);
+  }
+
+  .pull-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 16px;
+  }
+
+  footer {
+    border-top: 1px solid var(--hairline);
+    padding: 34px 0 56px;
+    color: var(--ink-faint);
+    font-size: 13.5px;
+  }
+
+  footer .wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* ================================================================ navigator
+     A presenter aid, not decoration: which step we are on, the one before it,
+     the one after it, and the whole sequence.
+
+     It is built from the document at load — every label, question, cadence and
+     table name is read out of the prose it points at, so a stage renamed in the
+     text renames itself here and the two cannot disagree.
+
+     Hidden below 1180px, where there is no room for it and the document reads
+     perfectly well without it. */
+
+  .rail {
+    display: none;
+  }
+
+  @media (min-width: 1180px) {
+    .doc {
+      padding-right: 302px;
+    }
+
+    .rail {
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 302px;
+      height: 100vh;
+      background: var(--canvas);
+      border-left: 1px solid var(--hairline);
+      z-index: 20;
+    }
+  }
+
+  .rail-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 19px 22px 13px;
+    border-bottom: 1px solid var(--hairline);
+    flex: none;
+  }
+
+  .rail-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* ------------------------------- the whole sequence -------------------- */
+
+  .rail-list {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 11px 11px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    scrollbar-width: thin;
+  }
+
+  .nav-sep {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 11px 10px 5px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .nav-sep::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--hairline-strong);
+  }
+
+  .nav-sep:first-child {
+    margin-top: 2px;
+  }
+
+  .nav-item {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 0 8px;
+    align-items: baseline;
+    width: 100%;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    text-align: left;
+    font-family: var(--sans);
+    font-size: 12.5px;
+    font-weight: 300;
+    line-height: 1.32;
+    letter-spacing: -0.1px;
+    color: var(--ink-faint);
+    cursor: pointer;
+  }
+
+  .nav-item:hover {
+    background: var(--sunken);
+    color: var(--ink-muted);
+  }
+
+  .nav-num {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-feature-settings: "tnum" 1;
+    color: var(--ink-faint);
+  }
+
+  .nav-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .nav-mod {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .nav-mod:empty {
+    display: none;
+  }
+
+  .nav-item.is-done {
+    color: var(--ink-muted);
+  }
+
+  .nav-item[aria-current="step"] {
+    background: var(--indigo-wash);
+    color: var(--ink);
+    font-weight: 400;
+  }
+
+  .nav-item[aria-current="step"] .nav-num,
+  .nav-item[aria-current="step"] .nav-mod {
+    color: var(--indigo);
+  }
+
+  /* Landing point when a nav item is clicked, so nothing sits flush at 0. */
+  .top,
+  .band,
+  .phase {
+    scroll-margin-top: 22px;
+  }
+
+  @media (max-width: 620px) {
+    .phase {
+      grid-template-columns: 52px minmax(0, 1fr);
+      gap: 0 16px;
+    }
+
+    .phase::before {
+      left: 21px;
+    }
+
+    .never {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .band {
+      padding: 44px 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .doc * {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+
+</style>
+</head>
+<body>
+<!-- =============================================================== navigator
+     Markup is empty on purpose. Every row is built from the document below at
+     load, so there is no second copy of any label to fall out of step with the
+     prose. See the script at the end of the file. -->
+<nav class="rail" id="rail" aria-label="Where we are in the walkthrough">
+  <div class="rail-head">
+    <span class="rail-title">Navigator</span>
+  </div>
+
+  <div class="rail-list" id="railList"></div>
+</nav>
+
+<div class="doc">
+
+  <!-- ===================================================== opening -->
+  <header class="top" id="s-open" data-nav="Overview">
+    <div class="wrap">
+      <div class="eyebrow">Augur &middot; system walkthrough</div>
+      <h1>What happens when one reading arrives</h1>
+      <p class="lede">
+        A sensor on a chiller reports a number. Thirteen stages later, a named
+        person is asked to do a specific job on a specific machine, with a price
+        on doing it and a price on waiting. This is every stage in between, in
+        order, with the table each one writes.
+      </p>
+
+      <div class="honesty">
+        <div class="honesty-rail" aria-hidden="true"></div>
+        <div class="honesty-body">
+          <div class="honesty-label">Read this first</div>
+          <p>
+            <strong>Today this is a batch pipeline, not a live streaming
+            service.</strong> Readings are loaded, then each layer runs over what
+            is stored. If you connected a live feed shaped like
+            <code>app.measurements</code>, every stage below would still run, in
+            this order, reading the same tables and writing the same rows.
+          </p>
+          <p>
+            Nothing here is one recursive call per datapoint. Each stage reads
+            the latest stored measurements and derived tables and writes its own
+            results. Advisories are assembled at the end. That is a real
+            architectural difference and it is stated here rather than discovered
+            later.
+          </p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================================================== the shape -->
+  <section class="band" id="s-shape" data-nav="Eleven layers, each on the one above">
+    <div class="wrap">
+      <div class="col stack">
+        <h2>Eleven layers, each consuming the one above</h2>
+        <p class="sub">
+          Nothing skips a layer and nothing reaches back up. That constraint is
+          why a wrong number can be traced to the stage that produced it, and why
+          adding a new kind of machine does not require touching the prediction
+          maths.
+        </p>
+        <p class="sub">
+          The numbering below is not decoration. Stage seven cannot run until
+          stage six has written its rows, and the last four stages only run at
+          all once the earlier ones have found something. Three of the stages
+          exist mainly to <em>refuse</em> &mdash; and that is the point of the
+          design, not a gap in it.
+        </p>
+        <p class="sub">
+          Every stage is labelled with the module it lives in and the path to it
+          &mdash; <span class="module">Ingestion</span>,
+          <span class="module">Rule engine</span>,
+          <span class="module">Remaining life</span>,
+          <span class="module">Advisory generation</span> and so on &mdash; so any
+          question about a stage has exactly one place to go and look.
+        </p>
+      </div>
+
+      <div class="tiers" role="list" aria-label="How severity is coloured">
+        <span class="tier" role="listitem"><span class="dot dot-critical"></span> critical <span class="mono">under&nbsp;50</span></span>
+        <span class="tier" role="listitem"><span class="dot dot-high"></span> degraded <span class="mono">50&ndash;69</span></span>
+        <span class="tier" role="listitem"><span class="dot dot-medium"></span> watch <span class="mono">70&ndash;84</span></span>
+        <span class="tier" role="listitem"><span class="dot dot-slate"></span> healthy <span class="mono">85+</span></span>
+      </div>
+      <p class="note" style="margin-top:18px">
+        Four tiers, and healthy is <strong>slate rather than green</strong>. A
+        red-amber-green scale has no ends for the roughly one man in twelve with
+        red-green colour deficiency, so every badge in the product also carries a
+        word and its own shape. Colour never carries a judgement on its own.
+      </p>
+    </div>
+  </section>
+
+  <!-- ===================================================== phase 0 -->
+  <section class="band band-soft" id="s-phase0" data-nav="Before any reading arrives">
+    <div class="wrap">
+      <div class="col stack">
+        <h2>Before any reading arrives</h2>
+        <p class="sub">
+          Eight things are already in the database. Live data does not redefine
+          them &mdash; it feeds new numbers into them. This is the part a new site
+          has to be set up with, and almost all of it is configuration rather
+          than code.
+        </p>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-name">Assets, points and units</div>
+          <div class="card-what">
+            Which instruments exist, what SI unit each reports, its physical
+            bounds, and whether the column is usable at all. Three of this
+            building&rsquo;s 107 measurements are defective at source and are
+            flagged with a written reason.
+          </div>
+          <div class="card-src">app.assets &middot; app.points</div>
+        </div>
+
+        <div class="card">
+          <div class="card-name">The building&rsquo;s topology</div>
+          <div class="card-what">
+            What feeds what, as a graph: towers to chillers, chillers to the
+            chilled water loop, the loop to the air handler&rsquo;s coil, the coil
+            to five occupied zones. Walked upstream to find causes and downstream
+            to count who is affected.
+          </div>
+          <div class="card-src">Brick model &middot; app.asset_edges</div>
+        </div>
+
+        <div class="card">
+          <div class="card-name">Failure modes</div>
+          <div class="card-what">
+            Six named ways this equipment wears out. Each carries the formula for
+            its degradation number, the value at which it counts as failed, a
+            written physical justification for that value, and the kilowatts one
+            unit of it wastes.
+          </div>
+          <div class="card-src">app.failure_modes</div>
+        </div>
+
+        <div class="card">
+          <div class="card-name">Rules</div>
+          <div class="card-what">
+            Nine physics assertions &mdash; six from a published air-handler rule
+            set, three chiller performance rules. Each is registered against a
+            <em>class</em> of equipment, so the engine works out which machines
+            it applies to by asking the graph.
+          </div>
+          <div class="card-src">analytics/rules/ registry</div>
+        </div>
+
+        <div class="card">
+          <div class="card-name">Physics constraints</div>
+          <div class="card-what">
+            Balances that must hold if the instruments are telling the truth
+            &mdash; mixed air, coil energy, chiller energy. Stored as arithmetic
+            expressions in the model, so adding one is a line of configuration
+            and not a code change.
+          </div>
+          <div class="card-src">model/extensions.ttl</div>
+        </div>
+
+        <div class="card">
+          <div class="card-name">Baseline catalogue</div>
+          <div class="card-what">
+            Which healthy-behaviour models apply to which class of machine, and
+            which readings drive each one. Five models across two equipment
+            classes, every term taken from the equation the equipment obeys.
+          </div>
+          <div class="card-src">BASELINE_CATALOGUE</div>
+        </div>
+
+        <div class="card">
+          <div class="card-name">Intervention library</div>
+          <div class="card-what">
+            Sixteen jobs. Each carries hours, trades, parts, cost and a written
+            basis for the estimate. Keyed on the fault <em>and</em> the fault
+            class, which is why one symptom can resolve to two different jobs.
+          </div>
+          <div class="card-src">app.intervention_library</div>
+        </div>
+
+        <div class="card">
+          <div class="card-name">The healthy reference</div>
+          <div class="card-what">
+            Twenty-one days somebody declares the plant was working. Every
+            baseline is fitted on it and every health score is measured against
+            it. Without this the system has no definition of normal for this
+            specific machine.
+          </div>
+          <div class="card-src">COMMISSIONING_DAYS = 21</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== the pipeline -->
+  <section class="band" id="s-pipeline" data-nav-group="The thirteen stages">
+    <div class="wrap">
+      <div class="col stack">
+        <h2>The thirteen stages</h2>
+        <p class="sub">
+          Every stage states the question it answers, what it reads, what it
+          does, and where the answer lands. The badge on each says how often it
+          would need to run in a live deployment.
+        </p>
+      </div>
+
+      <div class="spine">
+
+        <!-- 1 -->
+        <article class="phase phase-live" id="p01">
+          <div class="marker"><div class="num">01</div></div>
+          <div class="beat">
+            <div class="beat-head">
+              <div class="beat-tag">
+                <span class="module">Ingestion</span>
+                <span class="module-path">ingestion/</span>
+                <span class="cadence cadence-fast">every few minutes</span>
+              </div>
+              <h3 class="beat-title">The reading lands</h3>
+            </div>
+            <p class="asks">Is this number in the system, in the right unit, at the right time?</p>
+            <ul class="beat-list">
+              <li>A reading arrives: <code>chiller-1.cdw_leaving_temp = 32.4 &deg;C</code> at time&nbsp;T.</li>
+              <li>Units are converted <b class="kw">on the way in</b> &mdash; nothing downstream ever handles a Fahrenheit or a gallon per minute.</li>
+              <li>The unit is a property of the <b class="kw">ingestion manifest</b>, checked once, not a property of every query.</li>
+              <li>Row written. The <b class="kw">hourly rollup</b> behind it refreshes, which is what charts and long-window fits read.</li>
+            </ul>
+            <div class="writes">
+              <span class="writes-label">writes</span>
+              <span class="writes-val">app.measurements</span>
+              <span class="writes-val">app.measurements_hourly</span>
+            </div>
+            <p class="note">
+              <strong>No advisory yet.</strong> One reading cannot produce a
+              maintenance decision, and a system that let it would be a system
+              that alarms on noise.
+            </p>
+          </div>
+        </article>
+
+        <!-- 2 -->
+        <article class="phase phase-live" id="p02">
+          <div class="marker"><div class="num">02</div></div>
+          <div class="beat">
+            <div class="beat-head">
+              <div class="beat-tag">
+                <span class="module">Quality scoring</span>
+                <span class="module-path">analytics/quality/</span>
+                <span class="cadence cadence-fast">every few minutes</span>
+              </div>
+              <h3 class="beat-title">Can this reading be believed?</h3>
+            </div>
+            <p class="asks">Is the instrument telling the truth right now?</p>
+            <ul class="beat-list">
+              <li>Five checks, each scored 0&ndash;100. The composite is the <b class="kw">worst</b> of the five, never the average &mdash; so one failure cannot be diluted by four passes.</li>
+              <li><b class="kw">Timeliness</b> &mdash; did it arrive on the cadence it promised?</li>
+              <li><b class="kw">Completeness</b> &mdash; are samples missing around it?</li>
+              <li><b class="kw">Range</b> &mdash; is the value physically possible for this instrument?</li>
+              <li><b class="kw">Plausibility</b> &mdash; did it jump further than the physics allows?</li>
+              <li><b class="kw">Staleness</b> &mdash; has it stopped moving while the machine is running?</li>
+              <li>Bad readings are <b class="kw">kept and explained</b>, never dropped. A dropped reading looks identical to one that was never taken.</li>
+              <li>When a fault persists it becomes an <b class="kw">instrument advisory</b> &mdash; a statement about a thermometer, never about a chiller.</li>
+            </ul>
+            <div class="writes">
+              <span class="writes-label">writes</span>
+              <span class="writes-val">measurements.quality_score</span>
+              <span class="writes-val">measurements.quality_flags</span>
+              <span class="writes-val">app.sensor_advisories</span>
+            </div>
+            <p class="note">
+              Below a score of <code>50</code>, <strong>no rule may see the
+              reading</strong> &mdash; not by convention, but because the only
+              route to a measurement refuses. This is the layer that stops
+              &ldquo;chiller fault&rdquo; being reported when the actual problem
+              was a twenty-dollar sensor.
+            </p>
+          </div>
+        </article>
+
+        <!-- 3 -->
+        <article class="phase phase-live" id="p03">
+          <div class="marker"><div class="num">03</div></div>
+          <div class="beat">
+            <div class="beat-head">
+              <div class="beat-tag">
+                <span class="module">Rule engine &middot; mode gating</span>
+                <span class="module-path">analytics/rules/mode.py</span>
+                <span class="cadence cadence-fast">every few minutes</span>
+              </div>
+              <h3 class="beat-title">What is the machine even doing?</h3>
+            </div>
+            <p class="asks">Is this a moment in which anything can fairly be judged?</p>
+            <ul class="beat-list">
+              <li>Air handler classified into one of <b class="kw">five operating modes</b>: heating, free cooling, mechanical cooling with or without the economizer, unoccupied.</li>
+              <li>Chiller running state needs status <b class="kw">and</b> real power <b class="kw">and</b> real flow &mdash; one machine here reports status&nbsp;1 for every sample of the year.</li>
+              <li>Judgement held back for <b class="kw">one hour</b> after the building opens, after a chiller starts, and after any mode change. Neither machine is in thermal balance then.</li>
+              <li>A chiller below <b class="kw">twenty tons</b> of load is skipped entirely: every per-ton quantity is dominated by dividing through a small number.</li>
+            </ul>
+            <div class="writes writes-none">
+              <span class="writes-label">writes</span>
+              <span class="writes-val">nothing &mdash; this gates the stages below</span>
+            </div>
+            <p class="note">
+              A rule that is correct in one mode is <strong>wrong in
+              another</strong>. &ldquo;The damper is in the wrong
+              position&rdquo; means something during occupied cooling and
+              nothing at all overnight.
+            </p>
+          </div>
+        </article>
+
+        <!-- 4 -->
+        <article class="phase phase-live" id="p04">
+          <div class="marker"><div class="num">04</div></div>
+          <div class="beat">
+            <div class="beat-head">
+              <div class="beat-tag">
+                <span class="module">Rule engine</span>
+                <span class="module-path">analytics/rules/</span>
+                <span class="cadence cadence-fast">every few minutes</span>
+              </div>
+              <h3 class="beat-title">Is something wrong right now?</h3>
+            </div>
+            <p class="asks">Does any physics assertion about this machine fail to hold?</p>
+            <ul class="beat-list">
+              <li><b class="kw">Nine rules</b>, dispatched onto machines by asking the graph which ones are of the class each rule was written for.</li>
+              <li><b class="kw">Derived, not fitted</b> &mdash; from conservation of mass and energy across the mixing box and the coils. That is why they work on <b class="kw">day one</b>, before any healthy history exists.</li>
+              <li>Firings are grouped into unbroken stretches, and reported only after holding for <b class="kw">a full hour</b>.</li>
+              <li>A stretch breaks on an evaluated instant that did not fire &mdash; but <b class="kw">not</b> on the gaps where evaluation was suppressed. A fault does not stop existing because the unit changed mode.</li>
+            </ul>
+            <div class="writes writes-none">
+              <span class="writes-label">produces</span>
+              <span class="writes-val">rule findings &mdash; one per machine, per rule, per sustained stretch</span>
+            </div>
+            <p class="note">
+              Nine afternoons of the same saturated valve is <strong>one
+              finding</strong>, not nine &mdash; the operator needs to know the
+              valve has been saturating for two months. Counting the other way
+              would make the false-alarm rate a function of how choppy the
+              weather was.
+            </p>
+          </div>
+        </article>
+
+        <!-- 5 -->
+        <article class="phase phase-live" id="p05">
+          <div class="marker"><div class="num">05</div></div>
+          <div class="beat">
+            <div class="beat-head">
+              <div class="beat-tag">
+                <span class="module">Physics constraints</span>
+                <span class="module-path">analytics/rules/constraints.py</span>
+                <span class="cadence cadence-fast">every few minutes</span>
+              </div>
+              <h3 class="beat-title">Do the instruments agree with each other?</h3>
+            </div>
+            <p class="asks">Is this set of readings physically consistent?</p>
+            <ul class="beat-list">
+              <li><b class="kw">Mixed air</b> should be the blend of the outdoor and return air feeding it.</li>
+              <li><b class="kw">Coil energy</b> &mdash; the heat leaving the coil should match the heat the water carried away.</li>
+              <li><b class="kw">Chiller energy</b> &mdash; energy in should account for energy out.</li>
+              <li>Each miss is stored <b class="kw">raw and normalised</b>: how unusual it is against the spread the same balance showed when the plant was healthy.</li>
+              <li>Declared as <b class="kw">arithmetic in the model</b>, so adding a balance is a line of configuration rather than a code change.</li>
+            </ul>
+            <div class="writes">
+              <span class="writes-label">writes</span>
+              <span class="writes-val">app.constraint_residuals</span>
+            </div>
+            <p class="note">
+              These are not the main degradation signal. Their real job arrives
+              at <strong>stage&nbsp;10</strong>: a set of relations that
+              <em>ought</em> to hold is what makes it possible to ask whether one
+              lying instrument could explain everything.
+            </p>
+          </div>
+        </article>
+
+        <!-- 6 -->
+        <article class="phase phase-live" id="p06">
+          <div class="marker"><div class="num">06</div></div>
+          <div class="beat">
+            <div class="beat-head">
+              <div class="beat-tag">
+                <span class="module">Baselines</span>
+                <span class="module-path">analytics/baselines/</span>
+                <span class="cadence cadence-fast">every few minutes</span>
+              </div>
+              <h3 class="beat-title">Is it behaving like its own healthy past?</h3>
+            </div>
+            <p class="asks">Given exactly what is being asked of this machine right now, is this the number it should be producing?</p>
+            <ul class="beat-list">
+              <li>Each baseline &mdash; fitted once on the <b class="kw">21 healthy days</b> &mdash; reads today&rsquo;s operating conditions and predicts what a working machine would read.</li>
+              <li>Stored per reading: observed, expected, the <b class="kw">residual</b> between them, and how many standard deviations that gap is.</li>
+              <li>Why not a limit on the raw signal: this fan&rsquo;s power spans <b class="kw">0 to 1,622 watts</b> across one <em>perfectly healthy</em> run.</li>
+              <li><b class="kw">No fixed value works.</b> None inside that band avoids firing on ordinary operation; none above it ever fires.</li>
+              <li>After normalising, the same healthy run drifts <b class="kw">0.824&nbsp;W in 120 days</b> &mdash; three hundredths of its own standard deviation.</li>
+            </ul>
+            <div class="writes">
+              <span class="writes-label">writes</span>
+              <span class="writes-val">app.residuals</span>
+            </div>
+            <p class="note">
+              Every baseline is written in the <strong>form of the equation the
+              equipment obeys</strong>, not fitted by throwing curves at data. So
+              the coefficients can be checked by a person &mdash; and the model
+              cannot predict cooling when there is nothing to cool with, which
+              matters most during the fault.
+            </p>
+          </div>
+        </article>
+
+        <!-- 7 -->
+        <article class="phase phase-live" id="p07">
+          <div class="marker"><div class="num">07</div></div>
+          <div class="beat">
+            <div class="beat-head">
+              <div class="beat-tag">
+                <span class="module">Failure modes</span>
+                <span class="module-path">analytics/health/modes.py</span>
+                <span class="cadence cadence-fast">every few minutes</span>
+              </div>
+              <h3 class="beat-title">How far has each named failure progressed?</h3>
+            </div>
+            <p class="asks">For this specific way of failing, what is the one number that tracks it?</p>
+            <ul class="beat-list">
+              <li>The formula is read <b class="kw">from the database</b>, not written in code. It may reference a raw reading, a residual, or both.</li>
+              <li>Gated to the only conditions where it means anything: the coil-leak indicator exists <b class="kw">only while the valve is commanded shut</b>.</li>
+              <li>Every indicator counts <b class="kw">upward as things get worse</b>, whatever the underlying physics does.</li>
+              <li>For our chiller, condenser fouling <em>is</em> the stage&nbsp;6 residual &mdash; how much <b class="kw">hotter the leaving water</b> is than a clean machine would leave it, at matched load and matched incoming water.</li>
+            </ul>
+            <div class="writes writes-none">
+              <span class="writes-label">produces</span>
+              <span class="writes-val">an indicator time series per machine, per failure mode</span>
+            </div>
+            <p class="note">
+              A new way of failing is <strong>one database row</strong> &mdash; a
+              formula, a threshold, and a written justification for that
+              threshold. No code at all. The justification column
+              <strong>cannot be left empty</strong>, so a threshold can never
+              enter without an argument recorded beside it.
+            </p>
+          </div>
+        </article>
+
+        <!-- 8 -->
+        <article class="phase" id="p08">
+          <div class="marker"><div class="num">08</div></div>
+          <div class="beat">
+            <div class="beat-head">
+              <div class="beat-tag">
+                <span class="module">Health index</span>
+                <span class="module-path">analytics/health/</span>
+                <span class="cadence">once a day</span>
+              </div>
+              <h3 class="beat-title">Health, and whether decline has genuinely begun</h3>
+            </div>
+            <p class="asks">How much of the way to failure has this machine travelled, and did it really start?</p>
+            <ul class="beat-list">
+              <li>The day&rsquo;s values reduce to <b class="kw">one median</b>. Degradation does not move on a five-minute timescale.</li>
+              <li><b class="kw">Onset first</b> &mdash; a cumulative-sum test declares a start date when accumulated deviation from the healthy mean crosses its decision interval.</li>
+              <li><b class="kw">Then centre</b> on what the machine read when it was healthy: excess over normal, not an absolute level.</li>
+              <li><b class="kw">Then clamp</b> so the line can flatten but never climb. Equipment does not heal itself unless somebody repairs it.</li>
+              <li><b class="kw">Then map to 0&ndash;100:</b> <code>health = 100 &times; (1 &minus; excess &divide; threshold)</code>.</li>
+              <li>A machine&rsquo;s health is the <b class="kw">minimum</b> across its failure modes, never the average &mdash; and it records which mode produced it.</li>
+              <li>A recorded repair <b class="kw">resets the clamp</b>, so a cleaned condenser is not held at its worst-ever score forever.</li>
+            </ul>
+            <div class="writes">
+              <span class="writes-label">writes</span>
+              <span class="writes-val">app.health_state</span>
+              <span class="writes-val">indicator_raw</span>
+              <span class="writes-val">indicator_monotonic</span>
+              <span class="writes-val">t_onset</span>
+            </div>
+            <p class="note">
+              Onset must run <strong>before</strong> the clamp: a clamped series
+              is one-directional by construction, so a detector run afterwards
+              would be finding the clamp rather than the fault. Both the raw and
+              the clamped number are stored, so the clamp can be
+              <strong>audited rather than trusted</strong>.
+            </p>
+          </div>
+        </article>
+
+        <!-- 9 -->
+        <article class="phase" id="p09">
+          <div class="marker"><div class="num">09</div></div>
+          <div class="beat">
+            <div class="beat-head">
+              <div class="beat-tag">
+                <span class="module">Remaining life</span>
+                <span class="module-path">analytics/rul/</span>
+                <span class="cadence">once a day</span>
+              </div>
+              <h3 class="beat-title">How long has it got &mdash; or a refusal</h3>
+            </div>
+            <p class="asks">If it keeps worsening like this, when does it reach the threshold that has a physical argument behind it?</p>
+            <ul class="beat-list">
+              <li>The indicator is modelled as <b class="kw">trend plus noise</b> drifting toward its threshold. The distribution of <em>when</em> it first touches has a <b class="kw">closed form</b> &mdash; an expression, not a simulation.</li>
+              <li>Out comes a <b class="kw">range, never a date</b>: pessimistic, middle, optimistic. Nobody schedules a crew against a point estimate with no width on it.</li>
+              <li>The range <b class="kw">tightens as evidence arrives</b>. On the clearest case here it closes from <b class="kw">2,259 days to 59</b> across 84 daily estimates, as evidence goes from 14 samples to 53.</li>
+              <li>It also <b class="kw">widens on the way, and says so</b> &mdash; a run of flatter days genuinely is weaker evidence about a rate.</li>
+              <li>And it can <b class="kw">refuse</b>. Nothing publishes without: confirmed onset, <b class="kw">21 days</b> of post-onset evidence, a rate of decline measurably above zero, and a range no wider than the observation behind it.</li>
+              <li>When it refuses, the <b class="kw">reason is printed where the date would have gone</b>.</li>
+            </ul>
+            <div class="writes">
+              <span class="writes-label">writes</span>
+              <span class="writes-val">app.rul_estimates</span>
+              <span class="writes-val">&hellip; or the refusal, with its reason</span>
+            </div>
+            <p class="note">
+              Without this gate the raw maths reported that an air handler had
+              <em>already failed</em>, on a rate half a standard deviation from
+              zero, and gave a working chiller a failure date 254 days out.
+              Across both fault-free runs &mdash; <strong>720 combinations</strong>
+              of machine, mode and day &mdash; it now publishes nothing at all. A
+              remaining-life figure extrapolated from noise is worse than no
+              figure, because it looks like an answer.
+            </p>
+          </div>
+        </article>
+
+        <!-- 10 -->
+        <article class="phase" id="p10">
+          <div class="marker"><div class="num">10</div></div>
+          <div class="beat">
+            <div class="beat-head">
+              <div class="beat-tag">
+                <span class="module">Diagnosis &middot; isolation</span>
+                <span class="module-path">analytics/diagnosis/isolation.py</span>
+                <span class="cadence">once a day</span>
+              </div>
+              <h3 class="beat-title">Broken sensor, or broken machine?</h3>
+            </div>
+            <p class="asks">Do we send somebody with a calibration kit, or somebody with a wrench?</p>
+            <ul class="beat-list">
+              <li>Air leaving too warm is a coil that cannot cool <b class="kw">and</b> a thermometer reading high. From the symptom alone the two are identical.</li>
+              <li>Collect every relation that has <b class="kw">stopped holding</b> &mdash; the stage&nbsp;5 balances and the stage&nbsp;6 baselines, because <b class="kw">a baseline is a relation too</b>.</li>
+              <li>Ask: would <b class="kw">one reading wrong by a consistent amount</b> make all of them hold again?</li>
+              <li>Crucially: does the correction that fixes one relation <b class="kw">break another</b> the same reading appears in?</li>
+              <li>One bias reconciles everything &rarr; <b class="kw">the instrument</b> is the suspect. None can &rarr; the measurements agree with each other, so <b class="kw">the machine</b> is what changed.</li>
+            </ul>
+            <div class="writes writes-none">
+              <span class="writes-label">produces</span>
+              <span class="writes-val">a fault class per machine per window &mdash; sensor, equipment, control, or ambiguous</span>
+            </div>
+            <p class="note">
+              On a real drifting thermometer this recovered a bias of
+              <strong>+2.434&nbsp;K against a true injected +2.22&nbsp;K</strong>,
+              with no access to the answer key. Its power is a direct function of
+              <strong>how many relations touch the suspect</strong>: a reading in
+              only one relation is one equation in one unknown, and unfalsifiable
+              by construction. So it improves by <strong>declaring another
+              relation</strong>, not by tuning anything.
+            </p>
+          </div>
+        </article>
+
+        <!-- 11 -->
+        <article class="phase" id="p11">
+          <div class="marker"><div class="num">11</div></div>
+          <div class="beat">
+            <div class="beat-head">
+              <div class="beat-tag">
+                <span class="module">Diagnosis &middot; root cause</span>
+                <span class="module-path">analytics/diagnosis/rootcause.py</span>
+                <span class="cadence">once a day</span>
+              </div>
+              <h3 class="beat-title">Is this machine the patient, or showing someone else&rsquo;s fever?</h3>
+            </div>
+            <p class="asks">Could an open fault upstream be producing this symptom?</p>
+            <ul class="beat-list">
+              <li>Walk the graph <b class="kw">upstream</b> and find open faults on machines that feed this one.</li>
+              <li><b class="kw">Topology alone is not grounds for a link.</b> Two connected machines with faults at the same time are usually a coincidence.</li>
+              <li>A cause must degrade <b class="kw">the medium this machine consumes</b> &mdash; a declared table of mechanisms, not an opinion about which faults feel related.</li>
+              <li>When the mechanism applies: mark <b class="kw">consequential</b>, link it to the cause, and <b class="kw">demote it below</b> &mdash; so fixing the cause makes the symptom disappear on its own.</li>
+              <li><b class="kw">Never hidden.</b></li>
+            </ul>
+            <div class="writes writes-none">
+              <span class="writes-label">produces</span>
+              <span class="writes-val">a consequential link and a demoted rank, carried into the advisory</span>
+            </div>
+            <p class="note">
+              Demoting wrongly gives a badly ordered queue and the operator works
+              the row anyway. Suppressing wrongly makes a real fault
+              <em>absent</em>, and they find out when the equipment fails.
+              <strong>The queue may be badly ordered; it must never be
+              incomplete.</strong>
+            </p>
+          </div>
+        </article>
+
+        <!-- 12 -->
+        <article class="phase" id="p12">
+          <div class="marker"><div class="num">12</div></div>
+          <div class="beat">
+            <div class="beat-head">
+              <div class="beat-tag">
+                <span class="module">Advisory generation</span>
+                <span class="module-path">analytics/advisories/</span>
+                <span class="cadence">once a day</span>
+              </div>
+              <h3 class="beat-title">The advisory &mdash; the only thing a human acts on</h3>
+            </div>
+            <p class="asks">What should be done, by whom, and what does waiting cost?</p>
+            <ul class="beat-list">
+              <li><b class="kw">What</b> &mdash; the machine, the failure mode or rule, the fault class, the health score.</li>
+              <li><b class="kw">When</b> &mdash; the three dates, or the refusal and its reason.</li>
+              <li><b class="kw">Why</b> &mdash; every contributing signal with its <em>actual measured value</em>, its healthy reference, and how far it has moved. Plus how many readings were excluded, and whether the quality layer condemned them or the source column never meant what its name said.</li>
+              <li><b class="kw">Who is affected</b> &mdash; the zones downstream and the occupants in them, read off the model rather than typed in.</li>
+              <li><b class="kw">Severity</b> &mdash; the two things the system <em>measured</em> carry <b class="kw">0.7</b> between them; the two that are business context carry <b class="kw">0.3</b>. Context should shade a ranking, not decide it.</li>
+              <li><b class="kw">Cost of waiting</b>, over <b class="kw">90 days</b>, because that is a budget period. Energy: indicator &times; kW-per-unit measured on a healthy run &times; running hours &times; tariff. Plus: chance of crossing inside the horizon &times; (replacement &minus; repair).</li>
+              <li><b class="kw">Cost of acting</b> &mdash; the matching job from the library: hours at the site labour rate, plus parts.</li>
+              <li><b class="kw">Priority</b> &mdash; expected dollars saved per dollar spent.</li>
+            </ul>
+            <div class="writes">
+              <span class="writes-label">writes</span>
+              <span class="writes-val">app.advisories</span>
+            </div>
+            <p class="note">
+              When neither cost term can be computed the row is marked
+              <strong>unpriced</strong> &mdash; never <code>0.00</code>. Zero is a
+              claim: it says the fault is free to ignore, and a saturated cooling
+              valve serving two hundred people is not. The queue is two tiers:
+              priced rows ranked on money, unpriced rows after them on severity.
+            </p>
+          </div>
+        </article>
+
+        <!-- 13 -->
+        <article class="phase" id="p13">
+          <div class="marker"><div class="num">13</div></div>
+          <div class="beat">
+            <div class="beat-head">
+              <div class="beat-tag">
+                <span class="module">API and interface</span>
+                <span class="module-path">api/ &middot; web/</span>
+                <span class="cadence">on request</span>
+              </div>
+              <h3 class="beat-title">The screen</h3>
+            </div>
+            <p class="asks">What does the operator see, and can they trust it is only what was known at the time?</p>
+            <ul class="beat-list">
+              <li><b class="kw">Nineteen read-only endpoints</b> over the stored tables.</li>
+              <li>The interface <b class="kw">computes no physics</b>. Formatting, charting and layout live in pure modules, which is why the display logic is verified in a terminal without a browser.</li>
+              <li>Every screen reads <b class="kw">one shared clock</b>, and every endpoint it drives truncates strictly.</li>
+              <li>At any chosen moment, <b class="kw">nothing computed after that moment is visible anywhere</b>.</li>
+            </ul>
+            <div class="writes writes-none">
+              <span class="writes-label">writes</span>
+              <span class="writes-val">nothing &mdash; every endpoint reads</span>
+            </div>
+            <p class="note">
+              That single rule is what makes a replay of stored results
+              <strong>indistinguishable from a live system</strong> &mdash; the
+              range narrows while you watch, an advisory appears rather than
+              having always been there &mdash; without any of it being staged.
+            </p>
+          </div>
+        </article>
+
+            </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== worked example -->
+  <section class="band band-soft" id="s-worked" data-nav-before="Then, to back it up" data-nav="One reading, all the way down">
+    <div class="wrap">
+      <div class="col stack">
+        <h2>One reading, all the way down</h2>
+        <p class="sub">
+          The same number, traced through every stage. The point chosen is real:
+          the temperature of the water leaving chiller&nbsp;1&rsquo;s condenser,
+          which is the target of a baseline <em>and</em> the indicator for a
+          failure mode, so it exercises the whole chain.
+        </p>
+      </div>
+
+      <div class="scroller">
+        <table>
+          <caption class="mono" style="caption-side:bottom;text-align:left;padding:12px 16px;font-size:11.5px;color:var(--ink-faint)">
+            Coefficients, thresholds and costs are configuration read from the database and the semantic model. Duty and probability are measured per window at run time.
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Stage</th>
+              <th scope="col">What happens to this number</th>
+              <th scope="col">Lands in</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="stage">01 &nbsp;Ingest</td>
+              <td><code>chiller-1.cdw_leaving_temp = 32.4 &deg;C</code> at time&nbsp;T, already in SI.</td>
+              <td class="tab">app.measurements</td>
+            </tr>
+            <tr>
+              <td class="stage">02 &nbsp;Quality</td>
+              <td>Scored on five checks; the composite is the worst of them. Must clear <code>50</code> to be used as evidence anywhere.</td>
+              <td class="tab">quality_score, quality_flags</td>
+            </tr>
+            <tr>
+              <td class="stage">03 &nbsp;Context</td>
+              <td>Is chiller&nbsp;1 actually running &mdash; status <em>and</em> power <em>and</em> flow? Started more than an hour ago? Above twenty tons?</td>
+              <td class="tab">&mdash; gate only</td>
+            </tr>
+            <tr>
+              <td class="stage">04 &nbsp;Rules</td>
+              <td>Read by two of the three chiller rules as an input. A firing must hold for an hour before it is reported.</td>
+              <td class="tab">rule findings</td>
+            </tr>
+            <tr>
+              <td class="stage">05 &nbsp;Constraints</td>
+              <td>Appears in chiller&nbsp;1&rsquo;s energy balance. Miss recorded raw and normalised.</td>
+              <td class="tab">app.constraint_residuals</td>
+            </tr>
+            <tr>
+              <td class="stage">06 &nbsp;Baseline</td>
+              <td>It is the <em>target</em> of the condenser heat-rejection model, driven by chilled water in, out, flow, and entering condenser water. Expected value predicted; <code>observed &minus; expected</code> stored.</td>
+              <td class="tab">app.residuals</td>
+            </tr>
+            <tr>
+              <td class="stage">07 &nbsp;Indicator</td>
+              <td>That residual <em>is</em> the condenser-fouling indicator. Failure threshold <code>3.0 K</code> of excess &mdash; roughly a 7&ndash;9% compressor power penalty, the point a tube brushing pays for itself in one season, and seven times the fitted baseline&rsquo;s own spread, so it cannot be reached by scatter.</td>
+              <td class="tab">indicator series</td>
+            </tr>
+            <tr>
+              <td class="stage">08 &nbsp;Health</td>
+              <td>Daily median, onset test, centre, clamp. At <code>1.5 K</code> of excess: <code>100 &times; (1 &minus; 1.5 &divide; 3.0) = 50</code>. Health 50 is <em>degraded</em>.</td>
+              <td class="tab">app.health_state</td>
+            </tr>
+            <tr>
+              <td class="stage">09 &nbsp;Prediction</td>
+              <td>Modelled as accumulation only &mdash; scale and biofilm settle on tubes and stay there until somebody brushes them out, so a process that forbids the indicator going backwards is the physically correct one. Three dates, or a refusal.</td>
+              <td class="tab">app.rul_estimates</td>
+            </tr>
+            <tr>
+              <td class="stage">10 &nbsp;Diagnosis</td>
+              <td>Chiller&nbsp;1 offers three relations and its power meter appears in two of them &mdash; so a developed fault here <em>can</em> be misread as a faulty meter. This is a known and documented weakness, fixed by declaring more chiller relations.</td>
+              <td class="tab">fault class</td>
+            </tr>
+            <tr>
+              <td class="stage">11 &nbsp;Root cause</td>
+              <td>Chiller&nbsp;1 is fed by a cooling tower. If the tower had an open fault that warms condenser water, this advisory would be marked consequential and demoted beneath it.</td>
+              <td class="tab">consequential link</td>
+            </tr>
+            <tr>
+              <td class="stage">12 &nbsp;Advisory</td>
+              <td>
+                Energy: excess K <code>&times; 1.876 kW/K</code> (2.5% of this machine&rsquo;s measured mean 75.04&nbsp;kW compressor power, per kelvin of extra lift) <code>&times;</code> running hours <code>&times; $0.128/kWh</code>.
+                Consequential: chance of crossing within 90 days <code>&times; ($165,000 &minus; $18,000)</code>.
+                Against acting: brush the condenser tubes &mdash; 8.0&nbsp;h at $95/h plus $850 of consumables = <strong>$1,610</strong>.
+              </td>
+              <td class="tab">app.advisories</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="note" style="margin-top:24px;max-width:74ch">
+        <strong>Every number in that last row is traceable.</strong> The
+        kilowatts-per-kelvin coefficient carries its own arithmetic in the
+        database next to it, including the honest note that the 2.5% figure is a
+        handbook rule of thumb while the 75.04&nbsp;kW it multiplies is measured
+        on this machine. The tariff and the labour rate are read from the semantic
+        model and the code <em>refuses to default them</em> &mdash; a cost of
+        inaction computed against a made-up tariff is exactly the kind of number
+        this project will not produce.
+      </p>
+    </div>
+  </section>
+
+  <!-- ===================================================== the matrix -->
+  <section class="band" id="s-matrix" data-nav="What actually touches one reading">
+    <div class="wrap">
+      <div class="col stack">
+        <h2>What actually touches one reading</h2>
+        <p class="sub">
+          Not every stage cares about every point. Here is the honest answer for
+          a single new sample &mdash; and the reason one datapoint rarely creates
+          an advisory on its own.
+        </p>
+      </div>
+
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Stage</th>
+              <th scope="col">Uses this point?</th>
+              <th scope="col">Immediate output</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="stage">Quality</td>
+              <td><span class="yes">always</span></td>
+              <td>A score and any failing checks; an instrument advisory if it stays bad</td>
+            </tr>
+            <tr>
+              <td class="stage">Rules</td>
+              <td><span class="maybe">if a rule reads it</span></td>
+              <td>A sustained finding, or nothing</td>
+            </tr>
+            <tr>
+              <td class="stage">Constraints</td>
+              <td><span class="maybe">if it is in a balance</span></td>
+              <td>One residual row</td>
+            </tr>
+            <tr>
+              <td class="stage">Baselines</td>
+              <td><span class="maybe">if modelled, or a driver</span></td>
+              <td>One residual row</td>
+            </tr>
+            <tr>
+              <td class="stage">Failure-mode indicator</td>
+              <td><span class="maybe">if a mode references it</span></td>
+              <td>One indicator sample</td>
+            </tr>
+            <tr>
+              <td class="stage">Health &amp; onset</td>
+              <td><span class="no">only in aggregate</span></td>
+              <td>Nothing today &mdash; contributes to the daily median</td>
+            </tr>
+            <tr>
+              <td class="stage">Prediction</td>
+              <td><span class="no">only after onset</span></td>
+              <td>Nothing until onset is confirmed and 21 days of evidence exist</td>
+            </tr>
+            <tr>
+              <td class="stage">Diagnosis</td>
+              <td><span class="maybe">if its relations are violated</span></td>
+              <td>A sensor-versus-equipment verdict</td>
+            </tr>
+            <tr>
+              <td class="stage">Root cause</td>
+              <td><span class="maybe">if this machine has an open fault</span></td>
+              <td>Possibly a consequential link and a demotion</td>
+            </tr>
+            <tr>
+              <td class="stage">Advisory</td>
+              <td><span class="no">needs an open fault</span></td>
+              <td>A ranked, costed job &mdash; only once accumulated evidence exists</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="note" style="margin-top:24px;max-width:74ch">
+        <strong>One bad sample does not become &ldquo;replace the chiller
+        tomorrow.&rdquo;</strong> An advisory appears when an open fault exists
+        with enough accumulated evidence behind it &mdash; which is the difference
+        between a maintenance tool and an alarm panel.
+      </p>
+    </div>
+  </section>
+
+  <!-- ===================================================== cadence -->
+  <section class="band band-soft" id="s-cadence" data-nav="If you ran this live">
+    <div class="wrap">
+      <div class="col stack">
+        <h2>If you ran this live</h2>
+        <p class="sub">
+          The stages split cleanly into two loops, and the split is already how
+          the code is structured &mdash; because degradation does not move on a
+          five-minute timescale and pretending it does would only add noise.
+        </p>
+      </div>
+
+      <div class="split">
+        <div class="path">
+          <div class="path-head">
+            <h3>Fast path</h3>
+            <span class="path-when">every few minutes</span>
+          </div>
+          <div class="chain">
+            <span>ingest</span><span class="arrow">&rarr;</span>
+            <span>quality</span><span class="arrow">&rarr;</span>
+            <span>context</span><span class="arrow">&rarr;</span>
+            <span>rules</span><span class="arrow">&rarr;</span>
+            <span>constraints</span><span class="arrow">&rarr;</span>
+            <span>baselines</span><span class="arrow">&rarr;</span>
+            <span>indicators</span>
+          </div>
+          <p class="card-what">
+            Everything that is a statement about <em>right now</em>. Runs on a
+            recent window, so cost scales with the window rather than with
+            history. This is the loop that catches an instrument going bad and a
+            rule being violated.
+          </p>
+        </div>
+
+        <div class="path">
+          <div class="path-head">
+            <h3>Slow path</h3>
+            <span class="path-when path-when-slow">once a day</span>
+          </div>
+          <div class="chain">
+            <span>health &amp; onset</span><span class="arrow">&rarr;</span>
+            <span>prediction</span><span class="arrow">&rarr;</span>
+            <span>diagnosis</span><span class="arrow">&rarr;</span>
+            <span>root cause</span><span class="arrow">&rarr;</span>
+            <span>advisories</span>
+          </div>
+          <p class="card-what">
+            Everything that is a statement about a <em>trend</em>. Health is
+            defined per day by design. Advisories are rewritten when the
+            open-fault picture changes, so the queue an operator opens in the
+            morning is a coherent snapshot rather than a shifting list.
+          </p>
+        </div>
+      </div>
+
+      <p class="note" style="margin-top:26px;max-width:74ch">
+        <strong>What gets harder in a genuinely streaming deployment</strong> is
+        not the protocol &mdash; a new source sits behind the existing manifest
+        interface, and nothing downstream knows where a reading came from. It is
+        the semantics: readings that arrive late or out of order, gaps that are
+        network outages rather than dead sensors, and the fact that the hourly
+        rollup and the daily health computation both currently assume a complete
+        window.
+      </p>
+    </div>
+  </section>
+
+  <!-- ===================================================== nevers -->
+  <section class="band" id="s-nevers" data-nav="Four things that never happen">
+    <div class="wrap">
+      <div class="col stack">
+        <h2>Four things that never happen</h2>
+        <p class="sub">
+          Each of these is a decision rather than an omission, and each one makes
+          the system look less complete and more trustworthy.
+        </p>
+      </div>
+
+      <div class="nevers">
+        <div class="never">
+          <div class="never-claim">The detection path never reads the answers</div>
+          <div class="never-why">
+            Every layer that detects, scores, baselines, predicts or diagnoses
+            connects to the database as a role with <strong>no grant of any
+            kind</strong> on the schema holding the labels &mdash; not restricted
+            access, none. A query from that side fails with
+            <code>permission denied</code>. Exactly two components hold the other
+            credential and neither computes anything: the accuracy harness, and
+            the one screen that shows the answers. They run as separate
+            processes, so the separation does not rest on nobody adding the wrong
+            import.
+          </div>
+        </div>
+        <div class="never">
+          <div class="never-claim">Nothing is written back to a machine</div>
+          <div class="never-why">
+            There is no write path to any actuator, ever. Adjusting setpoints on
+            the strength of an inference that can be wrong is a different product
+            with a different safety case. This one advises a human, and sits
+            beside a building automation system rather than becoming one.
+          </div>
+        </div>
+        <div class="never">
+          <div class="never-claim">The interface never computes a prediction</div>
+          <div class="never-why">
+            Every screen reads stored rows. If a number is wrong it is wrong in
+            one place, and it is the same number a script can print in a terminal.
+            No chart is allowed to disagree with the ranking the analytics layer
+            produced &mdash; the queue view deliberately does not re-sort.
+          </div>
+        </div>
+        <div class="never">
+          <div class="never-claim">A threshold is never moved to make a number look better</div>
+          <div class="never-why">
+            Every failure threshold carries a written physical justification in a
+            column that cannot be left empty, precisely so that changing one
+            requires changing the argument for it rather than only the value. If a
+            result is bad, the fix is upstream of the threshold.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== closing -->
+  <section class="band band-soft" id="s-closing" data-nav="The whole thing in one paragraph">
+    <div class="wrap">
+      <div class="col stack">
+        <h2>The whole thing in one paragraph</h2>
+      </div>
+
+      <div class="pull">
+        <div class="pull-label">If you have thirty seconds</div>
+        <p>
+          Readings land, get quality-scored, and then feed three things in
+          parallel: physics rules, physics consistency checks, and models of what
+          this machine does when it is healthy <em>given what is being asked of
+          it</em>. Named failure modes read those residuals and turn them into one
+          number each, rolled to a daily health score with a confirmed start date
+          &mdash; and only then, optionally, projected into a range of failure
+          dates, with an explicit refusal when the evidence will not carry one.
+          Alongside that, we separate a lying instrument from a failing machine by
+          asking whether one biased reading could reconcile everything, and we
+          demote a symptom beneath an upstream cause when the mechanism actually
+          permits it. The advisory assembles all of it: the diagnosis, the
+          prediction or the refusal, who is affected, and what waiting costs
+          against what acting costs.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <p>
+        <strong style="font-weight:400;color:var(--ink-muted)">Augur</strong>
+        &middot; predictive maintenance for building plant. One commercial
+        building, two equipment classes, 107 measured points across 8 assets, 9
+        rules, 6 failure modes, 16 interventions.
+      </p>
+      <p>
+        Every threshold, coefficient, tariff and cost quoted on this page is read
+        from the database or the semantic model, and every accuracy figure the
+        project reports is computed against labels it did not create. Measured
+        performance, including where it falls short, is regenerated from the
+        database on every run.
+      </p>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+
+  /* ==========================================================================
+     The navigator.
+
+     Built entirely from the document above. Nothing on the rail is typed in a
+     second time: each row's label comes from the heading it points at. Rename a
+     stage in the prose and the rail renames itself.
+
+     Ordering is document order, which is also the order of the argument.
+     ====================================================================== */
+  (function () {
+    var list = document.getElementById("railList");
+    if (!list) return;
+
+    var found = document.querySelectorAll("[data-nav], [data-nav-group], .phase");
+    var steps = [];
+
+    function label(node) {
+      return node ? node.textContent.replace(/\s+/g, " ").trim() : "";
+    }
+
+    function heading(name) {
+      var head = document.createElement("div");
+      head.className = "nav-sep";
+      head.textContent = name;
+      list.appendChild(head);
+    }
+
+    for (var i = 0; i < found.length; i++) {
+      var el = found[i];
+
+      // A group marker is a heading on the rail, not a stop on the walk.
+      var group = el.getAttribute("data-nav-group");
+      if (group) {
+        heading(group);
+        continue;
+      }
+
+      var before = el.getAttribute("data-nav-before");
+      if (before) heading(before);
+
+      var isPhase = el.classList.contains("phase");
+
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "nav-item";
+
+      var num = document.createElement("span");
+      num.className = "nav-num";
+      num.textContent = isPhase ? label(el.querySelector(".num")) : "";
+      button.appendChild(num);
+
+      var body = document.createElement("span");
+      body.className = "nav-body";
+
+      var name = document.createElement("span");
+      name.textContent = isPhase
+        ? label(el.querySelector(".beat-title"))
+        : el.getAttribute("data-nav");
+      body.appendChild(name);
+
+      // The module this stage belongs to, read off the classification line the
+      // stage already carries — so the rail says which part of the platform we
+      // are in without a second copy of the mapping.
+      var mod = document.createElement("span");
+      mod.className = "nav-mod";
+      mod.textContent = isPhase ? label(el.querySelector(".module")) : "";
+      body.appendChild(mod);
+
+      button.appendChild(body);
+
+      button.addEventListener("click", function (target) {
+        return function () {
+          target.scrollIntoView({
+            behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+              ? "auto"
+              : "smooth",
+            block: "start"
+          });
+        };
+      }(el));
+
+      list.appendChild(button);
+      steps.push({ el: el, button: button });
+    }
+
+    if (steps.length === 0) return;
+
+    /* ---- which step are we on -------------------------------------------- */
+
+    // The step whose top has most recently crossed a line 30% down the
+    // viewport. A line rather than an intersection band, because the stages
+    // differ in height by a factor of three and a band leaves scroll positions
+    // where nothing at all is current.
+    var current = -1;
+
+    function render(index) {
+      if (index === current) return;
+      current = index;
+
+      for (var s = 0; s < steps.length; s++) {
+        var b = steps[s].button;
+        if (s === index) b.setAttribute("aria-current", "step");
+        else b.removeAttribute("aria-current");
+        if (s < index) b.classList.add("is-done");
+        else b.classList.remove("is-done");
+      }
+
+      // Keep the active row visible without scrolling the page itself.
+      var active = steps[index].button;
+      if (active.offsetTop < list.scrollTop) {
+        list.scrollTop = active.offsetTop - 10;
+      } else if (
+        active.offsetTop + active.offsetHeight >
+        list.scrollTop + list.clientHeight
+      ) {
+        list.scrollTop =
+          active.offsetTop + active.offsetHeight - list.clientHeight + 14;
+      }
+    }
+
+    function measure() {
+      var line = window.innerHeight * 0.3;
+      var index = 0;
+      for (var i = 0; i < steps.length; i++) {
+        if (steps[i].el.getBoundingClientRect().top <= line) index = i;
+        else break;
+      }
+      // At the foot of the page the last section may never reach the line.
+      if (
+        window.scrollY + window.innerHeight >=
+        document.documentElement.scrollHeight - 6
+      ) {
+        index = steps.length - 1;
+      }
+      render(index);
+    }
+
+    var queued = false;
+    function onScroll() {
+      if (queued) return;
+      queued = true;
+      window.requestAnimationFrame(function () {
+        queued = false;
+        measure();
+      });
+    }
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    measure();
+  })();
+
+</script>
+</body>
+</html>

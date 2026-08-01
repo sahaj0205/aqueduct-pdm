@@ -15,23 +15,24 @@
  * system, so they name each other instead.
  */
 
-/* Surfaces. Mirrors --paper / --canvas-soft / --sunken / --hairline / --hairline-strong. */
-export const paper = "#131c2e";
-export const raised = "#182236";
-export const sunken = "#0f1726";
-export const hairline = "#233149";
-export const hairlineStrong = "#3a4d6b";
+/* Surfaces. Mirrors --paper / --canvas-soft / --sunken / --hairline / --hairline-strong.
+   The same middle-dark slate navy the deck uses — see the note in fm/theme.css. */
+export const paper = "#1a2332";
+export const raised = "#232f42";
+export const sunken = "#1c2636";
+export const hairline = "#34435c";
+export const hairlineStrong = "#4c5f7d";
 
 /* Ink. Mirrors --ink / --ink-muted / --ink-faint. */
-export const ink = "#e9eff8";
-export const inkMuted = "#aabdd4";
-export const inkFaint = "#7488a3";
+export const ink = "#eef3fa";
+export const inkMuted = "#c2d0e2";
+export const inkFaint = "#95a6bf";
 
-/* The single chromatic accent. Indigo, lifted off the light-theme #533afd so it keeps
-   its contrast against a dark surface rather than sinking into it. */
-export const info = "#8b7bff";
-export const infoWash = "#242a4d";
-export const infoInk = "#b6acff";
+/* The single chromatic accent. Indigo lifted toward lavender so it clears the contrast
+   floor against this field — the light theme's #533afd sits at roughly 3:1 here. */
+export const info = "#a99cff";
+export const infoWash = "#2a2f56";
+export const infoInk = "#bcb2ff";
 
 /**
  * SEVERITY, from DESIGN_SEMANTIC.md, lifted for dark surfaces. Red, orange, gold,
@@ -40,25 +41,25 @@ export const infoInk = "#b6acff";
  * a scale whose two ends collapse into each other is not a scale for one reader in
  * twelve. Every badge still carries a word and a distinct silhouette as well as a hue.
  */
-export const critical = "#ff6b74";
-export const high = "#ff9f52";
-export const medium = "#f2cf51";
-export const low = "#8ba1bd";
+export const critical = "#ff8389";
+export const high = "#ff9d4d";
+export const medium = "#f4d35e";
+export const low = "#a8c3de";
 
-/* Washes are dark tints here rather than pale ones — a pale wash on a dark panel reads
-   as a light-theme element that failed to load. */
-export const criticalWash = "#3b1b20";
-export const highWash = "#3a2718";
-export const mediumWash = "#37301a";
-export const lowWash = "#1b2434";
+/* Washes are tints of the slate field, not pale colours — a pale wash on a dark panel
+   reads as a light-theme element that failed to load. */
+export const criticalWash = "#3d2530";
+export const highWash = "#3a2c1f";
+export const mediumWash = "#363220";
+export const lowWash = "#263345";
 
-export const criticalInk = "#ff8f96";
+export const criticalInk = "#ff9ba0";
 export const highInk = "#ffb87d";
-export const mediumInk = "#f5db83";
-export const lowInk = "#a8bcd6";
+export const mediumInk = "#f7de8b";
+export const lowInk = "#bed3e8";
 
-/* Text set on a saturated fill. */
-export const onFill = "#0b1220";
+/* Text set on a saturated fill. Dark, because every severity fill here is light. */
+export const onFill = "#1a2332";
 
 /**
  * The four states a drawn node can be in.
@@ -81,7 +82,8 @@ export const NODE = {
 /** Chart furniture: the parts of a plot that are not data and must not read as data. */
 export const CHART = {
   surface: paper,
-  grid: "#1f2c42",
+  /* Sits between the card fill and the hairline: present, never noticed. */
+  grid: "#2c3a4d",
   axis: hairlineStrong,
   tick: inkFaint,
   label: inkMuted,
