@@ -9,8 +9,18 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    # BOUND TO LOOPBACK, NOT TO EVERY INTERFACE. Without the 127.0.0.1 prefix Docker
+    # publishes this on 0.0.0.0, which on the deployment box means the database is
+    # reachable from the public internet — and Docker writes its own iptables rules, so
+    # a host firewall that looks correct does not stop it. Nothing outside this machine
+    # has any business reaching Postgres directly: the API and the reveal service talk
+    # to it over the compose network, and nginx is the only thing the internet touches.
+    #
+    # The server had this fix applied by hand and the repository did not, so a rebuild
+    # from a clean clone would have quietly exposed the database. That drift is what
+    # this line closes.
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - timescale_data:/var/lib/postgresql/data
     # Docker defaults /dev/shm to 64 MB. PostgreSQL puts the shared memory for

@@ -1,0 +1,42 @@
+# Deployment overlay. Adds the two serving processes to the database the base file
+# defines, and keeps every port on loopback -- nginx is the only thing the internet
+# reaches, exactly as it is for the other sites on this box.
+services:
+  api:
+    build: .
+    image: aqueduct-api
+    container_name: aqueduct-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Inside the compose network the database is "db:5432", not localhost:5433.
+      APP_RW_DATABASE_URL: postgresql+psycopg://app_rw:${APP_RW_PASSWORD}@db:5432/aqueduct
+      ADMIN_DATABASE_URL: postgresql+psycopg://aqueduct:${POSTGRES_PASSWORD}@db:5432/aqueduct
+    volumes:
+      # The LBNL-published Brick models. Read at startup by the graph loader and by the
+      # twin topology endpoint; deliberately NOT baked into the image, because they are
+      # third-party data that belongs beside the dataset rather than inside a build.
+      - ./data/raw/ttl:/app/data/raw/ttl:ro
+    depends_on: [db]
+    ports: ["127.0.0.1:8090:8000"]
+
+  # A SEPARATE PROCESS on the admin credential, which is the whole basis of the claim
+  # that no detector in this system can have seen the label it is scored against. It
+  # shares an image with the API and shares nothing else.
+  reveal:
+    # No build stanza: it reuses the image the api service builds. Declaring build on
+    # both made compose export the same tag twice in parallel and fail on the second.
+    image: aqueduct-api
+    container_name: aqueduct-reveal
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ADMIN_DATABASE_URL: postgresql+psycopg://aqueduct:${POSTGRES_PASSWORD}@db:5432/aqueduct
+    volumes:
+      # The LBNL-published Brick models. Read at startup by the graph loader and by the
+      # twin topology endpoint; deliberately NOT baked into the image, because they are
+      # third-party data that belongs beside the dataset rather than inside a build.
+      - ./data/raw/ttl:/app/data/raw/ttl:ro
+    depends_on: [db]
+    command: ["uvicorn", "reveal.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports: ["127.0.0.1:8091:8000"]

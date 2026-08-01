@@ -12669,3 +12669,79 @@ looked at, it just cannot be regenerated.
 
     START HERE: docs/IMPLEMENTATION_NOTES.md is the only place this drawing now exists in
     description; there is no code left to open.
+
+## The deployment recipe, brought into the repository
+
+### WHAT WE DID
+
+The instructions for building and running this system on a server existed in exactly one
+place: the server. Two files describing how the API and the answer-key service are built
+into a container and wired to the database had been written during the original deployment
+and copied straight onto the machine, never into the project. If that machine were lost,
+rebuilding it would have meant reconstructing those files from memory or from a chat log.
+They are now in the repository alongside everything else.
+
+Bringing them in also exposed a difference that mattered. The database on the server had
+been changed by hand to accept connections only from the machine itself, and the project's
+own copy had never been given the same change. Anybody rebuilding from a clean checkout
+would have started a database open to the whole internet without being told. The project's
+copy now carries that restriction, so the repository and the running machine finally agree.
+
+Neither of the two files contains a password. Both refer to credentials by name and read
+the actual values from a file that stays on the server and is not tracked — which is what
+made them safe to bring in unchanged.
+
+### HOW IT WORKS
+
+    Dockerfile :: the one image both services run
+      WHY IT EXISTS: The API and the answer-key service are two processes that share the
+        entire analytics codebase and differ only in which database credential they open
+        and which application they serve. Building an image for each would be two copies
+        of the same 400 MB of scientific Python on a small machine.
+      WHAT IT DOES: Starts from a slim Python 3.12 base, installs curl for the container
+        health checks, then installs the dependency set as an explicit list before any
+        source is copied — so editing a Python file does not reinstall scipy. Copies the
+        seven source packages, and defaults to serving the API. The answer-key service
+        overrides that command in the compose overlay.
+      CHOICES: The dependency list is written out in the Dockerfile rather than read from
+        pyproject.toml, which is why a new dependency has to be added in two places. The
+        upside is that the install layer is cached against a file that changes far less
+        often than the project metadata does.
+
+    compose.deploy.yml :: the deployment overlay
+      WHY IT EXISTS: Layered on top of the base compose file, which defines only the
+        database. This adds the two serving processes and the settings that are true of
+        the server and not of a laptop.
+      WHAT IT DOES: Declares the API on port 8090 and the answer-key service on 8091, both
+        bound to the machine's own loopback address so nginx is the only route in from
+        outside. Rewrites both database URLs to address the database by its service name
+        on the internal container network rather than through the host. Mounts the
+        published building models from disk as read-only rather than baking them into the
+        image, because they are third-party data that belongs beside the dataset.
+      CHOICES: Only the API service declares a build. The answer-key service reuses the
+        resulting image by name — declaring build on both made compose try to export the
+        same tag twice in parallel and fail on the second.
+      ⚠ The two services exist separately for one reason, and it is the basis of the
+        entire accuracy claim: the API connects with a role that has no permission to read
+        the schema holding the injected faults, and the answer-key service connects with
+        the administrative one. Merging them into a single process to save memory would
+        silently destroy that separation, and nothing would fail visibly when it did.
+
+    docker-compose.yml :: the database's published port
+      WHY IT EXISTS: The base file, used by both a laptop and the server.
+      CHANGED FROM BEFORE: The port was published without an address, which makes Docker
+        listen on every interface. On the deployment box that means the database is
+        reachable from the public internet, and because Docker writes its own firewall
+        rules a host firewall that reads as correct does not prevent it. It is now pinned
+        to the loopback address. Local use is unaffected: everything connects through
+        localhost, which is what this binding serves.
+      ⚠ JUDGEMENT CALL: This was fixed in the base file rather than overridden in the
+        deployment overlay, even though the overlay is where deployment-specific settings
+        belong. Compose merges list values by appending rather than replacing, so an
+        override would have produced two published bindings for one port instead of
+        replacing the open one. Editing the base is the only placement that reliably
+        closes the exposure, and a database that refuses connections from other machines
+        is the right default on a laptop too.
+
+    START HERE: compose.deploy.yml — it is the whole shape of the running system on one
+    page: what is built, what talks to what, and which credential each service gets.
