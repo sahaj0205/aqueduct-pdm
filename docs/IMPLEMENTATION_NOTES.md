@@ -12601,3 +12601,71 @@ asking whoever edited one to remember the other, and nothing able to enforce it.
 
     START HERE: web/src/fm/FmApp.tsx — the note at the top is the reasoning for the whole
     checkpoint, and the deletion it describes is the change.
+
+## The superseded plant schematic — removed
+
+### WHAT WE DID
+
+The project could not run its own build command. `npm run build` typechecks before it
+bundles, and the typecheck had been failing for some time on a file that draws the plant
+as a diagram. The failure was being stepped around by invoking the bundler directly, which
+means the one gate that catches a mistake before it reaches the server was switched off.
+
+The cause was not a bug in working code. It was a second, older drawing of the plant that
+nothing on screen uses any more. It had been replaced by a newer one, and the replacement
+was wired up everywhere while the original was left in the tree. At some point after that,
+the five names the system uses for health tiers were renamed, and the abandoned file was
+never updated to match — so it was comparing the health of a machine against two tier
+names that no longer exist. Every machine in good condition would have been drawn as a
+critical failure. Nobody saw it, because nothing renders that drawing.
+
+Both the old drawing and the script that used to render it to a file have been removed.
+The build now runs its typecheck and its bundle together and passes. The picture that
+script produced is still on disk as a record of the checkpoint that made it; it can be
+looked at, it just cannot be regenerated.
+
+### HOW IT WORKS
+
+    web/src/lib/schematic.ts :: DELETED
+      WHY IT EXISTED: The first version of the plant diagram — the fixed arrangement of
+        towers, chillers, loops, coil, fan and zones, plus the logic that decided what
+        colour each box should be from the health number attached to it.
+      WHAT REPLACED IT: web/src/lib/twin-layout.ts, which the building screen has been
+        rendering for some time through the DigitalTwin component. The replacement reads
+        its colours from the shared design palette instead of holding its own, and knows
+        five health tiers where this one knew four.
+      CHANGED FROM BEFORE: The deleted file carried a private copy of the colour table in
+        dark hexadecimal from a theme the product no longer uses, and a private four-value
+        state type. Its `stateOf` function tested the health tier against the strings "ok"
+        and "warn", which were renamed to "healthy", "watch" and "degraded" — so both
+        comparisons were dead and every scored machine fell through to "critical". That is
+        the defect the compiler was reporting.
+
+    web/src/components/PlantSchematic.tsx (+ .module.css) :: DELETED
+      WHY IT EXISTED: The React component that drew the above as SVG.
+      WHAT REPLACED IT: components/DigitalTwin.tsx. Checked before deleting: no file in
+        the project imported PlantSchematic, so it had no consumers at all.
+
+    web/scripts/verify-schematic.ts :: DELETED
+      WHY IT EXISTED: Rendered the component to static markup outside a browser, asserted
+        its structure, and wrote the result to docs/plots/plant_schematic.svg so a drawing
+        could be verified as text rather than described.
+      WHAT REPLACED IT: scripts/verify-twin.ts, whose own header states it replaces this
+        one and keeps the same idea. The npm script that ran it had already been removed
+        from package.json and the Makefile target had already been removed too, so this
+        was the last piece of a command that no longer existed.
+      CHOICES: docs/plots/plant_schematic.svg is deliberately KEPT. It is the recorded
+        output of an earlier checkpoint and the notes for that checkpoint point a reader
+        at it. Deleting the generator makes it un-regenerable, which is the honest state
+        of affairs for a drawing of a screen that no longer exists.
+
+    web/scripts/run-ts.mjs :: the usage example
+      WHY IT EXISTS: The runner that executes these TypeScript scripts under esbuild with
+        CSS module imports stubbed out.
+      CHANGED FROM BEFORE: Its header showed an example invocation naming the script just
+        deleted, and its explanation of the CSS stub referred to "the schematic". Both now
+        name verify-twin.ts and "the plant drawing". No behaviour change — the file is
+        otherwise untouched.
+
+    START HERE: docs/IMPLEMENTATION_NOTES.md is the only place this drawing now exists in
+    description; there is no code left to open.

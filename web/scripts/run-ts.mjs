@@ -9,11 +9,11 @@
  * The plugin stubs CSS module imports. It is needed because esbuild treats *.module.css
  * as a CSS module and refuses to bundle one without an output path, and --loader does
  * not override that. The stub returns each requested key as its own class name, which
- * is what a CSS module does anyway; the schematic renders correctly through it because
- * every colour in that SVG is a fill or stroke attribute computed from data rather than
- * a style rule.
+ * is what a CSS module does anyway; the plant drawing renders correctly through it
+ * because every colour in that SVG is a fill or stroke attribute computed from data
+ * rather than a style rule.
  *
- *     node scripts/run-ts.mjs scripts/verify-schematic.ts
+ *     node scripts/run-ts.mjs scripts/verify-twin.ts
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
