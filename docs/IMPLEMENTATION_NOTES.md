@@ -12745,3 +12745,76 @@ made them safe to bring in unchanged.
 
     START HERE: compose.deploy.yml — it is the whole shape of the running system on one
     page: what is built, what talks to what, and which credential each service gets.
+
+## Shipping the site is one command
+
+### WHAT WE DID
+
+Putting a new version of the site on the server was a sequence of nine commands that
+existed only in a chat transcript. Every release meant finding that transcript and
+retyping them in the right order, and several of them destroy something — they move the
+live directory aside and replace it — so getting the order wrong or stopping half way had
+real consequences. It is now one command, and a second command puts the previous version
+back.
+
+The order matters and is now enforced rather than remembered. The site is compiled on this
+machine first, and compiling includes the type check that refuses to produce output when
+something is wrong. Only if that passes does anything reach the server. Before this, the
+compile step was routinely skipped by calling the bundler directly, which meant a mistake
+could travel all the way to a live site before anyone noticed.
+
+The new version is also unpacked into a temporary place and inspected before the live
+directory is touched at all. If an upload arrives truncated the deploy stops there, with
+the old site still serving, instead of replacing a working site with a broken one.
+
+### HOW IT WORKS
+
+    Makefile :: DEPLOY_HOST, DEPLOY_URL, DEPLOY_ROOT
+      WHY THEY EXIST: The three facts about the destination, named once and overridable
+        from the command line, so a second machine is `make deploy DEPLOY_HOST=...` rather
+        than an edited file.
+      CHOICES: DEPLOY_HOST is an SSH alias, not an address. The hostname, the login name
+        and the path to the private key all stay in the developer's own SSH configuration
+        under that name. A Makefile in a public repository has no business carrying the
+        address of a machine or the location of a key.
+
+    Makefile :: deploy
+      WHY IT EXISTS: The whole release, in one command, in an order that cannot be got
+        wrong.
+      WHAT IT DOES: Declares the frontend build as a prerequisite, so the type check and
+        the bundler run first and the whole thing stops if either fails. Compresses the
+        built output and streams it over the existing SSH connection into a temporary file
+        on the server. Then, on the server: takes a dated archive of the currently live
+        directory into the backups folder, unpacks the new version into a staging
+        directory, and checks that a non-empty index.html actually arrived. Only then does
+        it move the live directory aside to `.old`, move the staged copy into its place,
+        and hand ownership to the web server's user. Finally it prints the asset filename
+        built here next to the one the live site is now serving, and the status and byte
+        count of the standalone reference document — three lines that say whether the
+        deploy actually took.
+      CHOICES: Staged and swapped rather than unpacked over the top. Asset filenames carry
+        a content hash, so extracting in place leaves every previous build's files sitting
+        alongside the new ones and the directory grows for ever. The check for index.html
+        happens before the live directory is moved, so a truncated upload fails while the
+        site is still standing rather than after it has been replaced.
+      ⚠ JUDGEMENT CALL: The build runs here rather than on the server. The server has no
+        Node and the alternative — installing it and building there — was rejected because
+        that machine also runs the database, so a bundler competes with a live service for
+        memory, and a build that dies part way leaves nothing to swap in. The cost of this
+        choice is that a release can only be cut from a machine with the toolchain
+        installed. Given the compressed output is about 600 KB, there is nothing to gain by
+        moving the work to the far end of the wire.
+
+    Makefile :: deploy-rollback
+      WHY IT EXISTS: The previous build is left on disk by every deploy, so undoing one
+        needs no upload, no rebuild and nothing fetched.
+      WHAT IT DOES: Checks the previous build is actually there, deletes the current live
+        directory and moves the previous one back into its place.
+      CHOICES: Deliberately not chained onto a failed deploy. A release that dies part way
+        is something to look at rather than to unwind automatically, and the swap is
+        ordered so that the site keeps serving the old build until the final move succeeds
+        anyway. Note that rolling back consumes the spare: after it runs there is no
+        `.old` to go back to until the next deploy makes one.
+
+    START HERE: Makefile — the `deploy` target, which is the only place the release
+    sequence is now written down.

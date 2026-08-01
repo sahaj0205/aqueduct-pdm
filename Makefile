@@ -1,4 +1,4 @@
-.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-twin web-verify-clock web-verify-funnel web-verify-diagnosis web-verify-prediction web-verify-config web-build validate
+.PHONY: install db-up db-down load graph scenarios plots quality rules-demo mode-plot apar chiller-rules residuals baselines modes health degradation rul refusal diagnosis rootcause advisories advisories-write advisory-replay engine-trace demo api reveal web web-verify web-verify-detail web-verify-twin web-verify-clock web-verify-funnel web-verify-diagnosis web-verify-prediction web-verify-config web-build validate deploy deploy-rollback
 
 # Resolve and install the Python environment into .venv
 install:
@@ -278,6 +278,67 @@ web-verify-config:
 # Typecheck and production-build the frontend.
 web-build:
 	cd web && npm run build
+
+# Where the built site goes, and what to open to check it landed. Both overridable on
+# the command line -- `make deploy DEPLOY_HOST=staging` -- so this file names the usual
+# destination without hardcoding it as the only one.
+#
+# DEPLOY_HOST IS AN SSH ALIAS, not a hostname. The address, the login and the key all
+# live in ~/.ssh/config under that name, which is the one place they belong: a Makefile
+# in a public repository has no business carrying the address of a machine or the path
+# to a private key.
+DEPLOY_HOST ?= oci
+DEPLOY_URL  ?= https://aqueduct-pdm.sahajpreet.in
+DEPLOY_ROOT ?= /var/www/aqueduct-pdm
+
+# Ship the frontend to the server.
+#
+# WHY THE BUILD HAPPENS HERE AND NOT THERE. The server has no Node installed and does not
+# want it: it runs the database, so a bundler competing for its memory is a real cost, and
+# a build that dies half way through would leave the live directory already swapped out.
+# Building locally means the typecheck -- which `web-build` runs before the bundler -- is
+# the gate, and it fails on this laptop before anything on the server is touched. What
+# travels is about 600 KB of compressed output, so there is nothing to gain by moving the
+# work to the other end of the wire.
+#
+# WHY THE NEW BUILD IS STAGED AND SWAPPED RATHER THAN EXTRACTED IN PLACE. Asset filenames
+# carry a content hash, so unpacking over the top leaves every previous build's files
+# behind alongside the new ones and the directory grows without bound. The staged copy is
+# also checked for an index.html before the live directory is moved aside -- a truncated
+# upload should fail while the site is still standing, not after it has been replaced.
+#
+# The previous build is kept at <root>.old, and `deploy-rollback` puts it back.
+deploy: web-build
+	cd web && tar cz -C dist . | ssh $(DEPLOY_HOST) 'cat > /tmp/aqueduct-dist.tgz'
+	ssh $(DEPLOY_HOST) 'set -e; \
+	  STAMP=$$(date +%Y%m%d-%H%M%S); \
+	  sudo mkdir -p /root/backups; \
+	  sudo tar cz -C /var/www $(notdir $(DEPLOY_ROOT)) -f /root/backups/aqueduct-www-$$STAMP.tgz; \
+	  rm -rf /tmp/aqueduct-stage && mkdir -p /tmp/aqueduct-stage; \
+	  tar xzf /tmp/aqueduct-dist.tgz -C /tmp/aqueduct-stage; \
+	  test -s /tmp/aqueduct-stage/index.html || { echo "  staged upload has no index.html -- refusing to swap"; exit 1; }; \
+	  sudo rm -rf $(DEPLOY_ROOT).old; \
+	  sudo mv $(DEPLOY_ROOT) $(DEPLOY_ROOT).old; \
+	  sudo mv /tmp/aqueduct-stage $(DEPLOY_ROOT); \
+	  sudo chown -R www-data:www-data $(DEPLOY_ROOT); \
+	  echo "  swapped -- previous build kept at $(DEPLOY_ROOT).old"'
+	@echo "--- what the browser is served now ---"
+	@echo "  local build:  $$(cd web && ls dist/assets/index-*.js | head -1 | xargs basename)"
+	@echo "  live:         $$(curl -s --max-time 20 $(DEPLOY_URL)/ | grep -o 'index-[A-Za-z0-9_-]*\.js' | head -1)"
+	@echo "  flow.html:    $$(curl -s -o /dev/null -w '%{http_code}, %{size_download} bytes' --max-time 20 $(DEPLOY_URL)/flow.html)"
+
+# Put the previous build back. The swap above leaves it on disk untouched, so this is
+# the whole of a rollback -- no re-upload, no rebuild, nothing to fetch.
+#
+# It is deliberately NOT chained onto a failed deploy. A deploy that dies part way is a
+# situation to look at rather than to unwind automatically, and the site is still serving
+# the old build until the final move succeeds anyway.
+deploy-rollback:
+	ssh $(DEPLOY_HOST) 'set -e; \
+	  test -d $(DEPLOY_ROOT).old || { echo "  no previous build at $(DEPLOY_ROOT).old"; exit 1; }; \
+	  sudo rm -rf $(DEPLOY_ROOT); \
+	  sudo mv $(DEPLOY_ROOT).old $(DEPLOY_ROOT); \
+	  echo "  rolled back -- $(DEPLOY_ROOT).old is now the live build and no longer exists as a spare"'
 
 # Rebuild the advisory queue once per DAY across every era and keep every day, so the
 # dashboard can put its clock at any date and show what was on the operator's screen
