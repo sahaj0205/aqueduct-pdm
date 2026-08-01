@@ -1,0 +1,454 @@
+/*
+ * The drawings.
+ *
+ * Colour follows the same rules as everywhere else in this project: indigo carries emphasis
+ * and the thing being followed, the severity scale is reserved for measurement, and nothing
+ * is coloured only to be decorative. Where a severity colour appears — the health bands, the
+ * failing quality check, the bad validation number — it is because that value IS a
+ * measurement on that scale.
+ */
+
+.figure {
+  margin: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.svg {
+  width: 100%;
+  height: auto;
+  max-height: 58vh;
+  overflow: visible;
+}
+
+/* What the drawing is saying, in one line, under it. Not a title — the slide's heading
+   already did that — but the reading of the picture. */
+.caption {
+  font-family: var(--mono);
+  /* Its own clamp rather than --t-deck-label, whose floor is 13px. A caption is how the
+     drawing is read; at 13px on a projector it is decoration nobody can use. The figure
+     column has the room to hold 15 even on the shortest window. */
+  font-size: clamp(15px, 1.8vh, 16px);
+  line-height: 1.45;
+  color: var(--ink-faint);
+  letter-spacing: var(--track-tabular);
+}
+
+/* --------------------------------------------------------------------- shared text */
+
+.tick,
+.tickSmall,
+.value,
+.valueBad,
+.stepLabel,
+.stepValue,
+.stepBig,
+.fieldKey,
+.fieldVal,
+.fieldFrom,
+.rungLabel,
+.nodeLabel,
+.boxLabel,
+.boxSub,
+.causeLabel,
+.outLabel,
+.formula,
+.needleLabel,
+.fanLabel,
+.thresholdLabel,
+.cleanMark,
+.refusalNote,
+.keyExpected,
+.keyObserved {
+  font-family: var(--mono);
+}
+
+.tick {
+  font-size: 15px;
+  fill: var(--ink-faint);
+}
+
+.tickSmall {
+  font-size: 14px;
+  fill: var(--ink-faint);
+}
+
+.value {
+  font-size: 17px;
+  fill: var(--ink);
+}
+
+.valueBad {
+  font-size: 17px;
+  fill: var(--sev-critical);
+}
+
+.gridline {
+  stroke: var(--hairline);
+  stroke-width: 1;
+}
+
+/* -------------------------------------------------------- act 0 · how to read this
+ *
+ * A picture of this screen. Everything is deliberately dimmed except the chips row and the
+ * drawer, because the whole job of the drawing is to say "that row down there is a control,
+ * not decoration" — and it can only say it if the eye lands there first.
+ */
+
+.screen {
+  fill: var(--sunken);
+  stroke: var(--hairline);
+  stroke-width: 1;
+}
+
+/* Stand-ins for content. Legible as "some text" without inviting anybody to read it. */
+.ghost {
+  fill: var(--hairline-strong);
+  opacity: 0.4;
+}
+
+.ghostStrong {
+  fill: var(--hairline-strong);
+  opacity: 0.75;
+}
+
+.ghostBox {
+  fill: none;
+  stroke: var(--hairline-strong);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.6;
+}
+
+/* The one chip being pointed at, in the same indigo a real chip takes on hover. */
+.chipLive {
+  fill: color-mix(in srgb, var(--primary) 30%, transparent);
+  stroke: var(--primary);
+  stroke-width: 1.5;
+}
+
+.chipGhost {
+  fill: none;
+  stroke: var(--hairline-strong);
+  stroke-width: 1;
+}
+
+.openTag {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  fill: var(--primary);
+}
+
+.cursor {
+  fill: var(--ink);
+  stroke: var(--paper);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.drawerGhost {
+  fill: var(--raised);
+  stroke: var(--primary);
+  stroke-width: 1.5;
+}
+
+/* ------------------------------------------------------------------ act 2 · data */
+
+.fileClean {
+  fill: var(--hairline-strong);
+}
+
+.fileFault {
+  fill: var(--sev-high);
+}
+
+.rung {
+  stroke: var(--primary);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.rail {
+  stroke: var(--hairline-strong);
+  stroke-width: 2;
+  stroke-dasharray: 6 6;
+}
+
+.rungLabel {
+  font-size: 15px;
+  fill: var(--ink-muted);
+}
+
+/* The climb from healthy to failed. Also used by the running total, because both are the
+   same idea drawn twice: a quantity that accumulates and does not come back. */
+.climbLine {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.head {
+  fill: var(--primary);
+  stroke: var(--paper);
+  stroke-width: 3;
+}
+
+.formula {
+  font-size: 15px;
+  fill: var(--ink-muted);
+}
+
+.faultSpan {
+  fill: color-mix(in srgb, var(--sev-high) 55%, transparent);
+}
+
+.onsetDot {
+  fill: var(--sev-critical);
+}
+
+.cleanMark {
+  font-size: 14px;
+  fill: var(--sev-low);
+}
+
+/* ------------------------------------------------------------- act 3 · the plant */
+
+.node {
+  fill: var(--sunken);
+  stroke: var(--hairline-strong);
+  stroke-width: 1;
+}
+
+.nodeLabel {
+  font-size: 15px;
+  fill: var(--ink-muted);
+}
+
+.edge {
+  stroke: var(--primary);
+  stroke-width: 2;
+  opacity: 0.75;
+}
+
+.stepLabel {
+  font-size: 16px;
+  fill: var(--ink-muted);
+}
+
+.stepValue {
+  font-size: 18px;
+  fill: var(--ink);
+}
+
+.stepBig {
+  font-size: 24px;
+  fill: var(--primary);
+}
+
+/* ------------------------------------------------------------ act 4 · the gate */
+
+.barOk {
+  fill: color-mix(in srgb, var(--primary) 62%, transparent);
+}
+
+.barMixed {
+  fill: color-mix(in srgb, var(--sev-medium) 70%, transparent);
+}
+
+/* The failing check, and the bad validation number. Same colour because they are the same
+   statement: this value is the problem. */
+.barBad {
+  fill: var(--sev-critical);
+}
+
+/* The score a reading must clear before any rule may read it. Dashed, because it is a
+   decision somebody argued for rather than a measurement. */
+.gateLine {
+  stroke: var(--sev-medium);
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+}
+
+.cellViolate {
+  fill: color-mix(in srgb, var(--sev-critical) 60%, transparent);
+}
+
+.cellGap {
+  fill: none;
+  stroke: var(--hairline-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.cellPass {
+  fill: color-mix(in srgb, var(--sev-low) 60%, transparent);
+}
+
+.spanLine {
+  stroke: var(--primary);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.fieldKey {
+  font-size: 13px;
+  fill: var(--ink-faint);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.fieldVal {
+  font-size: 16px;
+  fill: var(--ink);
+}
+
+.fieldFrom {
+  font-size: 13px;
+  fill: var(--primary);
+}
+
+/* ---------------------------------------------------------- act 5 · the baseline */
+
+.wire {
+  stroke: var(--hairline-strong);
+  stroke-width: 1.5;
+}
+
+.box {
+  fill: var(--sunken);
+  stroke: var(--hairline-strong);
+  stroke-width: 1;
+}
+
+.boxLabel {
+  font-size: 16px;
+  fill: var(--ink);
+}
+
+.boxSub {
+  font-size: 13px;
+  fill: var(--ink-faint);
+}
+
+.outLabel {
+  font-size: 17px;
+  fill: var(--primary);
+}
+
+/* What a healthy machine of this kind would have produced under the same conditions. */
+.expected {
+  fill: none;
+  stroke: var(--ink-faint);
+  stroke-width: 2;
+  stroke-dasharray: 8 6;
+}
+
+/* What it actually produced. */
+.observed {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+/* The area between them — the residual, which is the number the next stage consumes. */
+.residualBand {
+  fill: color-mix(in srgb, var(--sev-high) 26%, transparent);
+  stroke: none;
+}
+
+.keyExpected {
+  font-size: 14px;
+  fill: var(--ink-faint);
+}
+
+.keyObserved {
+  font-size: 14px;
+  fill: var(--primary);
+}
+
+.thresholdLine {
+  stroke: var(--sev-critical);
+  stroke-width: 2;
+  stroke-dasharray: 8 6;
+}
+
+.thresholdLabel {
+  font-size: 14px;
+  fill: var(--sev-critical);
+}
+
+.markLine {
+  stroke: var(--hairline-strong);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+/* The four bands health quantises onto. Red, orange, gold, slate — never red-amber-green,
+   because a scale whose ends collapse for one reader in twelve has no ends. */
+.bandCritical { fill: color-mix(in srgb, var(--sev-critical) 55%, transparent); }
+.bandDegraded { fill: color-mix(in srgb, var(--sev-high) 50%, transparent); }
+.bandWatch { fill: color-mix(in srgb, var(--sev-medium) 45%, transparent); }
+.bandHealthy { fill: color-mix(in srgb, var(--sev-low) 40%, transparent); }
+
+.needle {
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.needleLabel {
+  font-size: 18px;
+  fill: var(--ink);
+}
+
+/* ------------------------------------------------------- act 6 · remaining life */
+
+.fanBand {
+  fill: color-mix(in srgb, var(--primary) 30%, transparent);
+  stroke: color-mix(in srgb, var(--primary) 55%, transparent);
+  stroke-width: 2;
+}
+
+.fanMid {
+  stroke: var(--primary);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.fanLabel {
+  font-size: 16px;
+  fill: var(--ink);
+}
+
+.refusalNote {
+  font-size: 14px;
+  fill: var(--ink-muted);
+  font-style: italic;
+}
+
+/* ----------------------------------------------------------- act 7 · the decision */
+
+.causeBox {
+  fill: color-mix(in srgb, var(--sev-critical) 20%, transparent);
+  stroke: var(--sev-critical);
+  stroke-width: 1.5;
+}
+
+.causeLabel {
+  font-size: 16px;
+  fill: var(--ink);
+}
+
+.barAct {
+  fill: var(--primary);
+}
+
+.barWait {
+  fill: var(--sev-critical);
+}

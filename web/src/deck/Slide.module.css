@@ -1,0 +1,335 @@
+/*
+ * One slide.
+ *
+ * EVERY SLIDE IS ABSOLUTELY POSITIONED AND FILLS THE DECK, with only the current one
+ * visible. Moving between slides is therefore an opacity change on two elements rather
+ * than a mount and an unmount, which is what keeps the transition from flashing: a figure
+ * that has already laid itself out does not lay itself out again on the way back.
+ *
+ * NOTHING SCROLLS. If a slide's content does not fit, that is a fault in the script and
+ * scripts/verify-deck.ts is what catches it — not a scroll bar appearing on a projector
+ * mid-sentence.
+ */
+
+.slide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  /* Vertical padding scales with the window height, horizontal with its width. They are
+     different axes with different constraints: width only affects how text wraps, whereas
+     height is what decides whether the copy fits above the chips row at all. */
+  padding: var(--deck-pad-y) clamp(40px, 6vw, 120px) var(--s4);
+  overflow: hidden;
+  transition: opacity 200ms ease;
+}
+
+.current {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/*
+ * Hidden, not unmounted. visibility rather than display:none so the browser keeps the laid
+ * out box — an SVG figure inside display:none reports zero size, and any figure that ever
+ * needs to measure itself would measure wrong on the frame it appears.
+ */
+.away {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------------ the header */
+
+.head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(6px, 1.4vh, 12px);
+  max-width: 1500px;
+}
+
+.meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s4);
+}
+
+/* Which act this belongs to. Present on every slide so a listener can place themselves
+   without waiting for the next act boundary. */
+.act {
+  font-family: var(--mono);
+  font-size: var(--t-deck-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* Marks the two orientation slides — the open and the close — as being about the SEQUENCE
+   rather than about the subject. They are the only slides that talk about other acts. */
+.tag {
+  font-family: var(--mono);
+  font-size: var(--t-deck-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--primary);
+  padding: 2px var(--s3);
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
+  border-radius: var(--r-pill);
+}
+
+.title {
+  font-size: var(--t-deck-head);
+  font-weight: var(--w-light);
+  line-height: var(--lh-title);
+  letter-spacing: var(--track-lg);
+  color: var(--ink-strong);
+  margin: 0;
+}
+
+/* The claim the rest of the slide supports. One sentence, never two. */
+.lead {
+  font-size: var(--t-deck-lead);
+  line-height: var(--lh-body);
+  letter-spacing: var(--track-md);
+  color: var(--ink-muted);
+  max-width: 46ch;
+  margin: 0;
+}
+
+/* The act's question, restated in the room's language on the opening slide. Italic and
+   indented off the left rule, so it reads as somebody asking rather than as the deck
+   asserting. */
+.question {
+  font-size: var(--t-deck-lead);
+  font-style: italic;
+  line-height: var(--lh-body);
+  color: var(--primary);
+  border-left: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  padding-left: var(--s4);
+  max-width: 52ch;
+  margin: var(--s2) 0 0;
+}
+
+/* -------------------------------------------------------------------------- the body */
+
+.body {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(24px, 4vw, 72px);
+  min-height: 0;
+}
+
+.column {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--deck-gap-block);
+  min-height: 0;
+  min-width: 0;
+  max-width: 62ch;
+}
+
+/*
+ * The figure takes the right of the slide when there is one. Roughly two fifths — enough
+ * that a drawing is legible across a room, not so much that the bullets get squeezed into
+ * a column of two words.
+ *
+ * THE MIN-WIDTH IS LOAD-BEARING. When a drawer opens, the deck gives up 460px and both
+ * columns shrink to fit. Without a floor the figure took most of that loss and became an
+ * unreadable thumbnail, which is the wrong trade: a diagram below a certain size says
+ * nothing at all, whereas a line of text simply rewraps. So the text column yields first.
+ */
+.figure {
+  flex: 0 1 42%;
+  min-width: 320px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ------------------------------------------------------------------------- the points */
+
+.points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  /* Scales with the window height. At a fixed 24px the bullets read well on a tall window
+     and pushed the last one through the chips row on a short one; the clamp gives up spacing
+     before it gives up type size, because a cramped list still reads and shrunken type does
+     not. */
+  gap: var(--deck-gap-point);
+}
+
+.points > li {
+  position: relative;
+  font-size: var(--t-deck-point);
+  line-height: 1.45;
+  letter-spacing: var(--track-body);
+  color: var(--ink);
+  padding-left: var(--s5);
+}
+
+/* A rule, not a disc. A row of bullet dots reads as a list of equal items; a short rule
+   reads as a line of argument, which is what these are. */
+.points > li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.72em;
+  width: 12px;
+  height: 1px;
+  background: var(--hairline-strong);
+}
+
+/* The word the presenter lands on. */
+.key {
+  font-style: normal;
+  color: var(--primary);
+}
+
+/* ------------------------------------------- the standing / gained lists, on open and close
+ *
+ * Quieter than the main points and set on a sunken panel, because they are not what this
+ * slide is about — they are the bridge to the slides either side of it. Given the same
+ * treatment in both places so the two read as a matched pair across every act boundary.
+ */
+
+.aside {
+  background: var(--sunken);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  padding: clamp(10px, 1.8vh, 16px) var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.asideLabel {
+  font-family: var(--mono);
+  font-size: var(--t-deck-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.subPoints {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.4vh, 12px);
+}
+
+.subPoints > li {
+  position: relative;
+  font-size: var(--t-deck-sub);
+  line-height: 1.4;
+  color: var(--ink-muted);
+  padding-left: var(--s5);
+}
+
+.subPoints > li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.65em;
+  width: 8px;
+  height: 1px;
+  background: var(--hairline-strong);
+}
+
+/* -------------------------------------------------------------------------- the chips */
+
+.chips {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  /* The hard floor for everything above it. Nothing in the body may cross this border —
+     that collision is what the browser walk checks, at five viewport sizes. */
+  padding-top: var(--s3);
+  border-top: 1px solid var(--hairline);
+}
+
+.chipsLabel {
+  font-family: var(--mono);
+  font-size: var(--t-deck-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-right: var(--s2);
+}
+
+.chip {
+  font-family: var(--mono);
+  font-size: var(--t-deck-label);
+  letter-spacing: var(--track-tabular);
+  color: var(--ink-muted);
+  background: var(--raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  padding: 6px var(--s4);
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.chip:hover {
+  color: var(--ink);
+  border-color: var(--hairline-strong);
+  background: var(--canvas-soft);
+}
+
+.chip:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* ------------------------------------------------------------------- the title slide
+ *
+ * The cold open. No act label, no bullets, no chips — everything the other fifty slides
+ * carry is furniture, and furniture on the first frame is the audience being asked to read
+ * a table of contents before they have been told what any of it is for.
+ *
+ * NAMED kindTitle AND NOT title. A CSS module exports one name per class, and `.title` is
+ * already the heading inside every slide — a kind class of the same name would resolve to
+ * the same generated identifier and style the h2 as though it were the whole slide.
+ */
+
+/* The three working kinds. They share the base layout entirely today — the class exists so
+   a kind can diverge later without the markup having to change, and so the verifier can
+   assert every kind resolves to a real class. */
+.kindOpen,
+.kindContent,
+.kindClose {
+  /* no overrides yet */
+}
+
+.kindTitle {
+  justify-content: center;
+  align-items: flex-start;
+  padding-left: clamp(64px, 9vw, 200px);
+}
+
+.kindTitle .title {
+  font-size: var(--t-deck-title);
+  letter-spacing: var(--track-xxl);
+}
+
+.kindTitle .lead {
+  font-size: var(--t-deck-head);
+  color: var(--ink-muted);
+  max-width: 24ch;
+}
+
+.kindTitle .body {
+  flex: none;
+}

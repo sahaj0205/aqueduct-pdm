@@ -1,0 +1,140 @@
+/*
+ * The stage, and the deck's own theme.
+ *
+ * ======================================================================= FORKED, NOT SHARED
+ *
+ * These tokens are copied from the walkthrough's dark theme rather than imported from it.
+ * That looks like duplication and it is deliberate. The two surfaces are read under
+ * different conditions — the walkthrough is scaled by a camera and its type sizes are
+ * inflated to survive that, while a deck slide is drawn at 1:1 — so their type scales must
+ * be free to differ. Sharing one file would mean every future adjustment to the deck
+ * silently repainted the walkthrough, which is exactly the failure the walkthrough's own
+ * theme was scoped to avoid in the first place.
+ *
+ * The colour values ARE identical, on purpose. Same product, same room, same projector.
+ * The middle-dark slate navy below was arrived at by rejecting both the product's white
+ * canvas (the brightest object in a darkened room) and a near-black (which turns a
+ * presentation into a light show and makes cards float in a void). Three surface levels,
+ * close together, so depth reads as an ordered stack rather than as contrast.
+ *
+ * Severity stays red / orange / gold / slate and never red-amber-green, per
+ * DESIGN_SEMANTIC.md — a scale whose ends collapse for one reader in twelve has no ends.
+ */
+
+.stage {
+  --paper: #1a2332;
+  --canvas-soft: #1f2937;
+  --raised: #232f42;
+  --sunken: #1c2636;
+  --hairline: #34435c;
+  --hairline-strong: #4c5f7d;
+
+  --ink: #eef3fa;
+  --ink-strong: #ffffff;
+  --ink-muted: #c2d0e2;
+  --ink-faint: #95a6bf;
+  --ink-disabled: #6b7c96;
+
+  /* Indigo lifted toward lavender: the product's light-theme indigo sits at roughly 3:1
+     against this field, under the floor for the small mono type it gets used on. */
+  --primary: #a99cff;
+  --primary-deep: #8a79f7;
+  --primary-hover: #bcb2ff;
+  --info: #a99cff;
+  --info-wash: #2a2f56;
+
+  --sev-critical: #ff8389;
+  --sev-high: #ff9d4d;
+  --sev-medium: #f4d35e;
+  --sev-low: #a8c3de;
+
+  /*
+   * TYPE, AND WHY IT SCALES WITH THE WINDOW'S HEIGHT.
+   *
+   * The walkthrough inflates its sizes because every card is additionally scaled down by
+   * whatever the camera needs to frame it. Nothing here is scaled by a camera — a slide is
+   * drawn at 1:1 and read across a room — so these are the real projected sizes.
+   *
+   * But a slide never scrolls, and the amount of copy on it is fixed by the script. That
+   * makes the WINDOW HEIGHT the binding constraint, and the first version ignored it: every
+   * size was a constant chosen against a 900px-tall viewport, so on a laptop showing 800px
+   * of page (a browser with a bookmarks bar) fourteen slides ran their last bullet straight
+   * through the chips row, and at 1280x720 thirty-two did. Nothing in the build said so,
+   * because the content still fitted inside the section — it was colliding with the row
+   * below it, not overflowing the slide.
+   *
+   * So every size below is `clamp(floor, N vh, ceiling)`. The vh coefficients are set so
+   * each one reaches its ceiling at roughly a 900px-tall viewport and shrinks proportionally
+   * below that; the floors are what keeps the smallest window still legible from a room.
+   * scripts/verify-deck.ts holds the 15px floor, and web/scripts/ has no way to measure a
+   * collision, so the browser walk is what proves it — at five viewport sizes.
+   */
+  --t-deck-title: clamp(44px, 8.4vh, 76px); /* the title slide only */
+  --t-deck-head: clamp(30px, 5.1vh, 46px); /* a slide heading */
+  --t-deck-lead: clamp(19px, 2.9vh, 26px); /* the standfirst under a heading */
+  --t-deck-point: clamp(17px, 2.67vh, 24px); /* a bullet */
+  --t-deck-sub: clamp(15px, 2.22vh, 20px); /* secondary lists — standing / gained */
+  --t-deck-label: clamp(13px, 1.67vh, 15px); /* mono labels, act names, chip text */
+  --t-deck-micro: clamp(11px, 1.45vh, 13px);
+
+  /* Vertical rhythm shrinks with the type, or the gaps eat the room the type just gave up. */
+  --deck-gap-point: clamp(10px, 2.22vh, 20px);
+  --deck-pad-y: clamp(18px, 4.9vh, 72px);
+  --deck-gap-block: clamp(12px, 2.67vh, 24px);
+
+  --lift-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --lift-2: 0 2px 6px rgba(0, 0, 0, 0.45), 0 16px 40px rgba(0, 0, 0, 0.35);
+  --lift-3: var(--lift-2);
+  --ring: 0 0 0 3px color-mix(in srgb, var(--primary) 38%, transparent);
+
+  /* How much room the bottom rail takes. Slides subtract it, so nothing is ever drawn
+     underneath the readout. */
+  --rail-h: 74px;
+  /* The drawer's width, referenced by both the drawer and the shift it causes. */
+  --panel-w: 460px;
+
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-weight: var(--w-light);
+  user-select: none;
+}
+
+/*
+ * Where the slides live: everything above the rail.
+ *
+ * WHEN THE DRAWER OPENS THE DECK GIVES UP WIDTH rather than being covered or pushed. A
+ * panel sitting on top of the slide would hide the very bullet the presenter just clicked
+ * to explain.
+ *
+ * The first version translated the deck sideways instead, and that was wrong: a transform
+ * moves the box without resizing it, so the slide's left edge — heading included — slid off
+ * the screen while its right edge stayed under the drawer. Narrowing the container instead
+ * makes the slide re-lay out into the space that is actually left, so text rewraps and
+ * nothing is ever clipped at either edge.
+ */
+.deck {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: var(--rail-h);
+  transition: right 260ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.shifted {
+  right: var(--panel-w);
+}
+
+/* Off-screen, but present for assistive technology. */
+.announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

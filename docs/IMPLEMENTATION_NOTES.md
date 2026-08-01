@@ -12042,3 +12042,256 @@ object in a darkened room.
 
 START HERE: `web/src/story/plantLayout.ts` — the note at the top explains the coordinate
 mix-up that caused the worst of the visual faults.
+
+## The deck — a presentation of the whole system, passes 2 and 3
+
+### WHAT WE DID
+
+The system gained a second way of explaining itself, aimed at a completely different
+listener. The existing walkthrough follows one measurement through the pipeline and is built
+to make the mechanism feel inevitable; it answers "how does this work". Somebody deciding
+whether the thing is worth having asks a different question — "is it any good, and how would
+I know" — and that answer is structural rather than cinematic. So this is fifty-two static
+slides in ten acts, with no camera, no world and no animation, where everything on a slide is
+visible at once and a presenter talks over it.
+
+Before this the project could demonstrate itself but could not argue for itself. It had no
+artefact that stated the trust argument first, walked each layer in order, and finished by
+reporting how accurate the whole thing actually is — including the one measure that comes out
+badly. It now does, and every number on every slide is traceable to either a file in this
+repository or a row in the database, with the source recorded next to it.
+
+The depth is behind clicks rather than on the surface. Thirty-nine things worth being able to
+show — nine rules, five baselines, eight scenarios, six failure modes, five quality checks,
+six validation numbers — each open a drawer, so a slide carries the claim and the drawer
+carries the evidence, opened only if the room asks.
+
+### HOW IT WORKS
+
+    web/scripts/make-deck-catalogue.ts (the capture, recorded not scripted)
+      WHY IT EXISTS: The deck needed facts that live in three different places — YAML
+        manifests, Python source, and a running database — and a presentation that fetched
+        any of them at showtime would fail in the one room it was built for.
+      WHAT IT DOES: The scenario manifests and the equipment relationships were read out of
+        the repository. The failure modes, the machines and their replacement costs, the
+        instrument counts per machine, the injected-fault answer key, and one real cause
+        chain were captured from the running database on the office box over SSH on
+        2026-08-01, by queries recorded in the catalogue's own comments.
+      CHOICES: Rule and baseline definitions were transcribed by hand from their Python
+        source rather than parsed, because writing a Python AST reader in TypeScript to
+        extract nine docstrings would be more fragile than the thing it replaced. Each block
+        names its source file so a reader can check it.
+      ⚠ JUDGEMENT CALL: I did not build the generated-JSON extractor the plan described.
+        Everything it would have produced is in a typed module with the provenance recorded
+        per block. The alternative — a script plus a JSON file plus a reader — is three
+        artefacts where one carries the same guarantee, and the data is frozen by design.
+
+    web/src/deck/catalogue.ts :: ASSETS, SCENARIOS, RULES, BASELINES, MODES, CHECKS, METRICS
+      WHY IT EXISTS: One frozen place every slide and every drawer reads from, so a figure
+        and the bullet beside it can never quote different numbers for the same thing.
+      WHAT IT DOES: Holds eight machines with their instrument counts and replacement costs;
+        eight scenarios with every ground truth set for each — onset, failure date, the
+        healthy run-in, the source window, the seed, the severity rungs; the nine production
+        rules with what each tests and why; the five quality checks with their windows and
+        the measurement behind each window length; the five baselines with their targets,
+        drivers and the nuance that justifies each; the six failure modes with the full
+        written argument for every threshold; and the six validation numbers.
+      CHOICES: Everything the walkthrough already captured — the followed machine, its
+        health today, the refusal, the advisory and its cost breakdown — is re-exported from
+        that snapshot rather than copied, so the two artefacts cannot drift apart about the
+        machine they both describe.
+      ⚠ JUDGEMENT CALL: One failure mode, filter loading, is carried with a flag saying it
+        is not computable in this building, and the drawer says so. Dropping it would have
+        been tidier and would have hidden a real gap in the instrumentation.
+
+    web/src/deck/deck.ts :: ACTS, SLIDES
+      WHY IT EXISTS: Every word the deck says lives here. A presentation whose content is
+        spread across fifty components cannot be reordered, counted, or checked.
+      WHAT IT DOES: Ten acts in an order that is itself an argument — trust before data,
+        because the reason the data was built that way is the whole point of act one; alerts
+        before prediction, because alerts are what the system does on day one. Fifty-two
+        slides, each carrying a heading, a one-sentence claim, up to four bullets, optionally
+        a figure, and optionally chips that open drawers. Text between asterisks in a bullet
+        is the word the presenter lands on when reading it aloud.
+      CHOICES: Every act except the two bookends opens with a slide listing what is already
+        standing and closes with one listing what is now in hand. That repetition is the
+        orientation aid — it picks up a listener who lost the thread three slides ago without
+        anybody having to stop and recap.
+      ⚠ JUDGEMENT CALL: The advisory was moved from its own layer to the last slide of the
+        decision act. Presenting it before root cause and cost means showing a document with
+        two blank fields, since it is assembled from both.
+
+    web/src/deck/Slide.tsx :: Slide, Marked
+      WHY IT EXISTS: One component renders all fifty-two, so the room learns the shape once.
+      WHAT IT DOES: Four kinds differing only in which regions render — the cold open, the
+        act opener with its standing list, an ordinary content slide, and the act closer with
+        its gained list. Marked splits a bullet on its asterisk pairs and wraps what was
+        between them in an emphasis span.
+      ⚠ JUDGEMENT CALL: The kind classes are mapped explicitly rather than looked up by
+        name. A CSS module exports one identifier per class and `title` was already the
+        heading inside every slide, so the obvious lookup styled the h2 as though it were the
+        whole slide.
+
+    web/src/deck/Deck.tsx :: Deck
+      WHY IT EXISTS: The shell — which slide is showing, which drawer is open, and the keys.
+      WHAT IT DOES: Mounts all fifty-two slides permanently and shows one, so moving is a
+        class change rather than a mount. Arrows, space, page keys, Home and End move;
+        Escape closes a drawer and deliberately does nothing else, because a presentation has
+        no exit. Changing slide always closes the drawer, since a drawer left open would be
+        annotating something no longer on screen.
+      CHOICES: The key handler is on the window rather than on a focused element. A presenter
+        clicks a chip and then presses right; with the handler on the stage, focus would
+        still be on the chip and the arrow would do nothing, which on a projector reads as
+        the deck having frozen.
+
+    web/src/deck/figures/Figure.tsx :: nineteen drawings
+      WHY IT EXISTS: Some claims are far shorter as a picture — what a published data file
+        actually contains, how far a machine has travelled toward failing, two costs whose
+        whole point is how unequal they are.
+      WHAT IT DOES: Nineteen hand-rolled SVG diagrams sharing one frame, each with a caption
+        that says how to read it. Every value comes from the catalogue: the residual band is
+        the real fitted baseline against the real observations, the health needle is at the
+        real 62, the cost bars are the real $1,610 against the real $277,038.
+      CHOICES: Thirty-three of the fifty-two slides have no figure. A picture on every slide
+        is fifty things to decode, and the ones that add nothing teach the room to stop
+        looking at the ones that do.
+      ⚠ JUDGEMENT CALL: The quality-gate figure shows five scores with one failing. Those
+        five values are the only illustrative numbers anywhere in the deck, because the
+        snapshot carries no per-check scores. The alternative was to drop the figure; the
+        point it makes — that the composite is the minimum, so one bad check decides the
+        score — cannot be drawn without a failing check to draw.
+
+    web/src/deck/Panel.tsx :: the drawer
+      WHY IT EXISTS: A drawer is opened when somebody has decided not to take the slide's
+        word for it, so it is the last place in the deck that could survive a vague answer.
+      WHAT IT DOES: One component renders all eight kinds. A scenario drawer shows every
+        ground truth in a block marked out with a gold rule, because those are the only
+        values in the project the pipeline is not allowed to see and a reader should be able
+        to tell at a glance which numbers are the answer key. A failure-mode drawer shows the
+        full written justification for its threshold. Four drawers hold the arithmetic — the
+        blend formula, how baseline constants are chosen, the running total, and the
+        first-passage model with its four refusal conditions — in plain language.
+      CHANGED FROM BEFORE: A machine with no failure modes rendered an empty heading, which
+        read as a rendering fault. It now says explicitly that no degradation model exists
+        for that class of equipment, which is a real limitation worth stating: cooling towers
+        and the chilled water plant are covered by the rules and the quality checks and can
+        be named as the cause of a downstream fault, but nothing predicts their own failure.
+
+    web/src/deck/Deck.module.css :: .deck, .shifted
+      WHY IT EXISTS: Where the slides live, and what happens to them when a drawer opens.
+      CHANGED FROM BEFORE: The first version translated the deck sideways when a drawer
+        opened. A transform moves a box without resizing it, so the slide's heading slid off
+        the left edge while its right edge stayed under the drawer. It now narrows the
+        container instead, so the slide re-lays out into the space actually left.
+
+    web/src/deck/Slide.module.css :: .figure
+      CHOICES: The figure has a 320px floor and the text column yields first. Without it the
+        drawing took most of the lost width and became an unreadable thumbnail, which is the
+        wrong trade — a diagram below a certain size says nothing, whereas text rewraps.
+      CHANGED FROM BEFORE: Narrowing made bullets rewrap onto more lines, which pushed the
+        two longest slides past their own bottom edge. The figure is now dropped entirely
+        while a drawer is open, which gives the text full width and makes those slides
+        shorter rather than taller — and somebody reading a drawer is reading the evidence,
+        not the diagram.
+
+    web/scripts/verify-deck.ts
+      WHY IT EXISTS: The deck's failure modes are structural and silent. A chip pointing at
+        an identifier the catalogue no longer holds renders "no rule with that identifier" in
+        front of the audience, and nothing else in the toolchain would say so — not even the
+        typechecker, because the identifiers are strings.
+      WHAT IT DOES: Fifteen properties. Every act has slides and they are contiguous; every
+        act is bracketed by an opener and a closer; slide ids are unique; all forty-seven
+        chips resolve; nothing in the catalogue is unreachable from any slide; no slide has
+        more than six points and no bullet runs past the wrap limit; emphasis markers are
+        balanced; no stage directions appear in rendered copy; no placeholders remain.
+      CHOICES: The last check asserts that the worst validation number is still on its own
+        slide at its real value. That is a check on the argument rather than on the code, and
+        it is there because the easiest future edit to this deck is the one that quietly
+        drops the 7.7 percent coverage slide to make the presentation land better — which
+        would destroy the thing act one exists to establish.
+
+    web/src/App.tsx
+      CHANGED FROM BEFORE: Four lines hand /deck to the deck, in the same shape as the two
+        blocks already there for /fm and /story. The deck owns the viewport and shares only
+        the design tokens.
+
+START HERE: web/src/deck/deck.ts — every word the deck says is in that one file, and the ten
+acts in it are the argument the whole artefact makes.
+
+### Addendum — telling the reader the panels are clickable
+
+    web/src/deck/deck.ts :: the "how-to-read" slide
+      WHY IT EXISTS: The chips are deliberately understated so a room does not spend the
+        presentation inside the drawers. But understated furniture on a screen already full
+        of furniture reads as decoration: somebody arriving at a slide and seeing a row of
+        grey pills under four bullets has no reason to think they are anything but part of
+        the picture, and a reader working through this alone will sit still and never open
+        one. Forty-seven panels of evidence would go unseen.
+      WHAT IT DOES: Sits third, straight after the claim and before any argument begins.
+        Says what the arrow keys do, what a row marked "open" means, and what happens when
+        one is clicked. Carries a live chip so the reader can try it on the spot.
+      CHOICES: The demonstration chip opens chiller-1 — the machine the whole deck follows —
+        so the practice click also does real work rather than being a toy.
+      ⚠ JUDGEMENT CALL: Telling somebody a control exists is weaker than handing them the
+        control, so this slide has a working chip rather than a picture of one. The cost is
+        one panel opened before the act that introduces its contents; the alternative was a
+        slide that describes an interaction the reader has still never performed.
+
+    web/src/deck/figures/Figure.tsx :: HowToRead
+      WHAT IT DOES: Draws this screen: the heading and bullets as grey bars, the figure
+        region as a dashed box, the chips row with one chip lit and a cursor resting on it,
+        the rail along the bottom, and the drawer arriving from the right. Everything is
+        dimmed except the chips row and the drawer.
+      CHOICES: A cursor rather than an arrow with a label — it is the one symbol that needs
+        no legend. The thing being taught is WHERE something is, and a sentence about the
+        bottom-left of the slide is a worse answer to that than a picture of the slide with
+        the bottom-left marked.
+
+    web/scripts/verify-deck.ts :: "no slide quotes the deck's own length"
+      WHY IT EXISTS: The first draft of the how-to-read slide said "52 of them" and was
+        wrong by one within the hour — adding that very slide changed the count it quoted.
+      WHAT IT DOES: Fails if any rendered line mentions slides alongside a number near the
+        real slide count. Any figure describing the deck's own shape goes stale on the next
+        edit, and unlike every other number in the deck there is nothing upstream to catch
+        it. The rail already shows the real count, computed, so the copy must not repeat it.
+
+### Addendum — content colliding with the chips row on a shorter window
+
+    web/src/deck/Deck.module.css :: the deck type scale
+      WHY IT CHANGED: A slide never scrolls and the amount of copy on it is fixed by the
+        script, which makes WINDOW HEIGHT the binding constraint. The first version ignored
+        that: every size was a constant chosen against a 900px-tall viewport. On an ordinary
+        laptop browser showing 800px of page — a window with a bookmarks bar — fourteen
+        slides ran their last bullet straight through the chips row, and at 1280x720 thirty-
+        two did.
+      WHY NOTHING CAUGHT IT: the earlier browser walk measured overflow past the SECTION's
+        edge. This content never left the section; it collided with the row inside it. The
+        walk now measures against the chips row's top border, which is the real floor, and
+        runs at five viewport sizes rather than one.
+      WHAT IT DOES NOW: every size is clamp(floor, N vh, ceiling). The coefficients are set
+        so each reaches its old value at roughly a 900px viewport and shrinks below that;
+        the floors keep the smallest window legible from a room. Vertical rhythm — bullet
+        gaps, block gaps, slide padding — scales alongside, because gaps left fixed simply
+        eat the room the type gave up.
+      CHOICES: Vertical padding scales with height, horizontal with width. Different axes
+        with different constraints: width only affects how text wraps, height decides whether
+        the copy fits above the chips row at all.
+      ⚠ JUDGEMENT CALL: The clamps give up SPACING faster than TYPE SIZE — the bullet gap
+        floor is half its ceiling, the bullet size floor is about seven tenths. A cramped
+        list still reads; shrunken type does not.
+
+    web/src/deck/figures/figures.module.css :: .caption
+      CHANGED FROM BEFORE: Captions inherited a label size whose floor is 13px, which on a
+        short window is decoration nobody can read. They now carry their own clamp with a
+        15px floor, which the figure column has room for at every size.
+
+    web/scripts/verify-deck.ts :: the copy budget
+      WHY IT EXISTS: This file cannot drive a browser, so it cannot check the collision
+        directly. What it can do is cap the input to it.
+      WHAT IT DOES: Sums every rendered character on a slide — standfirst, bullets, standing
+        and gained lists — and fails above 660. The five-viewport browser walk is clean at
+        the current worst of 627, so the cap leaves about five percent of headroom.
+      CHOICES: Tripping this does not prove a slide is broken. It proves the slide has left
+        the range that was actually measured, and needs re-walking in a browser before it is
+        presented. Stated that way in the check's own comment so nobody reads a pass as a
+        guarantee.

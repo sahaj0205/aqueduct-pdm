@@ -17,6 +17,7 @@
     "verify:prediction": "node scripts/run-ts.mjs scripts/verify-prediction.ts",
     "verify:config": "node scripts/run-ts.mjs scripts/verify-config.ts",
     "verify:story": "node scripts/run-ts.mjs scripts/verify-story.ts",
+    "verify:deck": "node scripts/run-ts.mjs scripts/verify-deck.ts",
     "snapshot": "node scripts/run-ts.mjs scripts/make-snapshot.ts",
     "snapshot:catalogue": "node scripts/run-ts.mjs scripts/refresh-catalogue.ts"
   },

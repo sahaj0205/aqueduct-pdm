@@ -12,6 +12,7 @@ import {
 import { api, reveal } from "./api.ts";
 import { AdvisoryDetail } from "./components/AdvisoryDetail.tsx";
 import { ControlBar } from "./components/ControlBar.tsx";
+import { Deck } from "./deck/Deck.tsx";
 import { Credit } from "./design/Credit.tsx";
 import { Mark } from "./design/Mark.tsx";
 import { BRAND } from "./lib/brand.ts";
@@ -334,6 +335,13 @@ export function App() {
   // in. It shares the design tokens and nothing else.
   if (location.pathname.startsWith("/story")) {
     return <Story />;
+  }
+
+  // The deck: the same system presented to somebody deciding whether it is worth having,
+  // rather than shown as a camera move. Handed off for the same reasons as the two above —
+  // it owns the viewport, has no masthead, clock or tabs, and shares only the design tokens.
+  if (location.pathname.startsWith("/deck")) {
+    return <Deck />;
   }
 
   if (atFrontDoor) {
